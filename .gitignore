@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+dashboard/node_modules/
+.pnpm-store/
+
+# Production builds & artifacts
+dist/
+dashboard/.next/
+dashboard/out/
+
+# Environment configurations & secrets (CRITICAL: NEVER COMMIT)
+.env
+.env*.local
+.env.development
+.env.production
+.env.test
+!.env.example
+
+# Logs and runtime dumps
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# System & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Agent caches and skills
+.agents/
+
+# Generated card test renders and HTML viewers at root
+/*.png
+/*.webp
+/card_viewer.html
+data/assets/
+
+# Temporary scratch test scripts
+scratch/
+coverage/

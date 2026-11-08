@@ -1,0 +1,184 @@
+name: Destiny Bot Runner
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      session_minutes:
+        description: "Minutes per session before chaining the next (max 350)"
+        required: false
+        default: "345"
+  schedule:
+    # 6-hour watchdog: restarts the session if chaining is ever interrupted
+    - cron: "17 */6 * * *"
+
+concurrency:
+  group: destiny-bot-runner
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  run-bot:
+    name: Run Destiny Ecosystem
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    services:
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build TypeScript Project
+        run: pnpm run build
+
+      - name: Prepare Environment Configuration
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
+          DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
+          DISCORD_PUBLIC_KEY: ${{ secrets.DISCORD_PUBLIC_KEY }}
+          DISCORD_SHARDS_TOTAL: ${{ secrets.DISCORD_SHARDS_TOTAL || '1' }}
+          DISCORD_SHARDS_PER_CLUSTER: ${{ secrets.DISCORD_SHARDS_PER_CLUSTER || '1' }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'http://localhost:4000' }}
+          NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL || 'http://localhost:3000' }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          REMINDER_CRON_SCHEDULE: ${{ secrets.REMINDER_CRON_SCHEDULE || '30 19 * * *' }}
+          REMINDER_DEFAULT_TIMEZONE: ${{ secrets.REMINDER_DEFAULT_TIMEZONE || 'Asia/Kolkata' }}
+          BULLMQ_CONCURRENCY: ${{ secrets.BULLMQ_CONCURRENCY || '50' }}
+          PORT: ${{ secrets.PORT || '4000' }}
+          AUTO_MOD_ENABLED: ${{ secrets.AUTO_MOD_ENABLED || 'true' }}
+          MAX_MESSAGE_RATE_PER_3S: ${{ secrets.MAX_MESSAGE_RATE_PER_3S || '5' }}
+          MAX_QUEUE_WAIT_SECONDS: ${{ secrets.MAX_QUEUE_WAIT_SECONDS || '180' }}
+          LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
+          NODE_ENV: production
+        run: |
+          cat << 'EOF' > .env
+          NODE_ENV=production
+          DISCORD_TOKEN=${DISCORD_TOKEN}
+          DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+          DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
+          DISCORD_PUBLIC_KEY=${DISCORD_PUBLIC_KEY}
+          DISCORD_SHARDS_TOTAL=${DISCORD_SHARDS_TOTAL}
+          DISCORD_SHARDS_PER_CLUSTER=${DISCORD_SHARDS_PER_CLUSTER}
+          SUPABASE_URL=${SUPABASE_URL}
+          SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+          SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+          SUPABASE_ACCESS_TOKEN=${SUPABASE_ACCESS_TOKEN}
+          DATABASE_URL=${DATABASE_URL}
+          REDIS_HOST=127.0.0.1
+          REDIS_PORT=6379
+          REDIS_PASSWORD=
+          REDIS_DB=0
+          REDIS_TLS=false
+          REDIS_KEY_PREFIX=destiny:
+          REMINDER_CRON_SCHEDULE=${REMINDER_CRON_SCHEDULE}
+          REMINDER_DEFAULT_TIMEZONE=${REMINDER_DEFAULT_TIMEZONE}
+          BULLMQ_CONCURRENCY=${BULLMQ_CONCURRENCY}
+          PORT=${PORT}
+          API_SECRET_KEY=${API_SECRET_KEY}
+          NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+          NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+          NEXTAUTH_URL=${NEXTAUTH_URL}
+          ENCRYPTION_KEY=${ENCRYPTION_KEY}
+          AUTO_MOD_ENABLED=${AUTO_MOD_ENABLED}
+          MAX_MESSAGE_RATE_PER_3S=${MAX_MESSAGE_RATE_PER_3S}
+          MAX_QUEUE_WAIT_SECONDS=${MAX_QUEUE_WAIT_SECONDS}
+          LOG_LEVEL=${LOG_LEVEL}
+          EOF
+          chmod 0600 .env
+          echo "Configuration successfully generated."
+
+      - name: Run Destiny Bot Session
+        env:
+          SESSION_MINUTES: ${{ inputs.session_minutes || '345' }}
+        run: |
+          case "${SESSION_MINUTES}" in
+            ''|*[!0-9]*) echo "session_minutes must be an integer"; SESSION_MINUTES=345 ;;
+          esac
+          if [ "${SESSION_MINUTES}" -gt 350 ]; then
+            echo "Capping session to 350m (job limit is 360m)"
+            SESSION_MINUTES=350
+          fi
+          seconds=$(( SESSION_MINUTES * 60 ))
+          echo "🌌 Launching Destiny bot session for ${SESSION_MINUTES}m (${seconds}s)..."
+
+          set +e
+          timeout --signal=INT --kill-after=90s "${seconds}s" pnpm start
+          rc=$?
+          set -e
+
+          if [ "${rc}" -eq 124 ]; then
+            echo "::notice::Session window ended cleanly after ${SESSION_MINUTES}m; chaining next session..."
+            exit 0
+          fi
+          if [ "${rc}" -eq 0 ]; then
+            echo "::notice::Destiny bot process stopped cleanly; chaining next session..."
+            exit 0
+          fi
+
+          echo "::warning::Destiny bot exited with status ${rc}; waiting 3m before triggering recovery..."
+          sleep 180
+          exit 0
+
+      - name: Session Summary
+        if: always()
+        run: |
+          {
+            echo "### 🌌 Destiny Bot Session"
+            echo ""
+            echo "- **Status:** Completed window / Triggering chained successor"
+            echo "- **Runner:** ${RUNNER_NAME} (GitHub Actions Ubuntu)"
+            echo "- **Redis Service:** Active (alpine:6379)"
+            echo "- **Supabase:** Connected"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Chain Next Session
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          WF: destiny.yml
+          REF: ${{ github.ref_name }}
+        run: |
+          queued=$(gh api "repos/${GH_REPO}/actions/workflows/${WF}/runs?status=queued" --jq '.total_count' 2>/dev/null || echo 0)
+          if [ "${queued:-0}" -gt 0 ]; then
+            echo "A successor session is already queued (${queued}); skipping extra dispatch."
+            exit 0
+          fi
+          gh workflow run "${WF}" --repo "${GH_REPO}" --ref "${REF}" -f session_minutes=345
+          echo "Dispatched the next session successfully."

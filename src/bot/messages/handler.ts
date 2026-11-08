@@ -1,0 +1,633 @@
+import { 
+  Client, 
+  Message, 
+  ActionRowBuilder, 
+  ButtonBuilder, 
+  ButtonStyle, 
+  MessageFlags,
+  AttachmentBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder
+} from 'discord.js';
+import { db } from '../../database/supabase.js';
+import { redis } from '../../redis/client.js';
+import { revealService } from '../../core/moderation/reveal.js';
+import { matchmakingManager } from '../../core/matchmaking/manager.js';
+import { handleReputationCheck } from '../../core/moderation/reputation.js';
+import { embedService, COLORS } from '../embeds/index.js';
+import { UserProfile } from '../../core/types.js';
+import { profileCardGenerator } from '../../core/profile/card-generator.js';
+
+/**
+ * Safe message reply helper with Components V2:
+ * Tries message.reply with IsComponentsV2 flag; if referencing fails,
+ * gracefully falls back to sending directly in the channel/DM.
+ */
+async function safeV2Reply(message: Message, container: any, files?: any[]): Promise<Message | null> {
+  const payload: any = {
+    components: [container],
+    flags: [MessageFlags.IsComponentsV2],
+  };
+  if (files && files.length > 0) {
+    payload.files = files;
+  }
+
+  try {
+    return await message.reply(payload as any);
+  } catch (err: any) {
+    try {
+      return await (message.channel as any).send(payload);
+    } catch (chErr: any) {
+      console.error('[Bot] Failed to send V2 message to channel/DM:', chErr?.message || chErr);
+      return null;
+    }
+  }
+}
+
+export class MessageCommandHandler {
+  /**
+   * Main entry point for processing text messages in guilds and DMs
+   */
+  async handleMessage(client: Client, message: Message): Promise<boolean> {
+    if (message.author.bot) return false;
+
+    const rawContent = message.content.trim();
+
+    // =========================================================================
+    // 1. DIRECT MESSAGES HANDLING (100% Native DM Operations in Components V2)
+    // =========================================================================
+    if (!message.guild) {
+      return await this.handleDMMessage(client, message, rawContent);
+    }
+
+    // =========================================================================
+    // 2. GUILD SERVER HANDLING (Zero Channel Lockouts, Full Privacy Redirect)
+    // =========================================================================
+    return await this.handleGuildMessage(client, message, rawContent);
+  }
+
+  /**
+   * Complete In-DM Message & Command Processing (Components V2)
+   */
+  private async handleDMMessage(client: Client, message: Message, rawContent: string): Promise<boolean> {
+    const authorId = message.author.id;
+    // Always fetch fresh state in DMs so activeRoomId and queue status are never stale
+    const user = await db.getUserByDiscordId(authorId, true);
+
+    // Reputation (< 10) & Ban Enforcement (discord.gg/eclairs check)
+    if (user && (user.reputationScore < 10 || user.isBanned)) {
+      const repStatus = await handleReputationCheck(client, authorId);
+      if (repStatus.isRestricted) {
+        // User has < 10 reputation and is NOT in discord.gg/eclairs
+        // Ignore them completely and send ONLY the regain message
+        const container = embedService.createLowReputationRestrictedContainer();
+        await safeV2Reply(message, container);
+        return true;
+      }
+      if (repStatus.restored) {
+        // User is in discord.gg/eclairs -> unbanned & reputation restored to 100%!
+        const container = embedService.createReputationRestoredContainer();
+        await safeV2Reply(message, container);
+        return true;
+      }
+    }
+
+    let activeRoomId = user?.activeRoomId;
+    if (!activeRoomId && user) {
+      activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+    }
+
+    // -------------------------------------------------------------
+    // STATE A: USER IN ACTIVE ROOM SESSION
+    // -------------------------------------------------------------
+    if (activeRoomId && user) {
+      const activeRoom = await db.getRoomById(activeRoomId);
+      if (activeRoom && activeRoom.status === 'active') {
+        // Subcase A1: Leave / End room command
+        if (/^\s*(?:destiny\s+leave|leave|exit|stop|end)\s*$/i.test(rawContent)) {
+          await db.endRoom(activeRoom.id, 'user_left');
+
+          // Notify partner in DM
+          const partnerDiscordId = activeRoom.user1Id === user.id ? activeRoom.user2DiscordId : activeRoom.user1DiscordId;
+          if (partnerDiscordId) {
+            client.users.fetch(partnerDiscordId).then((partner) => {
+              const partnerContainer = new ContainerBuilder()
+                .setAccentColor(COLORS.DARK)
+                .addTextDisplayComponents(
+                  new TextDisplayBuilder().setContent(
+                    '# 🚪 Chat Session Ended\n\nYour anonymous partner has left the chat session.\nClick below to find a new match or report if inappropriate behavior occurred.'
+                  )
+                )
+                .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+                .addActionRowComponents(
+                  new ActionRowBuilder<ButtonBuilder>().addComponents(
+                    new ButtonBuilder()
+                      .setCustomId('destiny_btn_start')
+                      .setLabel('Find New Match')
+                      .setEmoji('✨')
+                      .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                      .setCustomId(`btn_report_room_${activeRoom.id}`)
+                      .setLabel('Report User')
+                      .setEmoji('🚨')
+                      .setStyle(ButtonStyle.Danger)
+                  )
+                );
+              partner.send({ components: [partnerContainer], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+            }).catch(() => {});
+          }
+
+          const leaveResponseContainer = new ContainerBuilder()
+            .setAccentColor(COLORS.DARK)
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                '# 🚪 Session Left\n\nYou have safely left the anonymous chat session.'
+              )
+            )
+            .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+            .addActionRowComponents(
+              new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                  .setCustomId('destiny_btn_start')
+                  .setLabel('Find New Match')
+                  .setEmoji('✨')
+                  .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                  .setCustomId(`btn_report_room_${activeRoom.id}`)
+                  .setLabel('Report User')
+                  .setEmoji('🚨')
+                  .setStyle(ButtonStyle.Danger)
+              )
+            );
+          await safeV2Reply(message, leaveResponseContainer);
+          return true;
+        }
+
+        // Subcase A2: Report partner command while in room
+        if (/^\s*(?:destiny\s+report|report)\s*$/i.test(rawContent)) {
+          const isUser1 = activeRoom.user1Id === user.id;
+          const partnerPseudonym = isUser1 ? activeRoom.user2Pseudonym : activeRoom.user1Pseudonym;
+          const container = embedService.createReportMenuContainer(activeRoom.id, partnerPseudonym);
+          await safeV2Reply(message, container);
+          return true;
+        }
+
+        // Subcase A3: Request mutual reveal command
+        if (/^\s*(?:destiny\s+reveal|reveal)\s*$/i.test(rawContent)) {
+          await revealService.submitConsent(activeRoom.id, user.id, ['discordTag', 'age', 'gender', 'interests']);
+          const waitingContainer = embedService.createRevealWaitingContainer();
+          await safeV2Reply(message, waitingContainer);
+
+          const isUser1 = activeRoom.user1Id === user.id;
+          const partnerDiscordId = isUser1 ? activeRoom.user2DiscordId : activeRoom.user1DiscordId;
+          const myPseudonym = isUser1 ? activeRoom.user1Pseudonym : activeRoom.user2Pseudonym;
+          const myAvatar = isUser1 ? activeRoom.user1Avatar : activeRoom.user2Avatar;
+
+          if (partnerDiscordId) {
+            const partnerUser = await client.users.fetch(partnerDiscordId).catch(() => null);
+            if (partnerUser) {
+              const promptContainer = embedService.createRevealPromptPartnerContainer(myAvatar, myPseudonym);
+              await partnerUser.send({
+                components: [promptContainer],
+                flags: [MessageFlags.IsComponentsV2],
+              }).catch(() => {});
+            }
+          }
+          return true;
+        }
+
+        // Subcase A3: Menu / Help command while in room
+        if (/^\s*destiny(?:\s+(?:menu|help|info|status))?\s*$/i.test(rawContent)) {
+          const container = embedService.createActiveRoomPromptContainer(activeRoom.roomCode);
+          await safeV2Reply(message, container);
+          return true;
+        }
+
+        // Subcase A4: Normal chat text -> immediately relay message to partner!
+        const { messageRelayService } = await import('../relay/index.js');
+        return await messageRelayService.handleIncomingMessage(client, message);
+      }
+    }
+
+    // -------------------------------------------------------------
+    // STATE B: USER IN MATCHMAKING QUEUE
+    // -------------------------------------------------------------
+    const isQueued = user ? await matchmakingManager.isQueued(user.id) : false;
+    if (user && isQueued) {
+      // Subcase B1: Cancel search command
+      if (/^\s*(?:destiny\s+cancel|cancel|stop)\s*$/i.test(rawContent)) {
+        await matchmakingManager.leaveQueue(user.id);
+        const authorDisplayName = message.author.displayName || message.author.username;
+        const container = embedService.createMainMenuContainer(authorDisplayName, user, true);
+        await safeV2Reply(message, container);
+        return true;
+      }
+
+      // Subcase B2: Any other message while queued -> show searching status with Cancel button
+      const container = embedService.createSearchingContainer(user);
+      await safeV2Reply(message, container);
+      return true;
+    }
+
+    // -------------------------------------------------------------
+    // STATE C: IDLE USER (Not in room, Not in queue)
+    // -------------------------------------------------------------
+    // Audio / Voice Note Detection: If user sends an audio note or voice message in DM while not in room
+    const audioAttachment = message.attachments.find((att) => {
+      const ct = att.contentType?.toLowerCase() || '';
+      const name = att.name?.toLowerCase() || '';
+      return (
+        ct.startsWith('audio/') ||
+        name.endsWith('.ogg') ||
+        name.endsWith('.mp3') ||
+        name.endsWith('.wav') ||
+        name.endsWith('.m4a') ||
+        name.endsWith('.aac') ||
+        name.endsWith('.opus') ||
+        Boolean(message.flags && message.flags.has(MessageFlags.IsVoiceMessage))
+      );
+    });
+
+    if (audioAttachment && user) {
+      if (user.genderVerified) {
+        const container = embedService.createAlreadyVerifiedContainer(user);
+        await safeV2Reply(message, container);
+        return true;
+      }
+
+      // Automatically capture voice note as gender verification submission!
+      const { verificationService } = await import('../../core/moderation/verification.js');
+      await verificationService.submitVerification(user.id, audioAttachment.url);
+
+      const updatedUser = await db.getUserById(user.id);
+      const { embed, components } = embedService.createVoiceNoteReceivedEmbed(audioAttachment.url, updatedUser || user);
+      
+      const filename = audioAttachment.name || (audioAttachment.contentType?.includes('wav') ? 'voice_note.wav' : audioAttachment.contentType?.includes('mp3') ? 'voice_note.mp3' : 'voice_note.ogg');
+      const attachment = new AttachmentBuilder(audioAttachment.url, { name: filename });
+      await message.reply({
+        embeds: [embed],
+        components,
+        files: [attachment]
+      });
+
+      // Post alert to staff moderation channel
+      try {
+        const { postStaffVerificationAlert } = await import('../interactions/handler.js');
+        await postStaffVerificationAlert(client, updatedUser || user, audioAttachment.url);
+      } catch (err: any) {
+        console.warn('[Verification] Failed to notify staff channel:', err?.message);
+      }
+
+      return true;
+    }
+
+    // Subcase C0: Profile card command ("profile", "destiny profile", "card", "my profile", "id")
+    if (/^\s*(?:destiny\s+profile|profile|my\s+profile|card|my\s+card|destiny\s+card|id)\s*$/i.test(rawContent)) {
+      return await this.handleProfile(message, user);
+    }
+
+    // Subcase C1: Start matchmaking command ("start", "destiny start")
+    if (/^\s*(?:destiny\s+start|start)\s*$/i.test(rawContent)) {
+      return await this.handleStart(message, user);
+    }
+
+    // Subcase C2: Wallet command ("wallet", "coins", "daily", "destiny wallet")
+    if (/^\s*(?:destiny\s+wallet|wallet|coins|daily)\s*$/i.test(rawContent)) {
+      return await this.handleWallet(message, user);
+    }
+
+    // Subcase C3: Games command ("games", "arcade", "destiny games")
+    if (/^\s*(?:destiny\s+games|games|arcade)\s*$/i.test(rawContent)) {
+      return await this.handleGames(message);
+    }
+
+    // Subcase C4: Report command after chatting ("report", "destiny report")
+    if (/^\s*(?:destiny\s+report|report)\s*$/i.test(rawContent)) {
+      if (user) {
+        let lastRoomId = await redis.get(`user:last_room:${user.id}`);
+        let lastRoom = lastRoomId ? await db.getRoomById(lastRoomId) : null;
+        if (!lastRoom) {
+          lastRoom = await db.getLastRoomForUser(user.id);
+        }
+        if (lastRoom) {
+          const isUser1 = lastRoom.user1Id === user.id;
+          const partnerPseudonym = isUser1 ? lastRoom.user2Pseudonym : lastRoom.user1Pseudonym;
+          const container = embedService.createReportMenuContainer(lastRoom.id, partnerPseudonym);
+          await safeV2Reply(message, container);
+          return true;
+        }
+      }
+
+      const noReportContainer = new ContainerBuilder()
+        .setAccentColor(COLORS.DARK)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            '# ℹ️ No Chat Session to Report\n\nYou do not have an active or recent chat session to report. Reports can only be made after chatting with an anonymous partner.'
+          )
+        )
+        .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+        .addActionRowComponents(
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+              .setCustomId('destiny_btn_start')
+              .setLabel('Start Match')
+              .setEmoji('✨')
+              .setStyle(ButtonStyle.Success)
+          )
+        );
+      await safeV2Reply(message, noReportContainer);
+      return true;
+    }
+
+    // Subcase C5: Identity & Gender verification command ("verify", "destiny verify")
+    if (/^\s*(?:destiny\s+verify|verify)\s*$/i.test(rawContent)) {
+      if (!user || user.age < 18 || !user.gender || user.gender === 'prefer_not_to_say') {
+        const container = embedService.createProfileRequiredContainer();
+        await safeV2Reply(message, container);
+        return true;
+      }
+
+      if (user.genderVerified) {
+        const container = embedService.createAlreadyVerifiedContainer(user);
+        await safeV2Reply(message, container);
+        return true;
+      }
+
+      if (user.genderVerificationStatus === 'pending') {
+        const container = embedService.createVerificationPendingContainer();
+        await safeV2Reply(message, container);
+        return true;
+      }
+
+      const container = embedService.createVerificationPromptContainer(user);
+      await safeV2Reply(message, container);
+      return true;
+    }
+
+    // Subcase C6: Any message in DM ("destiny", "menu", "help", "hi", "hello", etc.)
+    return await this.handleMainMenu(message, user);
+  }
+
+  /**
+   * In-Guild Server Handling (Admin Channel Setup, Dedicated Channel Routing & Privacy Redirect)
+   */
+  private async handleGuildMessage(client: Client, message: Message, rawContent: string): Promise<boolean> {
+    if (!message.guild) return false;
+
+    const trimmed = rawContent.trim();
+    const botMention = `<@${client.user?.id}>`;
+    const botNickMention = `<@!${client.user?.id}>`;
+    const isBotMentioned = trimmed.startsWith(botMention) || trimmed.startsWith(botNickMention);
+    const isSetupCmd = /^\s*(?:(?:destiny\s+)?setup|!setup)\s*$/i.test(trimmed) || (isBotMentioned && /\bsetup\b/i.test(trimmed));
+
+    // 1. Setup Command ("setup", "destiny setup", "!setup", "@Destiny setup")
+    if (isSetupCmd) {
+      const { isGuildAdmin } = await import('../interactions/handler.js');
+      if (!isGuildAdmin(message)) {
+        const warningContainer = new ContainerBuilder()
+          .setAccentColor(COLORS.DANGER)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent('⚠️ Only server administrators with **Manage Server** or **Administrator** permissions can configure Destiny.')
+          );
+        const reply = await message.reply({
+          components: [warningContainer],
+          flags: [MessageFlags.IsComponentsV2]
+        }).catch(() => null);
+        if (reply) {
+          setTimeout(() => reply.delete().catch(() => {}), 6000).unref();
+        }
+        return true;
+      }
+
+      const settings = await db.getGuildSettings(message.guild.id, true);
+      const setupContainer = embedService.createServerSetupContainer(message.guild, settings, message.channel.id);
+      await message.reply({
+        components: [setupContainer],
+        flags: [MessageFlags.IsComponentsV2]
+      }).catch(() => {});
+      return true;
+    }
+
+    // 2. Check if server has configured a designated Destiny channel
+    const settings = await db.getGuildSettings(message.guild.id);
+    const designatedChannelId = settings?.matchChannelId || settings?.modLogChannelId;
+
+    const isDestinyInvoked = /^\s*(?:destiny\b|!destiny\b|start\b)/i.test(trimmed) || isBotMentioned;
+    if (!isDestinyInvoked) {
+      return false;
+    }
+
+    const authorDisplayName = message.author.displayName || message.author.username;
+
+    // 3. If invoked OUTSIDE the designated channel, redirect user to the designated channel
+    if (designatedChannelId && message.channel.id !== designatedChannelId) {
+      const redirectNotice = embedService.createChannelRedirectContainer(designatedChannelId, authorDisplayName);
+      const reply = await message.reply({
+        components: [redirectNotice],
+        flags: [MessageFlags.IsComponentsV2]
+      }).catch(() => null);
+
+      if (reply) {
+        setTimeout(() => reply.delete().catch(() => {}), 8000).unref();
+      }
+      return true;
+    }
+
+    // 4. Inside the designated channel (or if no channel is locked yet):
+    const { isGuildAdmin } = await import('../interactions/handler.js');
+    if (isGuildAdmin(message) && /^\s*(?:destiny\s+settings?|destiny\s+admin)\s*$/i.test(trimmed)) {
+      const setupContainer = embedService.createServerSetupContainer(message.guild, settings, message.channel.id);
+      await message.reply({
+        components: [setupContainer],
+        flags: [MessageFlags.IsComponentsV2]
+      }).catch(() => {});
+      return true;
+    }
+
+    // Show the interactive Lobby Card in the server channel
+    const lobbyCard = embedService.createServerLobbyCardContainer(message.guild.name);
+    await message.reply({
+      components: [lobbyCard],
+      flags: [MessageFlags.IsComponentsV2]
+    }).catch(() => {});
+
+    return true;
+  }
+
+  /**
+   * Main Interactive Button Menu for `destiny` (Components V2)
+   */
+  async handleMainMenu(message: Message, existingUser?: UserProfile | null): Promise<boolean> {
+    const user = existingUser !== undefined ? existingUser : await db.getUserByDiscordId(message.author.id);
+    const isProfileComplete = Boolean(
+      user &&
+      user.age >= 18 &&
+      user.gender &&
+      user.gender !== 'prefer_not_to_say' &&
+      user.gender.trim().length > 0
+    );
+
+    const authorDisplayName = (message.channel as any).recipient?.displayName || 
+                              message.author.displayName || 
+                              message.author.username;
+
+    const container = embedService.createMainMenuContainer(authorDisplayName, user, isProfileComplete);
+    await safeV2Reply(message, container);
+    return true;
+  }
+
+  /**
+   * Handle Matchmaking Start in DM ("start", "destiny start") (Components V2)
+   */
+  async handleStart(message: Message, existingUser?: UserProfile | null): Promise<boolean> {
+    const user = existingUser !== undefined ? existingUser : await db.getUserByDiscordId(message.author.id);
+    const isProfileComplete = Boolean(
+      user &&
+      user.age >= 18 &&
+      user.gender &&
+      user.gender !== 'prefer_not_to_say' &&
+      user.gender.trim().length > 0
+    );
+
+    // Strict profile enforcement: Must create profile first!
+    if (!user || !isProfileComplete) {
+      const container = embedService.createProfileRequiredContainer();
+      await safeV2Reply(message, container);
+      return true;
+    }
+
+    // Safety checks: Suspended account
+    if (user.isBanned) {
+      const container = embedService.createAccountRestrictedContainer(user.banReason);
+      await safeV2Reply(message, container);
+      return true;
+    }
+
+    // Active room check
+    let activeRoomId = user.activeRoomId;
+    if (!activeRoomId) {
+      activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+    }
+    if (activeRoomId) {
+      const room = await db.getRoomById(activeRoomId);
+      if (room && room.status === 'active') {
+        const container = embedService.createActiveRoomPromptContainer(room.roomCode);
+        await safeV2Reply(message, container);
+        return true;
+      } else {
+        await db.clearActiveRoom(user.id);
+        user.activeRoomId = null;
+      }
+    }
+
+    // Already in queue check
+    const isQueued = await matchmakingManager.isQueued(user.id);
+    if (isQueued) {
+      const container = embedService.createAlreadyQueuedContainer();
+      await safeV2Reply(message, container);
+      return true;
+    }
+
+    // Prompt user with buttons to choose match preference / mood!
+    const container = embedService.createMatchPreferenceContainer(user);
+    await safeV2Reply(message, container);
+    return true;
+  }
+
+  /**
+   * Handle Wallet / Coins Menu in DM (Components V2)
+   */
+  async handleWallet(message: Message, existingUser?: UserProfile | null): Promise<boolean> {
+    const user = existingUser !== undefined ? existingUser : await db.getUserByDiscordId(message.author.id);
+    if (!user) {
+      const container = embedService.createProfileRequiredContainer();
+      await safeV2Reply(message, container);
+      return true;
+    }
+
+    const container = embedService.createWalletContainer(user);
+    await safeV2Reply(message, container);
+    return true;
+  }
+
+  /**
+   * Handle Games Menu in DM (Components V2)
+   */
+  async handleGames(message: Message): Promise<boolean> {
+    const container = embedService.createGamesMenuContainer();
+    await safeV2Reply(message, container);
+    return true;
+  }
+
+  /**
+   * Handle Profile Command ("profile", "destiny profile", "card", "my profile")
+   * Throws high-end visual card attachment with real-time stats
+   */
+  async handleProfile(message: Message, existingUser?: UserProfile | null): Promise<boolean> {
+    const user = existingUser !== undefined ? existingUser : await db.getUserByDiscordId(message.author.id);
+    if (!user) {
+      const container = embedService.createProfileRequiredContainer();
+      await safeV2Reply(message, container);
+      return true;
+    }
+
+    // Query user rooms for real-time talk time & sessions
+    const userRooms = await db.getUserRooms(user.id);
+    let totalMinutes = 0;
+    for (const r of userRooms) {
+      if (r.startedAt && r.endedAt) {
+        const diff = (new Date(r.endedAt).getTime() - new Date(r.startedAt).getTime()) / 60000;
+        if (diff > 0) totalMinutes += diff;
+      }
+    }
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = Math.floor(totalMinutes % 60);
+    const chatHoursText = hours > 0 || mins > 0 ? `${hours}h ${mins}m` : '0h 00m';
+
+    const avatarUrl = message.author.displayAvatarURL({ extension: 'png', size: 256 });
+    const displayName = (message.channel as any).recipient?.displayName ||
+                        message.member?.displayName ||
+                        message.author.displayName ||
+                        message.author.username;
+
+    // Generate high-resolution profile card PNG
+    const cardBuffer = await profileCardGenerator.generateCardPng(user, {
+      sessionsCount: userRooms.length,
+      chatHoursText,
+      reputationPercent: user.reputationScore ?? 100,
+      personaName: displayName,
+      avatarUrl,
+      timezone: 'UTC+05:30',
+    });
+
+    const attachment = new AttachmentBuilder(cardBuffer, { name: 'destiny_profile.png' });
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('destiny_btn_card_motion')
+        .setLabel('Motion Card')
+        .setEmoji('🎬')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('destiny_btn_profile')
+        .setLabel('Edit Profile')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('destiny_btn_start')
+        .setLabel('Find Match')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('destiny_btn_wallet')
+        .setLabel('Destiny Vault')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    await message.reply({
+      files: [attachment],
+      components: [row],
+    });
+    return true;
+  }
+}
+
+export const messageCommandHandler = new MessageCommandHandler();
