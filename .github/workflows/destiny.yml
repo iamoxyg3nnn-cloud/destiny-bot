@@ -61,6 +61,7 @@ jobs:
 
       - name: Prepare Environment Configuration
         env:
+          NODE_ENV: production
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
           DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
@@ -72,59 +73,76 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
-          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'http://localhost:4000' }}
-          NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL || 'http://localhost:3000' }}
-          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: "6379"
+          REDIS_PASSWORD: ""
+          REDIS_DB: "0"
+          REDIS_TLS: "false"
+          REDIS_KEY_PREFIX: destiny:
           REMINDER_CRON_SCHEDULE: ${{ secrets.REMINDER_CRON_SCHEDULE || '30 19 * * *' }}
           REMINDER_DEFAULT_TIMEZONE: ${{ secrets.REMINDER_DEFAULT_TIMEZONE || 'Asia/Kolkata' }}
           BULLMQ_CONCURRENCY: ${{ secrets.BULLMQ_CONCURRENCY || '50' }}
           PORT: ${{ secrets.PORT || '4000' }}
+          API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'http://localhost:4000' }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL || 'http://localhost:3000' }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           AUTO_MOD_ENABLED: ${{ secrets.AUTO_MOD_ENABLED || 'true' }}
           MAX_MESSAGE_RATE_PER_3S: ${{ secrets.MAX_MESSAGE_RATE_PER_3S || '5' }}
           MAX_QUEUE_WAIT_SECONDS: ${{ secrets.MAX_QUEUE_WAIT_SECONDS || '180' }}
           LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
-          NODE_ENV: production
         run: |
-          cat << 'EOF' > .env
-          NODE_ENV=production
-          DISCORD_TOKEN=${DISCORD_TOKEN}
-          DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
-          DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
-          DISCORD_PUBLIC_KEY=${DISCORD_PUBLIC_KEY}
-          DISCORD_SHARDS_TOTAL=${DISCORD_SHARDS_TOTAL}
-          DISCORD_SHARDS_PER_CLUSTER=${DISCORD_SHARDS_PER_CLUSTER}
-          SUPABASE_URL=${SUPABASE_URL}
-          SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-          SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-          SUPABASE_ACCESS_TOKEN=${SUPABASE_ACCESS_TOKEN}
-          DATABASE_URL=${DATABASE_URL}
-          REDIS_HOST=127.0.0.1
-          REDIS_PORT=6379
-          REDIS_PASSWORD=
-          REDIS_DB=0
-          REDIS_TLS=false
-          REDIS_KEY_PREFIX=destiny:
-          REMINDER_CRON_SCHEDULE=${REMINDER_CRON_SCHEDULE}
-          REMINDER_DEFAULT_TIMEZONE=${REMINDER_DEFAULT_TIMEZONE}
-          BULLMQ_CONCURRENCY=${BULLMQ_CONCURRENCY}
-          PORT=${PORT}
-          API_SECRET_KEY=${API_SECRET_KEY}
-          NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-          NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-          NEXTAUTH_URL=${NEXTAUTH_URL}
-          ENCRYPTION_KEY=${ENCRYPTION_KEY}
-          AUTO_MOD_ENABLED=${AUTO_MOD_ENABLED}
-          MAX_MESSAGE_RATE_PER_3S=${MAX_MESSAGE_RATE_PER_3S}
-          MAX_QUEUE_WAIT_SECONDS=${MAX_QUEUE_WAIT_SECONDS}
-          LOG_LEVEL=${LOG_LEVEL}
-          EOF
+          node -e "
+            const fs = require('fs');
+            const keys = [
+              'NODE_ENV', 'DISCORD_TOKEN', 'DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET',
+              'DISCORD_PUBLIC_KEY', 'DISCORD_SHARDS_TOTAL', 'DISCORD_SHARDS_PER_CLUSTER',
+              'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'DATABASE_URL',
+              'REDIS_HOST', 'REDIS_PORT', 'REDIS_PASSWORD', 'REDIS_DB', 'REDIS_TLS', 'REDIS_KEY_PREFIX',
+              'REMINDER_CRON_SCHEDULE', 'REMINDER_DEFAULT_TIMEZONE', 'BULLMQ_CONCURRENCY',
+              'PORT', 'API_SECRET_KEY', 'NEXTAUTH_SECRET', 'NEXTAUTH_URL', 'NEXT_PUBLIC_API_URL',
+              'ENCRYPTION_KEY', 'AUTO_MOD_ENABLED', 'MAX_MESSAGE_RATE_PER_3S', 'MAX_QUEUE_WAIT_SECONDS', 'LOG_LEVEL'
+            ];
+            const lines = keys.map(k => \`\${k}=\${process.env[k] || ''}\`);
+            fs.writeFileSync('.env', lines.join('\n'));
+          "
           chmod 0600 .env
-          echo "Configuration successfully generated."
+          echo "Configuration successfully written to .env."
 
       - name: Run Destiny Bot Session
         env:
+          NODE_ENV: production
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
+          DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
+          DISCORD_PUBLIC_KEY: ${{ secrets.DISCORD_PUBLIC_KEY }}
+          DISCORD_SHARDS_TOTAL: ${{ secrets.DISCORD_SHARDS_TOTAL || '1' }}
+          DISCORD_SHARDS_PER_CLUSTER: ${{ secrets.DISCORD_SHARDS_PER_CLUSTER || '1' }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: "6379"
+          REDIS_PASSWORD: ""
+          REDIS_DB: "0"
+          REDIS_TLS: "false"
+          REDIS_KEY_PREFIX: destiny:
+          REMINDER_CRON_SCHEDULE: ${{ secrets.REMINDER_CRON_SCHEDULE || '30 19 * * *' }}
+          REMINDER_DEFAULT_TIMEZONE: ${{ secrets.REMINDER_DEFAULT_TIMEZONE || 'Asia/Kolkata' }}
+          BULLMQ_CONCURRENCY: ${{ secrets.BULLMQ_CONCURRENCY || '50' }}
+          PORT: ${{ secrets.PORT || '4000' }}
+          API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'http://localhost:4000' }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL || 'http://localhost:3000' }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          AUTO_MOD_ENABLED: ${{ secrets.AUTO_MOD_ENABLED || 'true' }}
+          MAX_MESSAGE_RATE_PER_3S: ${{ secrets.MAX_MESSAGE_RATE_PER_3S || '5' }}
+          MAX_QUEUE_WAIT_SECONDS: ${{ secrets.MAX_QUEUE_WAIT_SECONDS || '180' }}
+          LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
           SESSION_MINUTES: ${{ inputs.session_minutes || '345' }}
         run: |
           case "${SESSION_MINUTES}" in
