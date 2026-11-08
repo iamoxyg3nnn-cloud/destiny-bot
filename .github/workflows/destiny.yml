@@ -39,7 +39,6 @@ jobs:
           --health-retries 5
 
     env:
-      NODE_ENV: production
       DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
       DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
       DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
@@ -87,18 +86,21 @@ jobs:
           cache: "pnpm"
 
       - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --prod=false
 
       - name: Build TypeScript Project
         run: pnpm run build
 
       - name: Prepare Environment Configuration
+        env:
+          NODE_ENV: production
         run: |
           node scripts/setup-env.js
           chmod 0600 .env
 
       - name: Run Destiny Bot Session
         env:
+          NODE_ENV: production
           SESSION_MINUTES: ${{ inputs.session_minutes || '345' }}
         run: |
           SESSION_MINUTES="${SESSION_MINUTES:-345}"
