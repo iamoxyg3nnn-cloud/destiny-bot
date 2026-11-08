@@ -409,34 +409,16 @@ export class MessageCommandHandler {
       return true;
     }
 
-    // 2. Check if server has configured a designated Destiny channel
-    const settings = await db.getGuildSettings(message.guild.id);
-    const designatedChannelId = settings?.matchChannelId || settings?.modLogChannelId;
-
-    const isDestinyInvoked = /^\s*(?:destiny\b|!destiny\b|start\b)/i.test(trimmed) || isBotMentioned;
+    // 2. Check for Destiny invocation ('destiny', '!destiny', 'start', 'match', or bot mention)
+    const isDestinyInvoked = /^\s*(?:destiny\b|!destiny\b|start\b|match\b)/i.test(trimmed) || isBotMentioned;
     if (!isDestinyInvoked) {
       return false;
     }
 
-    const authorDisplayName = message.author.displayName || message.author.username;
-
-    // 3. If invoked OUTSIDE the designated channel, redirect user to the designated channel
-    if (designatedChannelId && message.channel.id !== designatedChannelId) {
-      const redirectNotice = embedService.createChannelRedirectContainer(designatedChannelId, authorDisplayName);
-      const reply = await message.reply({
-        components: [redirectNotice],
-        flags: [MessageFlags.IsComponentsV2]
-      }).catch(() => null);
-
-      if (reply) {
-        setTimeout(() => reply.delete().catch(() => {}), 8000).unref();
-      }
-      return true;
-    }
-
-    // 4. Inside the designated channel (or if no channel is locked yet):
+    // 3. Admin settings check ('destiny settings' or 'destiny admin')
     const { isGuildAdmin } = await import('../interactions/handler.js');
     if (isGuildAdmin(message) && /^\s*(?:destiny\s+settings?|destiny\s+admin)\s*$/i.test(trimmed)) {
+      const settings = await db.getGuildSettings(message.guild.id);
       const setupContainer = embedService.createServerSetupContainer(message.guild, settings, message.channel.id);
       await message.reply({
         components: [setupContainer],
@@ -445,12 +427,67 @@ export class MessageCommandHandler {
       return true;
     }
 
-    // Show the interactive Lobby Card in the server channel
-    const lobbyCard = embedService.createServerLobbyCardContainer(message.guild.name);
-    await message.reply({
-      components: [lobbyCard],
-      flags: [MessageFlags.IsComponentsV2]
-    }).catch(() => {});
+    // 4. STRICT DM-ONLY ENFORCEMENT:
+    // Destiny never runs inside server channels to guarantee complete user privacy and anonymity.
+    // When someone types 'destiny' in any server channel, immediately deliver their Destiny
+    // console directly to their private DMs and show a self-deleting notice in the channel.
+    try {
+      const dmChannel = await message.author.createDM();
+      const user = await db.getUserByDiscordId(message.author.id, true);
+      const isProfileComplete = Boolean(
+        user &&
+        user.age >= 18 &&
+        user.gender &&
+        user.gender !== 'prefer_not_to_say' &&
+        user.gender.trim().length > 0
+      );
+
+      const authorDisplayName = message.author.displayName || message.author.username;
+      const menuContainer = embedService.createMainMenuContainer(authorDisplayName, user, isProfileComplete);
+
+      await dmChannel.send({
+        components: [menuContainer],
+        flags: [MessageFlags.IsComponentsV2]
+      });
+
+      // Ephemeral-style self-deleting notification in the server channel
+      const noticeContainer = new ContainerBuilder()
+        .setAccentColor(COLORS.DESTINY_PURPLE)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `🔒 **Destiny operates 100% privately in Direct Messages.**\n\n` +
+            `Hey <@${message.author.id}>, I've sent your Destiny console to your **Direct Messages**! 👉 **Check your DMs** to get started privately.`
+          )
+        );
+
+      const reply = await message.reply({
+        components: [noticeContainer],
+        flags: [MessageFlags.IsComponentsV2]
+      }).catch(() => null);
+
+      if (reply) {
+        setTimeout(() => reply.delete().catch(() => {}), 6000).unref();
+      }
+    } catch (dmErr: any) {
+      // User has Direct Messages disabled in their server privacy settings
+      const failContainer = new ContainerBuilder()
+        .setAccentColor(COLORS.DANGER)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `⚠️ **<@${message.author.id}>, Destiny works exclusively in DMs for complete anonymity!**\n\n` +
+            `I was unable to send you a direct message. Please enable **"Allow direct messages from server members"** in your Discord Privacy Settings and try typing \`destiny\` again.`
+          )
+        );
+
+      const reply = await message.reply({
+        components: [failContainer],
+        flags: [MessageFlags.IsComponentsV2]
+      }).catch(() => null);
+
+      if (reply) {
+        setTimeout(() => reply.delete().catch(() => {}), 8000).unref();
+      }
+    }
 
     return true;
   }

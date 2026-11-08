@@ -138,6 +138,48 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
   }
 
   // =========================================================================
+  // GUILD INTERACTION REDIRECT GUARD: Destiny runs 100% in DMs
+  // Any user button or select menu clicked in a server channel is redirected
+  // directly to their private DMs to preserve total anonymity and avoid channel clutter.
+  // =========================================================================
+  if (interaction.guild && (interaction.isButton() || interaction.isStringSelectMenu())) {
+    const customId = (interaction as any).customId || '';
+    const isAdminAction = customId.startsWith('destiny_admin_') || customId.startsWith('destiny_channel_');
+
+    if (!isAdminAction) {
+      try {
+        const dm = await interaction.user.createDM();
+        const user = await db.getUserByDiscordId(interaction.user.id, true);
+        const isProfileComplete = Boolean(
+          user &&
+          user.age >= 18 &&
+          user.gender &&
+          user.gender !== 'prefer_not_to_say' &&
+          user.gender.trim().length > 0
+        );
+        const authorDisplayName = interaction.user.displayName || interaction.user.username;
+        const menuContainer = embedService.createMainMenuContainer(authorDisplayName, user, isProfileComplete);
+
+        await dm.send({
+          components: [menuContainer],
+          flags: [MessageFlags.IsComponentsV2]
+        });
+
+        await (interaction as any).reply({
+          content: '🔒 **Destiny operates 100% privately in DMs.** I have delivered your Destiny console directly to your Direct Messages!',
+          flags: [MessageFlags.Ephemeral]
+        });
+      } catch {
+        await (interaction as any).reply({
+          content: '⚠️ Please enable **Allow direct messages from server members** in your Discord Privacy Settings so Destiny can chat with you privately.',
+          flags: [MessageFlags.Ephemeral]
+        });
+      }
+      return;
+    }
+  }
+
+  // =========================================================================
   // 1. MODAL SUBMISSIONS
   // =========================================================================
   if (interaction.isModalSubmit()) {
