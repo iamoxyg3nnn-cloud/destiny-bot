@@ -14,6 +14,7 @@ const envSchema = z.object({
   DISCORD_PUBLIC_KEY: z.string().default(''),
   DISCORD_SHARDS_TOTAL: z.string().default('1'),
   DISCORD_SHARDS_PER_CLUSTER: z.coerce.number().default(1),
+  DESTINY_STREAM_URL: z.string().url().default('https://www.twitch.tv/ninja'),
 
   // Supabase
   SUPABASE_URL: z.string().default('https://mock-supabase.supabase.co'),

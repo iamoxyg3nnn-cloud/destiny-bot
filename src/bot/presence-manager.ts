@@ -1,7 +1,7 @@
 /**
- * Destiny — Dynamic Custom Status Manager
+ * Destiny — Dynamic Twitch Streaming Presence Manager
  *
- * Provides a rotating Discord Custom Status for the Destiny bot:
+ * Provides a rotating Discord Streaming activity for the Destiny bot:
  * - Live "in conversation" status while the user is actually chatting
  * - Gapless rotation of curated Destiny community statuses when idle
  * - Dynamic {members} and {servers} counts computed in real time
@@ -16,6 +16,8 @@ import { ActivityType, Client, PresenceData } from 'discord.js';
 import { db } from '../database/supabase.js';
 import { getDiscordClient } from './client-registry.js';
 import { config } from '../config/index.js';
+
+const DEFAULT_STREAM_URL = config.DESTINY_STREAM_URL;
 
 /**
  * Curated Destiny community rotating statuses.
@@ -155,26 +157,18 @@ function truncate(text: string, length: number): string {
 }
 
 /**
- * Applies a genuine Discord Custom Status. Custom statuses use `state` for
- * the visible text; they do not need a streaming URL or another activity type.
+ * Applies a genuine Discord Streaming activity. Discord only displays the
+ * purple Streaming badge when the activity uses a supported Twitch/YouTube URL.
  */
-export function setCustomStatus(client: Client, message: string): void {
+export function setStreamingPresence(client: Client, name: string, url = DEFAULT_STREAM_URL): void {
   if (!client?.user) return;
 
   const presence: PresenceData = {
     activities: [
       {
-        name: 'Custom Status',
-        type: ActivityType.Custom,
-        state: truncate(message, ACTIVITY_NAME_MAX),
-      },
-      {
-        // This is a third-party Twitch destination, not a claim that Destiny
-        // owns or operates the channel. Discord requires a Twitch URL to show
-        // the Streaming activity badge.
-        name: 'Destiny Community',
+        name: truncate(name, ACTIVITY_NAME_MAX),
         type: ActivityType.Streaming,
-        url: 'https://www.twitch.tv/ninja',
+        url: url || DEFAULT_STREAM_URL,
       },
     ],
     status: 'online',
@@ -183,7 +177,7 @@ export function setCustomStatus(client: Client, message: string): void {
   try {
     client.user.setPresence(presence);
   } catch (err: any) {
-    console.debug('[Presence] Failed to set custom status:', err?.message || err);
+    console.debug('[Presence] Failed to set streaming presence:', err?.message || err);
   }
 }
 
@@ -330,7 +324,7 @@ export async function updatePresence(client: Client): Promise<void> {
   if (live) {
     // Free the idle status so other shards may use it.
     currentStatusIndices.set(id, null);
-    setCustomStatus(client, live.name);
+    setStreamingPresence(client, live.name);
     return;
   }
 
@@ -342,7 +336,7 @@ export async function updatePresence(client: Client): Promise<void> {
     .replace(/\{members\}/g, counts.members.toLocaleString())
     .replace(/\{servers\}/g, counts.servers.toLocaleString());
 
-  setCustomStatus(client, message);
+  setStreamingPresence(client, message);
 }
 
 /**
