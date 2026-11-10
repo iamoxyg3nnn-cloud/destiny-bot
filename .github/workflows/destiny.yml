@@ -106,11 +106,28 @@ jobs:
       - name: Apply Supabase schema migrations
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         run: |
-          if [ -z "${DATABASE_URL}" ]; then
-            echo "::error::DATABASE_URL secret is required to apply schema migrations before deploying this version."
+          if [ -z "${DATABASE_URL}" ] || [ -z "${SUPABASE_URL}" ]; then
+            echo "::error::Both DATABASE_URL and SUPABASE_URL secrets are required to apply schema migrations before deploying this version."
             exit 1
           fi
+
+          # Supabase pooler usernames are project-scoped (postgres.<project-ref>).
+          # Derive the authoritative project ref from SUPABASE_URL so a stale
+          # project suffix in DATABASE_URL cannot route to a non-existent tenant.
+          export DATABASE_URL="$(node -e '
+            const db = new URL(process.env.DATABASE_URL);
+            const api = new URL(process.env.SUPABASE_URL);
+            const match = api.hostname.match(/^([a-z0-9]+)\\.supabase\\.co$/i);
+            if (!match) throw new Error("SUPABASE_URL must be a project URL ending in .supabase.co");
+            const projectRef = match[1];
+            if (db.hostname.endsWith(".pooler.supabase.com") && db.username.startsWith("postgres.")) {
+              db.username = "postgres." + projectRef;
+            }
+            process.stdout.write(db.toString());
+          ')"
+
           sudo apt-get update -qq
           sudo apt-get install -y postgresql-client
           for migration in supabase/migrations/*.sql; do
