@@ -1,5 +1,6 @@
 import { Redis } from 'ioredis';
 import { config } from '../config/index.js';
+import { describeRedisTarget, resolveRedisConnection } from './connection.js';
 
 export class RedisService {
   private client: Redis | null = null;
@@ -13,11 +14,14 @@ export class RedisService {
 
   private initClient() {
     try {
+      const options = resolveRedisConnection();
+
       this.client = new Redis({
-        host: config.REDIS_HOST,
-        port: config.REDIS_PORT,
-        password: config.REDIS_PASSWORD || undefined,
-        db: config.REDIS_DB,
+        host: options.host,
+        port: options.port,
+        password: options.password,
+        db: options.db,
+        ...(options.tls ? { tls: options.tls } : {}),
         keyPrefix: config.REDIS_KEY_PREFIX,
         retryStrategy: (times: number) => {
           if (times > 3) {
@@ -31,10 +35,10 @@ export class RedisService {
 
       this.client.connect().then(() => {
         this.isConnected = true;
-        console.log('✅ Redis connected successfully.');
+        console.log(`✅ Redis connected successfully (${describeRedisTarget()}).`);
       }).catch((_err: any) => {
         this.isConnected = false;
-        console.warn('⚠️ Local Redis not reachable. Operating in high-speed in-memory fallback mode.');
+        console.warn(`⚠️ Redis not reachable at ${describeRedisTarget()}. Operating in high-speed in-memory fallback mode.`);
       });
 
       this.client.on('error', (_err: any) => {
@@ -97,7 +101,9 @@ export class RedisService {
     this.fallbackStore.set(key, buffer.toString('base64'));
     if (ttlSeconds) {
       const ms = Math.min(ttlSeconds * 1000, 2147483647);
-      setTimeout(() => this.fallbackStore.delete(key), ms);
+      const timer = setTimeout(() => this.fallbackStore.delete(key), ms);
+      // Never let an eviction timer hold the process open.
+      timer.unref?.();
     }
     return true;
   }
@@ -118,7 +124,9 @@ export class RedisService {
     this.fallbackStore.set(key, value);
     if (ttlSeconds) {
       const ms = Math.min(ttlSeconds * 1000, 2147483647);
-      setTimeout(() => this.fallbackStore.delete(key), ms);
+      const timer = setTimeout(() => this.fallbackStore.delete(key), ms);
+      // Never let an eviction timer hold the process open.
+      timer.unref?.();
     }
     return true;
   }

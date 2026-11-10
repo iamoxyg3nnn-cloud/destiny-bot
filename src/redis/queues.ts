@@ -1,6 +1,7 @@
 import { Queue, Worker, QueueEvents } from 'bullmq';
 import { config } from '../config/index.js';
 import { redis } from './client.js';
+import { resolveRedisConnection } from './connection.js';
 
 export const QUEUE_NAMES = {
   MATCHMAKING: 'destiny-matchmaking',
@@ -14,11 +15,14 @@ export class QueueManager {
   private redisConnectionConfig: any;
 
   constructor() {
+    const options = resolveRedisConnection();
+
     this.redisConnectionConfig = {
-      host: config.REDIS_HOST,
-      port: config.REDIS_PORT,
-      password: config.REDIS_PASSWORD || undefined,
-      db: config.REDIS_DB,
+      host: options.host,
+      port: options.port,
+      password: options.password,
+      db: options.db,
+      ...(options.tls ? { tls: options.tls } : {}),
       maxRetriesPerRequest: null,
     };
 

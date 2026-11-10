@@ -25,6 +25,17 @@ const envSchema = z.object({
   REDIS_HOST: z.string().default('127.0.0.1'),
   REDIS_PORT: z.coerce.number().default(6379),
   REDIS_PASSWORD: z.string().default(''),
+  /**
+   * Access token for hosted Redis providers (e.g. Upstash). Used as the
+   * password when set; takes precedence over REDIS_PASSWORD.
+   */
+  REDIS_TOKEN: z.string().default(''),
+  /**
+   * Full connection URL for hosted Redis, e.g.
+   * `rediss://default:<token>@my-db.upstash.io:6379`. Overrides the discrete
+   * host/port/password variables when set.
+   */
+  REDIS_URL: z.string().default(''),
   REDIS_DB: z.coerce.number().default(0),
   REDIS_TLS: z.string().transform((v) => v === 'true').default('false'),
   REDIS_KEY_PREFIX: z.string().default('destiny:'),

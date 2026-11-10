@@ -16,6 +16,8 @@ const keys = [
   'REDIS_HOST',
   'REDIS_PORT',
   'REDIS_PASSWORD',
+  'REDIS_TOKEN',
+  'REDIS_URL',
   'REDIS_DB',
   'REDIS_TLS',
   'REDIS_KEY_PREFIX',

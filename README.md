@@ -78,6 +78,22 @@ REDIS_PORT=6379
 PORT=4000
 ```
 
+#### Connecting Redis
+
+Redis is optional — without it the bot falls back to an in-memory store (single-node
+only). Three ways to point it at an instance, checked in this order:
+
+| Variable | Use |
+|---|---|
+| `REDIS_URL` | Full URL for hosted providers, e.g. `rediss://default:<token>@my-db.upstash.io:6379`. Overrides host/port/password. |
+| `REDIS_TOKEN` | Access token used as the password (Upstash-style). Takes precedence over `REDIS_PASSWORD`. |
+| `REDIS_PASSWORD` | Plain password, when the provider uses one. |
+
+Also supported: `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_TLS=true`,
+`REDIS_KEY_PREFIX`. The same resolved connection is shared by the ioredis client and
+the BullMQ queues, so both always talk to the same instance. Credentials are never
+logged — the startup line only reports the target host, port and whether auth is on.
+
 ### 3. Database Schema Setup
 Execute the SQL migrations located in `supabase/migrations/` in order:
 1. `001_initial_schema.sql` — Tables, indexes, and Row Level Security.
