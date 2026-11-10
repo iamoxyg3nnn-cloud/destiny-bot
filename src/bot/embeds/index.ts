@@ -11,14 +11,43 @@ import {
   SeparatorBuilder
 } from 'discord.js';
 import { UserProfile, RoomSession, GuildSettings } from '../../core/types.js';
+import { formatGenderLabel } from '../profile-modal.js';
+
+/**
+ * Destiny brand palette — the only colours used across Discord embeds,
+ * Components V2 containers, and accent bars.
+ *
+ * Mapping notes:
+ * - PRIMARY / DESTINY_PURPLE / SUCCESS share the vivid magenta: they are
+ *   brand surfaces and confirmations, never rendered against one another.
+ * - GOLD / DANGER share the warm rose: both are attention states (rewards and
+ *   errors). They are never compared directly — every pair that IS compared
+ *   (success vs danger, success vs gold, gold vs pinned/unpinned) resolves to
+ *   two different colours.
+ * - DARK keeps the deep plum, reserved for quiet neutral surfaces.
+ */
+export const BRAND = {
+  /** Vivid magenta — brand surfaces, primary actions and positive outcomes. */
+  MAGENTA: 0xFF4EA7,
+  /** Warm rose — highlights, rewards and attention states. */
+  ROSE: 0xFE698E,
+  /** Deep plum — dark neutral surfaces. */
+  PLUM: 0x55081B,
+} as const;
 
 export const COLORS = {
-  PRIMARY: 0x5865F2, // Discord Blurple
-  DESTINY_PURPLE: 0x9B59B6,
-  GOLD: 0xF1C40F,
-  SUCCESS: 0x2ECC71,
-  DANGER: 0xE74C3C,
-  DARK: 0x2C2F33,
+  /** Primary brand colour. */
+  PRIMARY: BRAND.MAGENTA,
+  /** Secondary brand accent. */
+  DESTINY_PURPLE: BRAND.MAGENTA,
+  /** Warm highlight for rewards, coins and streaks. */
+  GOLD: BRAND.ROSE,
+  /** Positive outcomes (profile saved, reveal complete, verified). */
+  SUCCESS: BRAND.MAGENTA,
+  /** Errors, warnings and destructive actions. */
+  DANGER: BRAND.ROSE,
+  /** Dark neutral surfaces. */
+  DARK: BRAND.PLUM,
 };
 
 export class EmbedService {
@@ -119,9 +148,9 @@ export class EmbedService {
         .setEmoji('🪙')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId('destiny_btn_games')
-        .setLabel('Games')
-        .setEmoji('🎮')
+        .setCustomId('destiny_btn_icebreaker')
+        .setLabel('Icebreaker')
+        .setEmoji('💬')
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -199,6 +228,106 @@ export class EmbedService {
           `• 🎯 **Interests:** ${interestsStr}\n` +
           `• 🪙 **Destiny Coins:** \`${savedUser.destinyCoins.toLocaleString()} DC\`\n\n` +
           `🔒 *Your Discord username, avatar, and server identity remain 100% anonymous.*`
+        )
+      )
+      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+      .addActionRowComponents(row);
+  }
+
+  /**
+   * Identity Wardrobe Container (theme + badge select menus)
+   */
+  createWardrobeContainer(user: UserProfile): ContainerBuilder {
+    const themeMenu = new StringSelectMenuBuilder()
+      .setCustomId('destiny_select_theme')
+      .setPlaceholder(`Current Theme: ${(user.cardTheme || 'obsidian').toUpperCase()}`)
+      .addOptions(
+        { label: 'Obsidian Monochrome (Default)', value: 'obsidian', description: 'Deep obsidian void with dot-matrix hardware texture', default: (user.cardTheme || 'obsidian') === 'obsidian' },
+        { label: 'Cyber Damask', value: 'cyber_damask', description: 'Obsidian & high-contrast damask steel micro-lines', default: user.cardTheme === 'cyber_damask' },
+        { label: 'Frost Glaze', value: 'frost_glaze', description: 'Frosted titanium aesthetic with cool cyan sheen', default: user.cardTheme === 'frost_glaze' },
+        { label: 'Holographic Platinum', value: 'holographic_plat', description: 'Prestige platinum finish with iridescent micro-reflections', default: user.cardTheme === 'holographic_plat' }
+      );
+
+    const badgeOptions = [
+      { label: 'ID VERIFIED', value: 'ID VERIFIED', description: 'Emerald verified trust badge', default: user.equippedBadges?.includes('ID VERIFIED') },
+      { label: '7D STREAK', value: '7D STREAK', description: 'Flame 7-day conversation streak badge', default: user.equippedBadges?.includes('7D STREAK') },
+      { label: 'TITAN 1K', value: 'TITAN 1K', description: 'Commemorative Titan supporter badge', default: user.equippedBadges?.includes('TITAN 1K') },
+      { label: 'VETERAN', value: 'VETERAN', description: 'Awarded for completing 10+ match conversations', default: user.equippedBadges?.includes('VETERAN') },
+      { label: 'KARMA 100%', value: 'KARMA 100%', description: 'Pristine 100% reputation rating', default: user.equippedBadges?.includes('KARMA 100%') },
+      { label: 'STAR WANDERER', value: 'STAR WANDERER', description: 'Mark of an explorer across 50+ matches', default: user.equippedBadges?.includes('STAR WANDERER') },
+      { label: 'VIP', value: 'VIP', description: 'Destiny VIP patron badge', default: user.equippedBadges?.includes('VIP') },
+      { label: 'MYSTIC AURA', value: 'MYSTIC AURA', description: 'Glowing celestial aura rack insignia', default: user.equippedBadges?.includes('MYSTIC AURA') },
+    ];
+
+    const badgeMenu = new StringSelectMenuBuilder()
+      .setCustomId('destiny_select_badges')
+      .setPlaceholder('Equip up to 5 Insignia Badges for your Rack')
+      .setMinValues(1)
+      .setMaxValues(5)
+      .addOptions(badgeOptions);
+
+    const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(themeMenu);
+    const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(badgeMenu);
+    const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('destiny_btn_card_static')
+        .setLabel('Preview Profile Card')
+        .setEmoji('📸')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('destiny_btn_shop')
+        .setLabel('Shop Cosmetics')
+        .setEmoji('🛍️')
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    const activeBadges = user.equippedBadges && user.equippedBadges.length > 0
+      ? user.equippedBadges.map((b: string) => `\`[${b}]\``).join(' ')
+      : '`[ID VERIFIED]` `[7D STREAK]` `[TITAN 1K]` `[VETERAN]` `[KARMA 100%]`';
+
+    return new ContainerBuilder()
+      .setAccentColor(COLORS.DARK)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 👔 Destiny Identity Wardrobe\n\n` +
+          `Customize the appearance of your **Destiny Profile Card**.\n\n` +
+          `• **Equipped Theme**: \`${(user.cardTheme || 'obsidian').toUpperCase()}\`\n` +
+          `• **Active Badges (${user.equippedBadges?.length || 5}/5)**: ${activeBadges}\n\n` +
+          `*Select a new card skin or choose up to 5 rack insignias below.*`
+        )
+      )
+      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+      .addActionRowComponents(row1, row2 as any, row3);
+  }
+
+  /**
+   * Cosmetics Shop Container
+   */
+  createShopContainer(catalog: Array<{ id: string; name: string; description: string; price: number; icon?: string }>): ContainerBuilder {
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('destiny_btn_wardrobe')
+        .setLabel('Back to Wardrobe')
+        .setEmoji('👔')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('destiny_btn_wallet')
+        .setLabel('Destiny Vault')
+        .setEmoji('🪙')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const itemsText = catalog.length > 0
+      ? catalog.map((item) => `• ${item.icon || '🛍️'} **${item.name}** (\`${item.id}\`) — **${item.price} DC**\n  *${item.description}*`).join('\n')
+      : '*The Destiny Shop currently has no items in stock.*';
+
+    return new ContainerBuilder()
+      .setAccentColor(COLORS.GOLD)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🛍️ Destiny Cosmetic & Title Emporium\n\n` +
+          `Use \`/shop buy:<item_id>\` to purchase an item.\n\n` +
+          itemsText
         )
       )
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -341,9 +470,9 @@ export class EmbedService {
         .setEmoji('🔥')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
-        .setCustomId('destiny_btn_games')
-        .setLabel('Play Games')
-        .setEmoji('🎮')
+        .setCustomId('destiny_btn_icebreaker')
+        .setLabel('Conversation Prompt')
+        .setEmoji('💬')
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -384,15 +513,15 @@ export class EmbedService {
         .addActionRowComponents(
           new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
-              .setCustomId('destiny_btn_games')
-              .setLabel('Play Games')
-              .setEmoji('🎮')
-              .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
               .setCustomId('destiny_btn_start')
               .setLabel('Start Match')
               .setEmoji('✨')
-              .setStyle(ButtonStyle.Success)
+              .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+              .setCustomId('destiny_btn_icebreaker')
+              .setLabel('Conversation Prompt')
+              .setEmoji('💬')
+              .setStyle(ButtonStyle.Secondary)
           )
         );
     } else {
@@ -409,9 +538,14 @@ export class EmbedService {
         .addActionRowComponents(
           new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
-              .setCustomId('destiny_btn_games')
-              .setLabel('Play Games')
-              .setEmoji('🎮')
+              .setCustomId('destiny_btn_start')
+              .setLabel('Find a Match')
+              .setEmoji('✨')
+              .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+              .setCustomId('destiny_btn_icebreaker')
+              .setLabel('Conversation Prompt')
+              .setEmoji('💬')
               .setStyle(ButtonStyle.Secondary)
           )
         );
@@ -421,160 +555,49 @@ export class EmbedService {
   }
 
   /**
-   * Games Arcade Container with Quick Game Buttons inside
+   * Conversation Icebreaker Container with prompt and continue buttons
    */
-  createGamesMenuContainer(): ContainerBuilder {
+  createIcebreakerContainer(prompt: string, inRoom = false): ContainerBuilder {
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setCustomId('game_quick_flip')
-        .setLabel('Coin Flip (10 DC)')
-        .setEmoji('🪙')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('game_quick_dice')
-        .setLabel('Dice Roll (10 DC)')
-        .setEmoji('🎲')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('game_quick_trivia')
-        .setLabel('Trivia Challenge')
-        .setEmoji('❓')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('game_quick_wyr')
-        .setLabel('Would You Rather')
-        .setEmoji('🤔')
-        .setStyle(ButtonStyle.Secondary)
+        .setCustomId('destiny_btn_icebreaker')
+        .setLabel('Another Prompt')
+        .setEmoji('💬')
+        .setStyle(ButtonStyle.Primary)
     );
 
-    return new ContainerBuilder()
-      .setAccentColor(COLORS.DESTINY_PURPLE)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `# 🎮 Destiny Games Arcade\n\n` +
-          `Play instant games with Destiny Coins or test your trivia knowledge!\n\n` +
-          `• **🪙 Quick Coin Flip** (Bet 10 DC, 2x payout)\n` +
-          `• **🎲 Quick Dice Roll** (Roll higher than 7 to win 20 DC)\n` +
-          `• **❓ Random Trivia** (Win +25 DC for correct answers)\n` +
-          `• **🤔 Would You Rather** (Vote and see global stats)`
-        )
-      )
-      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-      .addActionRowComponents(row);
-  }
-
-  /**
-   * Coin Flip Result Container with buttons inside
-   */
-  createCoinFlipResultContainer(won: boolean, result: string, newBalance: number): ContainerBuilder {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('game_quick_flip')
-        .setLabel('Flip Again (10 DC)')
-        .setEmoji('🪙')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_games')
-        .setLabel('All Games')
-        .setEmoji('🎮')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    return new ContainerBuilder()
-      .setAccentColor(won ? COLORS.SUCCESS : COLORS.DANGER)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `# ${won ? '🎉 Coin Flip: You Won!' : '💀 Coin Flip: You Lost!'}\n\n` +
-          `The coin landed on **${result.toUpperCase()}**!\n\n` +
-          `${won ? '💰 Won **+10 DC**' : '💸 Lost **-10 DC**'}\n` +
-          `• 💰 **New Balance:** **${newBalance.toLocaleString()} DC**`
-        )
-      )
-      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-      .addActionRowComponents(row);
-  }
-
-  /**
-   * Dice Result Container with buttons inside
-   */
-  createDiceResultContainer(won: boolean, dice1: number, dice2: number, sum: number, netChange: number, newBalance: number): ContainerBuilder {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('game_quick_dice')
-        .setLabel('Roll Again (10 DC)')
-        .setEmoji('🎲')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_games')
-        .setLabel('All Games')
-        .setEmoji('🎮')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    return new ContainerBuilder()
-      .setAccentColor(won ? COLORS.SUCCESS : COLORS.DANGER)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `# ${won ? '🎲 High Roll: Winner!' : '🎲 Low Roll: Defeat!'}\n\n` +
-          `You rolled **[${dice1}] + [${dice2}] = ${sum}** (Over 7 to win)!\n\n` +
-          `${won ? `💰 Won **+${netChange} DC**` : '💸 Lost **-10 DC**'}\n` +
-          `• 💰 **New Balance:** **${newBalance.toLocaleString()} DC**`
-        )
-      )
-      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-      .addActionRowComponents(row);
-  }
-
-  /**
-   * Trivia Challenge Container with option buttons inside
-   */
-  createTriviaContainer(trivia: { id: string; category: string; question: string; options: string[] }): ContainerBuilder {
-    const row = new ActionRowBuilder<ButtonBuilder>();
-    trivia.options.forEach((opt: string, idx: number) => {
+    if (inRoom) {
       row.addComponents(
         new ButtonBuilder()
-          .setCustomId(`triv_${trivia.id}_${idx}`)
-          .setLabel(opt.slice(0, 80))
-          .setStyle(ButtonStyle.Secondary)
+          .setCustomId('btn_reveal_consent')
+          .setLabel('Request Reveal')
+          .setEmoji('🔒')
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId('destiny_btn_leave')
+          .setLabel('Leave Chat')
+          .setEmoji('🚪')
+          .setStyle(ButtonStyle.Danger)
       );
-    });
+    } else {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId('destiny_btn_start')
+          .setLabel('Find a Match')
+          .setEmoji('✨')
+          .setStyle(ButtonStyle.Success)
+      );
+    }
 
     return new ContainerBuilder()
       .setAccentColor(COLORS.DESTINY_PURPLE)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ❓ Trivia Challenge [${trivia.category}]\n\n` +
-          `**${trivia.question}**\n\n` +
-          `*Choose your answer below within 30 seconds for +25 DC!*`
-        )
-      )
-      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-      .addActionRowComponents(row);
-  }
-
-  /**
-   * Would You Rather Container with choice buttons inside
-   */
-  createWYRContainer(wyr: { id: string; optionA: string; optionB: string }): ContainerBuilder {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`wyr_A_${wyr.id}`)
-        .setLabel('Option A')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(`wyr_B_${wyr.id}`)
-        .setLabel('Option B')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    return new ContainerBuilder()
-      .setAccentColor(COLORS.PRIMARY)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `# 🤔 Would You Rather...\n\n` +
-          `**Option A:** ${wyr.optionA}\n\n` +
-          `— *OR* —\n\n` +
-          `**Option B:** ${wyr.optionB}`
+          `# 💬 Conversation Spark\n\n` +
+          `> **"${prompt}"**\n\n` +
+          (inRoom
+            ? `*Share your answer in chat, or request a mutual reveal when you both feel ready.*`
+            : `*Start a match to share this prompt with someone new.*`)
         )
       )
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -1470,11 +1493,36 @@ export class EmbedService {
 
   /**
    * Sent to both users when mutual reveal is accepted!
+   *
+   * Accepts either a full profile or the filtered reveal payload produced by
+   * the reveal service. Only the fields actually present in the payload are
+   * rendered, so unagreed fields are never leaked.
    */
-  createRevealSuccessContainer(partnerProfile: UserProfile, partnerDiscordId: string): ContainerBuilder {
-    const interestsStr = partnerProfile.interests && partnerProfile.interests.length > 0
-      ? partnerProfile.interests.map(i => `\`${i}\``).join(', ')
+  createRevealSuccessContainer(
+    partnerProfile: Partial<UserProfile> & { discordTag?: string },
+    partnerDiscordId?: string
+  ): ContainerBuilder {
+    const interests = partnerProfile.interests;
+    const interestsStr = interests && interests.length > 0
+      ? interests.map(i => `\`${i}\``).join(', ')
       : '*Not specified*';
+
+    const discordTag = partnerProfile.discordTag
+      ?? (partnerDiscordId ? `<@${partnerDiscordId}>` : undefined);
+
+    const details: string[] = [];
+    if (discordTag) details.push(`• **Discord:** ${discordTag}`);
+    if (partnerProfile.destinyId) details.push(`• **Destiny ID:** \`${partnerProfile.destinyId}\``);
+    if (typeof partnerProfile.age === 'number') details.push(`• **Age:** ${partnerProfile.age}`);
+    if (partnerProfile.gender) details.push(`• **Gender:** ${formatGenderLabel(partnerProfile.gender)}`);
+    if (interests) details.push(`• **Interests:** ${interestsStr}`);
+    if (typeof partnerProfile.reputationScore === 'number') {
+      details.push(`• **Reputation:** ⭐ ${partnerProfile.reputationScore}%`);
+    }
+
+    const detailsStr = details.length > 0
+      ? details.join('\n')
+      : '*No common fields were consented to — identities remain protected.*';
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -1490,12 +1538,7 @@ export class EmbedService {
         new TextDisplayBuilder().setContent(
           `# 🎉 Mutual Identity Revealed!\n\n` +
           `You and your partner both agreed to reveal your real profiles!\n\n` +
-          `• **Discord:** <@${partnerDiscordId}>\n` +
-          `• **Destiny ID:** \`${partnerProfile.destinyId}\`\n` +
-          `• **Age:** ${partnerProfile.age}\n` +
-          `• **Gender:** ${partnerProfile.gender}\n` +
-          `• **Interests:** ${interestsStr}\n` +
-          `• **Reputation:** ⭐ ${partnerProfile.reputationScore}%\n\n` +
+          `${detailsStr}\n\n` +
           `🎁 **+100 Connection XP Awarded!** You can continue chatting right here in DM or add each other directly on Discord.`
         )
       )

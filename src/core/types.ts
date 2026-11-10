@@ -111,8 +111,6 @@ export interface ChatMessage {
 
 export type TransactionType = 
   | 'daily_reward'
-  | 'game_win'
-  | 'game_loss'
   | 'shop_purchase'
   | 'streak_bonus'
   | 'mission_reward'
@@ -127,30 +125,6 @@ export interface CoinTransaction {
   type: TransactionType;
   referenceId: string; // Idempotency key
   metadata: Record<string, any>;
-  createdAt: string;
-}
-
-export type GameType = 
-  | 'coin_flip'
-  | 'blackjack'
-  | 'dice'
-  | 'slots'
-  | 'higher_lower'
-  | 'truth_or_dare'
-  | 'would_you_rather'
-  | 'trivia'
-  | 'compatibility_quiz';
-
-export interface GameOutcome {
-  id: string;
-  userId: string;
-  roomId?: string;
-  gameType: GameType;
-  betAmount: number;
-  payoutAmount: number;
-  outcome: 'win' | 'loss' | 'push' | 'completed';
-  serverSeed: string;
-  gameState: Record<string, any>;
   createdAt: string;
 }
 

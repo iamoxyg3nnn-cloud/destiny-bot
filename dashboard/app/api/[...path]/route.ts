@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:4000';
+const API_KEY = process.env.API_SECRET_KEY || '';
+
+/**
+ * The backend admin API is protected by a shared secret. We attach it
+ * server-side so the key is never exposed to the browser bundle.
+ */
+function backendHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return {
+    Accept: 'application/json',
+    ...(API_KEY ? { 'x-api-key': API_KEY } : {}),
+    ...extra,
+  };
+}
 
 export async function GET(req: NextRequest, { params }: { params: { path: string[] } }) {
   const path = params.path.join('/');
@@ -10,9 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
   try {
     const res = await fetch(targetUrl, {
       cache: 'no-store',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: backendHeaders(),
     });
 
     const data = await res.json();
@@ -30,9 +41,7 @@ export async function POST(req: NextRequest, { params }: { params: { path: strin
   try {
     const res = await fetch(targetUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: backendHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
     });
 

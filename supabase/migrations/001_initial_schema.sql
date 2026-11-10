@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS public.coin_transactions (
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     amount BIGINT NOT NULL, -- positive for credits, negative for debits
     balance_after BIGINT NOT NULL CHECK (balance_after >= 0),
-    type VARCHAR(64) NOT NULL, -- 'daily_reward', 'game_win', 'game_loss', 'shop_purchase', 'streak_bonus', 'mission_reward', 'admin_adjustment'
+    type VARCHAR(64) NOT NULL, -- 'daily_reward', 'shop_purchase', 'streak_bonus', 'mission_reward', 'room_milestone', 'admin_adjustment'
     reference_id VARCHAR(128) UNIQUE NOT NULL, -- unique idempotency key
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -114,24 +114,7 @@ CREATE INDEX IF NOT EXISTS idx_coin_tx_user_id ON public.coin_transactions(user_
 CREATE INDEX IF NOT EXISTS idx_coin_tx_ref_id ON public.coin_transactions(reference_id);
 CREATE INDEX IF NOT EXISTS idx_coin_tx_type ON public.coin_transactions(type);
 
--- 6. GAMES HISTORY
-CREATE TABLE IF NOT EXISTS public.games_history (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    room_id UUID REFERENCES public.rooms(id) ON DELETE SET NULL,
-    game_type VARCHAR(64) NOT NULL, -- 'coin_flip', 'blackjack', 'dice', 'slots', 'higher_lower', 'truth_or_dare', 'would_you_rather', 'trivia', 'compatibility_quiz'
-    bet_amount BIGINT NOT NULL DEFAULT 0 CHECK (bet_amount >= 0),
-    payout_amount BIGINT NOT NULL DEFAULT 0 CHECK (payout_amount >= 0),
-    outcome VARCHAR(32) NOT NULL, -- 'win', 'loss', 'push', 'completed'
-    server_seed VARCHAR(128) NOT NULL,
-    game_state JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_games_user_id ON public.games_history(user_id);
-CREATE INDEX IF NOT EXISTS idx_games_type ON public.games_history(game_type);
-
--- 7. REPORTS & MODERATION
+-- 6. REPORTS & MODERATION
 CREATE TABLE IF NOT EXISTS public.reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     reporter_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -240,7 +223,6 @@ ALTER TABLE public.guild_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.coin_transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.games_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_blocks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.shop_items ENABLE ROW LEVEL SECURITY;

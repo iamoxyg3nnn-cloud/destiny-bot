@@ -357,8 +357,8 @@ export default function OverviewPage() {
             <span className="text-xs text-zinc-300 group-hover:text-white">Currency Ledger</span>
             <ArrowUpRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-300" />
           </Link>
-          <Link href="/games" className="p-3 rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.06] transition-colors flex items-center justify-between group">
-            <span className="text-xs text-zinc-300 group-hover:text-white">Games & Odds</span>
+          <Link href="/moderation" className="p-3 rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.06] transition-colors flex items-center justify-between group">
+            <span className="text-xs text-zinc-300 group-hover:text-white">Safety & Reports</span>
             <ArrowUpRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-300" />
           </Link>
         </div>

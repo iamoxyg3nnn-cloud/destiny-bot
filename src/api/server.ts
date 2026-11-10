@@ -1,5 +1,6 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 import { config } from '../config/index.js';
 import { db } from '../database/supabase.js';
 import { redis } from '../redis/client.js';
@@ -8,10 +9,51 @@ import { verificationService } from '../core/moderation/verification.js';
 import { queueManager } from '../redis/queues.js';
 import os from 'os';
 
+/**
+ * Constant-time comparison for secret material.
+ */
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) {
+    // Still burn a comparison so length is not leaked by timing.
+    crypto.timingSafeEqual(bufA, bufA);
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Guards the admin API.
+ *
+ * The dashboard proxy forwards requests with `x-api-key`. When no key is
+ * configured the API refuses every request rather than defaulting to open —
+ * this API can ban users, adjust the coin economy, terminate rooms and read
+ * private anonymous chat messages.
+ */
+function requireApiKey(req: Request, res: Response, next: NextFunction) {
+  const expected = config.API_SECRET_KEY;
+  if (!expected) {
+    return res.status(503).json({
+      error: 'Admin API access is not configured (API_SECRET_KEY missing).',
+    });
+  }
+
+  const provided = req.header('x-api-key') || '';
+  if (!provided || !safeEqual(provided, expected)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  return next();
+}
+
 export function createApiServer(): express.Express {
   const app = express();
   app.use(cors());
   app.use(express.json());
+
+  // Every admin route requires the shared secret.
+  app.use('/api', requireApiKey);
 
   // 1. HEALTH & TELEMETRY
   app.get('/api/health', async (_req: Request, res: Response) => {
@@ -185,16 +227,14 @@ export function createApiServer(): express.Express {
     res.json(result);
   });
 
-  // 7. ECONOMY & GAMES
+  // 7. ECONOMY & CONVERSATION REWARDS
   app.get('/api/economy', async (_req: Request, res: Response) => {
     const transactions = await db.getRecentTransactions(50);
-    const gamesHistory = await db.getGamesHistory(50);
     const shopItems = await db.getShopItems();
 
     // Compute real faucet vs sink totals
     let dailyRewards = 0;
-    let casinoFaucet = 0;
-    let casinoSink = 0;
+    let conversationRewards = 0;
     let missionRewards = 0;
     let shopSink = 0;
     let adminAdjFaucet = 0;
@@ -202,8 +242,7 @@ export function createApiServer(): express.Express {
 
     for (const tx of transactions) {
       if (tx.type === 'daily_reward') dailyRewards += tx.amount;
-      else if (tx.type === 'game_win') casinoFaucet += tx.amount;
-      else if (tx.type === 'game_loss') casinoSink += Math.abs(tx.amount);
+      else if (tx.type === 'room_milestone' || tx.type === 'streak_bonus') conversationRewards += tx.amount;
       else if (tx.type === 'mission_reward') missionRewards += tx.amount;
       else if (tx.type === 'shop_purchase') shopSink += Math.abs(tx.amount);
       else if (tx.type === 'admin_adjustment') {
@@ -214,15 +253,14 @@ export function createApiServer(): express.Express {
 
     const faucetSinkData = [
       { category: 'Daily Rewards', faucet: dailyRewards, sink: 0 },
-      { category: 'Casino Games', faucet: casinoFaucet, sink: casinoSink },
-      { category: 'Missions & Trivia', faucet: missionRewards, sink: 0 },
+      { category: 'Conversation Milestones', faucet: conversationRewards, sink: 0 },
+      { category: 'Missions & Rewards', faucet: missionRewards, sink: 0 },
       { category: 'Shop Purchases', faucet: 0, sink: shopSink },
       { category: 'Admin Adjustments', faucet: adminAdjFaucet, sink: adminAdjSink },
     ];
 
     res.json({
       transactions,
-      gamesHistory,
       shopItems,
       faucetSinkData,
     });
@@ -290,7 +328,9 @@ export const apiApp: express.Express = createApiServer();
 
 if (process.env.RUN_API === 'true') {
   const port = config.PORT || 4000;
-  apiApp.listen(port, () => {
-    console.log(`🌐 Destiny Admin API Server listening on http://localhost:${port}`);
+  // Bind to loopback only — the admin API must never be directly reachable
+  // from outside the host. The dashboard proxies to it over localhost.
+  apiApp.listen(port, '127.0.0.1', () => {
+    console.log(`🌐 Destiny Admin API Server listening on http://127.0.0.1:${port}`);
   });
 }

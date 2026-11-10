@@ -15,8 +15,6 @@ import {
   SeparatorBuilder,
   MessageFlags,
   AttachmentBuilder,
-  StringSelectMenuBuilder,
-  EmbedBuilder,
   Message
 } from 'discord.js';
 import { db } from '../../database/supabase.js';
@@ -24,14 +22,22 @@ import { redis } from '../../redis/client.js';
 import { matchmakingManager } from '../../core/matchmaking/manager.js';
 import { streakService } from '../../core/economy/streaks.js';
 import { shopService } from '../../core/economy/shop.js';
-import { gameManager } from '../../core/games/manager.js';
 import { revealService } from '../../core/moderation/reveal.js';
 import { reporterService } from '../../core/moderation/reporter.js';
 import { verificationService } from '../../core/moderation/verification.js';
 import { handleReputationCheck } from '../../core/moderation/reputation.js';
 import { embedService, COLORS } from '../embeds/index.js';
-import { ProfileField, Gender, ReportItem, UserProfile } from '../../core/types.js';
+import { ProfileField, ReportItem, UserProfile } from '../../core/types.js';
 import { profileCardGenerator } from '../../core/profile/card-generator.js';
+import {
+  buildProfileCard,
+  createProfileActionRow,
+  isProfileComplete,
+} from '../profile-view.js';
+import { buildProfileModal, normalizeGender, parseList } from '../profile-modal.js';
+import { createRevealResultContainer, resolveRevealPair } from '../reveal-view.js';
+import { pickIcebreaker } from '../icebreakers.js';
+import { handleCommand } from '../commands/definitions.js';
 
 /**
  * Ultra-fast safe defer reply wrapper (<5ms)
@@ -63,26 +69,28 @@ async function safeDeferReply(interaction: ButtonInteraction | StringSelectMenuI
 async function safeEditReply(interaction: ButtonInteraction | StringSelectMenuInteraction | ChannelSelectMenuInteraction | ModalSubmitInteraction | any, options: any): Promise<void> {
   try {
     const payload = { ...options };
+    const components = Array.isArray(payload.components) ? payload.components : [];
+    const hasV2Container = components.some((component: any) => component instanceof ContainerBuilder || component?.type === 17);
 
-    // If text content was passed without components, convert it to a ContainerBuilder
-    if (payload.content && (!payload.components || payload.components.length === 0)) {
+    if (hasV2Container) {
+      // Components V2 disallows legacy content/embeds alongside containers.
+      payload.flags = payload.flags !== undefined
+        ? (payload.flags | MessageFlags.IsComponentsV2)
+        : MessageFlags.IsComponentsV2;
+      delete payload.content;
+      payload.embeds = [];
+    } else if (payload.content && components.length === 0 && (!payload.embeds || payload.embeds.length === 0)) {
+      // Text-only replies are rendered as a simple V2 notice container.
       const noticeContainer = new ContainerBuilder()
         .setAccentColor(COLORS.DESTINY_PURPLE)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(payload.content)
         );
       payload.components = [noticeContainer];
-      delete payload.content;
-    }
-
-    if (payload.components && payload.components.length > 0) {
-      payload.flags = payload.flags !== undefined 
-        ? (payload.flags | MessageFlags.IsComponentsV2) 
+      payload.flags = payload.flags !== undefined
+        ? (payload.flags | MessageFlags.IsComponentsV2)
         : MessageFlags.IsComponentsV2;
-
-      // When using Components V2, Discord strictly rejects messages that have legacy embeds or content.
       delete payload.content;
-      payload.embeds = [];
     }
 
     if (interaction.deferred || interaction.replied) {
@@ -102,6 +110,12 @@ async function safeEditReply(interaction: ButtonInteraction | StringSelectMenuIn
 }
 
 export async function handleInteraction(interaction: Interaction): Promise<void> {
+  // Slash commands are routed to the command controller.
+  if (interaction.isChatInputCommand()) {
+    await handleCommand(interaction);
+    return;
+  }
+
   // Reputation Verification Button ("I Have Joined discord.gg/eclairs")
   if (interaction.isButton() && interaction.customId === 'destiny_btn_check_reputation') {
     const btn = interaction as ButtonInteraction;
@@ -144,7 +158,12 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
   // =========================================================================
   if (interaction.guild && (interaction.isButton() || interaction.isStringSelectMenu())) {
     const customId = (interaction as any).customId || '';
-    const isAdminAction = customId.startsWith('destiny_admin_') || customId.startsWith('destiny_channel_');
+    const isAdminAction =
+      customId.startsWith('destiny_admin_') ||
+      customId.startsWith('destiny_channel_') ||
+      customId.startsWith('destiny_select_admin_channel') ||
+      customId.startsWith('destiny_btn_setup_') ||
+      customId.startsWith('btn_admin_verify_');
 
     if (!isAdminAction) {
       try {
@@ -213,27 +232,60 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       }
 
       const selectedFields = values as ProfileField[];
+      const room = await db.getRoomById(roomId).catch(() => null);
       const res = await revealService.submitConsent(roomId, user.id, selectedFields);
 
       if (res.completed) {
-        const revealedStr = res.agreedFields.length > 0
-          ? res.agreedFields.map((f) => `• \`${f}\``).join('\n')
-          : '*No common fields were consented to.*';
+        // Both partners consented — show what was actually shared, not just the
+        // list of field names. The payloads are already filtered by the reveal
+        // service so unagreed fields can never leak.
+        const { mine, partner } = resolveRevealPair(room, user.id, res);
 
-        const container = new ContainerBuilder()
-          .setAccentColor(COLORS.SUCCESS)
-          .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-              `# 🎉 Mutual Profile Reveal Complete!\n\n` +
-              `Both partners have consented to exchange information!\n\n` +
-              `**Mutually Agreed Revealed Fields**:\n${revealedStr}\n\n` +
-              `🔒 *Any unagreed fields and Discord usernames remain strictly protected.*`
-            )
-          );
-
+        const container = createRevealResultContainer(partner, res.agreedFields);
         await safeEditReply(select, { components: [container] });
+
+        // Deliver the matching reveal card to the partner as well.
+        if (room) {
+          const isUser1 = room.user1Id === user.id;
+          const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
+          if (partnerDiscordId) {
+            const partnerUser = await select.client.users.fetch(partnerDiscordId).catch(() => null);
+            if (partnerUser) {
+              const successForPartner = createRevealResultContainer(mine, res.agreedFields);
+              await partnerUser.send({
+                components: [successForPartner],
+                flags: [MessageFlags.IsComponentsV2],
+              }).catch(() => {});
+            }
+          }
+        }
       } else {
         await safeEditReply(select, { content: res.message });
+
+        // Prompt the partner to consent if they have not done so yet.
+        if (room && room.status === 'active') {
+          const isUser1 = room.user1Id === user.id;
+          const partnerConsented = isUser1
+            ? room.revealStatusUser2?.consented
+            : room.revealStatusUser1?.consented;
+
+          if (!partnerConsented) {
+            const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
+            const myPseudonym = isUser1 ? room.user1Pseudonym : room.user2Pseudonym;
+            const myAvatar = isUser1 ? room.user1Avatar : room.user2Avatar;
+
+            if (partnerDiscordId) {
+              const partnerUser = await select.client.users.fetch(partnerDiscordId).catch(() => null);
+              if (partnerUser) {
+                const promptContainer = embedService.createRevealPromptPartnerContainer(myAvatar, myPseudonym);
+                await partnerUser.send({
+                  components: [promptContainer],
+                  flags: [MessageFlags.IsComponentsV2],
+                }).catch(() => {});
+              }
+            }
+          }
+        }
       }
       return;
     }
@@ -307,78 +359,42 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
     console.log(`[Bot Interaction] Button "${customId}" clicked by ${discordUser.tag} (${discordUser.id})`);
 
     // --- Profile Setup / Edit Modal Trigger ---
-    if (customId === 'destiny_btn_profile') {
+    if (customId === 'destiny_btn_profile' || customId === 'destiny_btn_setup_profile') {
       await handleOpenProfileModal(btn);
       return;
     }
 
-    // --- Profile Card View (Static PNG) ---
+    // --- Profile Card View (Static PNG / Animated Motion WebP) ---
     if (customId === 'destiny_btn_card_motion' || customId === 'destiny_btn_card_static') {
       const user = await db.getUserByDiscordId(discordUser.id);
       if (!user) {
-        await btn.reply({ content: 'Please setup your profile first with /profile', ephemeral: true });
+        await btn.reply({ content: 'Please set up your profile first with `/profile`.', ephemeral: true }).catch(() => {});
         return;
       }
 
-      await btn.deferUpdate();
+      const ok = await safeDeferReply(btn);
+      if (!ok) return;
 
-      const userRooms = await db.getUserRooms(user.id);
-      let totalMinutes = 0;
-      for (const r of userRooms) {
-        if (r.startedAt && r.endedAt) {
-          const diff = (new Date(r.endedAt).getTime() - new Date(r.startedAt).getTime()) / 60000;
-          if (diff > 0) totalMinutes += diff;
-        }
+      try {
+        const motion = customId === 'destiny_btn_card_motion';
+        const { attachment } = await buildProfileCard(user, discordUser, btn.member, motion);
+
+        await btn.editReply({
+          content: motion
+            ? '🎬 **Your animated Destiny profile card** — tap **Edit Profile** to make changes.'
+            : '📸 **Your Destiny profile card** — tap **Edit Profile** to make changes.',
+          files: [attachment],
+          components: [createProfileActionRow()],
+        });
+      } catch (err: any) {
+        console.error('[Bot] Profile card render error:', err?.message || err);
+        await safeEditReply(btn, { content: '⚠️ Could not render your card right now. Please try again.' });
       }
-      const hours = Math.floor(totalMinutes / 60);
-      const mins = Math.floor(totalMinutes % 60);
-      const chatHoursText = hours > 0 || mins > 0 ? `${hours}h ${mins}m` : '0h 00m';
-
-      const avatarUrl = discordUser.displayAvatarURL({ extension: 'png', size: 256 });
-      const displayName = btn.member && 'displayName' in btn.member
-        ? (btn.member as any).displayName
-        : discordUser.displayName || 'Midnight Wolf';
-
-      const stats = {
-        sessionsCount: userRooms.length,
-        chatHoursText,
-        reputationPercent: user.reputationScore ?? 100,
-        personaName: displayName,
-        avatarUrl,
-        timezone: 'UTC+05:30',
-      };
-
-      const cardBuffer = await profileCardGenerator.generateCardPng(user, stats);
-      const attachment = new AttachmentBuilder(cardBuffer, { name: 'destiny_profile.png' });
-
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId('destiny_btn_profile')
-          .setLabel('Edit Profile')
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId('destiny_btn_wardrobe')
-          .setLabel('Wardrobe')
-          .setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId('destiny_btn_start')
-          .setLabel('Find Match')
-          .setStyle(ButtonStyle.Success),
-        new ButtonBuilder()
-          .setCustomId('destiny_btn_wallet')
-          .setLabel('Vault')
-          .setStyle(ButtonStyle.Secondary)
-      );
-
-      await btn.editReply({
-        files: [attachment],
-        components: [row],
-      });
       return;
     }
 
     // --- Profile Verification Trigger ---
-    if (customId === 'destiny_btn_verify' || customId === 'destiny_btn_verify_modal') {
+    if (customId === 'destiny_btn_verify' || customId === 'destiny_btn_verify_modal' || customId === 'destiny_btn_verify_prompt') {
       const user = await db.getUserByDiscordId(discordUser.id, true);
       const isProfileComplete = Boolean(
         user && user.age >= 18 && user.gender && user.gender !== 'prefer_not_to_say' && user.gender.trim().length > 0
@@ -619,10 +635,45 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
     }
 
     // --- Wallet & Daily Coins Menu ---
-    if (customId === 'destiny_btn_wallet') {
+    if (customId === 'destiny_btn_wallet' || customId === 'destiny_btn_wallet_daily') {
       const ok = await safeDeferReply(btn);
       if (!ok) return;
       await handleWalletMenu(btn);
+      return;
+    }
+
+    // --- Conversation Icebreaker ---
+    if (customId === 'destiny_btn_icebreaker') {
+      const ok = await safeDeferReply(btn);
+      if (!ok) return;
+
+      const user = await db.getUserByDiscordId(discordUser.id, true);
+      let activeRoomId = user?.activeRoomId;
+      if (!activeRoomId && user) {
+        activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+      }
+
+      const room = activeRoomId ? await db.getRoomById(activeRoomId).catch(() => null) : null;
+      const inRoom = Boolean(room && room.status === 'active');
+      const prompt = pickIcebreaker();
+
+      const container = embedService.createIcebreakerContainer(prompt, inRoom);
+      await safeEditReply(btn, { components: [container] });
+
+      if (inRoom && room && user) {
+        const isUser1 = room.user1Id === user.id;
+        const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
+        if (partnerDiscordId) {
+          const partnerUser = await btn.client.users.fetch(partnerDiscordId).catch(() => null);
+          if (partnerUser) {
+            const partnerPrompt = embedService.createIcebreakerContainer(prompt, true);
+            await partnerUser.send({
+              components: [partnerPrompt],
+              flags: [MessageFlags.IsComponentsV2],
+            }).catch(() => {});
+          }
+        }
+      }
       return;
     }
 
@@ -633,62 +684,12 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
 
       const user = await db.getUserByDiscordId(discordUser.id);
       if (!user) {
-        await safeEditReply(btn, { content: 'Please setup your profile first with /profile' });
+        await safeEditReply(btn, { content: 'Please set up your profile first with `/profile`.' });
         return;
       }
 
-      const themeMenu = new StringSelectMenuBuilder()
-        .setCustomId('destiny_select_theme')
-        .setPlaceholder(`Current Theme: ${(user.cardTheme || 'obsidian').toUpperCase()}`)
-        .addOptions(
-          { label: 'Obsidian Monochrome (Default)', value: 'obsidian', description: 'Deep obsidian void with dot-matrix hardware texture', default: (user.cardTheme || 'obsidian') === 'obsidian' },
-          { label: 'Cyber Damask', value: 'cyber_damask', description: 'Obsidian & high-contrast damask steel micro-lines', default: user.cardTheme === 'cyber_damask' },
-          { label: 'Frost Glaze', value: 'frost_glaze', description: 'Frosted titanium aesthetic with cool cyan sheen', default: user.cardTheme === 'frost_glaze' },
-          { label: 'Holographic Platinum', value: 'holographic_plat', description: 'Prestige platinum finish with iridescent micro-reflections', default: user.cardTheme === 'holographic_plat' }
-        );
-
-      const badgeOptions = [
-        { label: 'ID VERIFIED', value: 'ID VERIFIED', description: 'Emerald verified trust badge', default: user.equippedBadges?.includes('ID VERIFIED') },
-        { label: '7D STREAK', value: '7D STREAK', description: 'Flame 7-day conversation streak badge', default: user.equippedBadges?.includes('7D STREAK') },
-        { label: 'TITAN 1K', value: 'TITAN 1K', description: 'Commemorative Titan supporter badge', default: user.equippedBadges?.includes('TITAN 1K') },
-        { label: 'VETERAN', value: 'VETERAN', description: 'Awarded for completing 10+ match conversations', default: user.equippedBadges?.includes('VETERAN') },
-        { label: 'KARMA 100%', value: 'KARMA 100%', description: 'Pristine 100% reputation rating', default: user.equippedBadges?.includes('KARMA 100%') },
-        { label: 'STAR WANDERER', value: 'STAR WANDERER', description: 'Mark of an explorer across 50+ matches', default: user.equippedBadges?.includes('STAR WANDERER') },
-        { label: 'VIP', value: 'VIP', description: 'Destiny VIP patron badge', default: user.equippedBadges?.includes('VIP') },
-        { label: 'MYSTIC AURA', value: 'MYSTIC AURA', description: 'Glowing celestial aura rack insignia', default: user.equippedBadges?.includes('MYSTIC AURA') },
-      ];
-
-      const badgeMenu = new StringSelectMenuBuilder()
-        .setCustomId('destiny_select_badges')
-        .setPlaceholder('Equip up to 5 Insignia Badges for your Rack')
-        .setMinValues(1)
-        .setMaxValues(5)
-        .addOptions(badgeOptions);
-
-      const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(themeMenu);
-      const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(badgeMenu);
-      const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId('destiny_btn_card_static')
-          .setLabel('Preview Profile Card')
-          .setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId('destiny_btn_shop')
-          .setLabel('Shop Cosmetics')
-          .setStyle(ButtonStyle.Primary)
-      );
-
-      const embed = new EmbedBuilder()
-        .setColor(COLORS.DARK)
-        .setTitle('Destiny Identity Wardrobe')
-        .setDescription(
-          `Customize the appearance of your **Destiny Profile Card**.\n\n` +
-          `• **Equipped Theme**: \`${(user.cardTheme || 'obsidian').toUpperCase()}\`\n` +
-          `• **Active Badges (${user.equippedBadges?.length || 5}/5)**: ${user.equippedBadges && user.equippedBadges.length > 0 ? user.equippedBadges.map((b: string) => `\`[${b}]\``).join(' ') : '\`[ID VERIFIED]\` \`[7D STREAK]\` \`[TITAN 1K]\` \`[VETERAN]\` \`[KARMA 100%]\`'}\n\n` +
-          `*Select a new card skin or choose up to 5 rack insignias below.*`
-        );
-
-      await safeEditReply(btn, { embeds: [embed], components: [row1, row2, row3] });
+      const container = embedService.createWardrobeContainer(user);
+      await safeEditReply(btn, { components: [container] });
       return;
     }
 
@@ -698,20 +699,8 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       if (!ok) return;
 
       const catalog = await shopService.getCatalog();
-      const embed = new EmbedBuilder()
-        .setColor(COLORS.GOLD)
-        .setTitle('🛍️ Destiny Cosmetic & Skin Emporium')
-        .setDescription('Use `/shop buy:<item_id>` or equip items in your `/wardrobe`!');
-
-      embed.addFields(
-        catalog.map((item: any) => ({
-          name: `${item.icon} ${item.name} (\`${item.id}\`) — ${item.price} DC`,
-          value: item.description,
-          inline: false,
-        }))
-      );
-
-      await safeEditReply(btn, { embeds: [embed] });
+      const container = embedService.createShopContainer(catalog);
+      await safeEditReply(btn, { components: [container] });
       return;
     }
 
@@ -720,121 +709,6 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       const ok = await safeDeferReply(btn);
       if (!ok) return;
       await handleClaimDaily(btn);
-      return;
-    }
-
-    // --- Games Menu ---
-    if (customId === 'destiny_btn_games') {
-      const ok = await safeDeferReply(btn);
-      if (!ok) return;
-      await handleGamesMenu(btn);
-      return;
-    }
-
-    // --- Quick Games (Coinflip / Dice / Trivia / WYR) ---
-    if (customId === 'game_quick_flip') {
-      const ok = await safeDeferReply(btn);
-      if (!ok) return;
-      await handleQuickFlip(btn);
-      return;
-    }
-
-    if (customId === 'game_quick_dice') {
-      const ok = await safeDeferReply(btn);
-      if (!ok) return;
-      await handleQuickDice(btn);
-      return;
-    }
-
-    if (customId === 'game_quick_trivia') {
-      const ok = await safeDeferReply(btn);
-      if (!ok) return;
-      await handleQuickTrivia(btn);
-      return;
-    }
-
-    if (customId === 'game_quick_wyr') {
-      const ok = await safeDeferReply(btn);
-      if (!ok) return;
-      await handleQuickWYR(btn);
-      return;
-    }
-
-    // --- Would You Rather Choice ---
-    if (customId.startsWith('wyr_')) {
-      const ok = await safeDeferReply(btn);
-      if (!ok) return;
-
-      const [, choice, dilemmaId] = customId.split('_');
-      const stats = gameManager.voteWouldYouRather(dilemmaId, choice as 'A' | 'B');
-      
-      const voteContainer = new ContainerBuilder()
-        .setAccentColor(COLORS.PRIMARY)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `# 🗳️ Vote Registered!\n\n` +
-            `You voted for **Option ${choice}**.\n\n` +
-            `• 📊 **Option A:** **${stats.percentA}%**\n` +
-            `• 📊 **Option B:** **${stats.percentB}%**\n\n` +
-            `*Total community votes recorded: ${stats.totalVotes.toLocaleString()}*`
-          )
-        )
-        .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-        .addActionRowComponents(
-          new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder()
-              .setCustomId('game_quick_wyr')
-              .setLabel('Next Dilemma')
-              .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-              .setCustomId('destiny_btn_games')
-              .setLabel('All Games')
-              .setStyle(ButtonStyle.Secondary)
-          )
-        );
-
-      await safeEditReply(btn, { components: [voteContainer] });
-      return;
-    }
-
-    // --- Trivia Answer Choice ---
-    if (customId.startsWith('triv_')) {
-      const ok = await safeDeferReply(btn);
-      if (!ok) return;
-
-      const [, qId, choiceIdxStr] = customId.split('_');
-      const choiceIdx = parseInt(choiceIdxStr, 10);
-      const user = await db.getUserByDiscordId(discordUser.id);
-      if (!user) {
-        await safeEditReply(btn, { content: '❌ Profile not found.' });
-        return;
-      }
-
-      const evalRes = await gameManager.answerTrivia(user.id, qId, choiceIdx, user.activeRoomId || undefined);
-      const trivContainer = new ContainerBuilder()
-        .setAccentColor(evalRes.isCorrect ? COLORS.SUCCESS : COLORS.DANGER)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            evalRes.isCorrect
-              ? `# 🎯 Correct Answer!\n\nYou won **+${evalRes.dcAwarded} Destiny Coins**! 🪙\n\n*${evalRes.explanation}*`
-              : `# ❌ Incorrect Answer\n\nThe correct answer was: **${evalRes.correctOption}**\n\n*${evalRes.explanation}*`
-          )
-        )
-        .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-        .addActionRowComponents(
-          new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder()
-              .setCustomId('game_quick_trivia')
-              .setLabel('Next Trivia')
-              .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-              .setCustomId('destiny_btn_games')
-              .setLabel('All Games')
-              .setStyle(ButtonStyle.Secondary)
-          )
-        );
-
-      await safeEditReply(btn, { components: [trivContainer] });
       return;
     }
 
@@ -1015,16 +889,40 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         return;
       }
 
-      // Automatically consent to share agreed profile fields
-      await revealService.submitConsent(room.id, user.id, ['discordTag', 'age', 'gender', 'interests']);
+      // Automatically consent to share agreed profile fields. This is an implicit
+      // consent, so it may only narrow what the user already agreed to.
+      const consentResult = await revealService.submitConsent(
+        room.id,
+        user.id,
+        ['discordTag', 'destinyId', 'age', 'gender', 'interests'],
+        'narrow'
+      );
+
+      const isUser1 = room.user1Id === user.id;
+      const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
+
+      if (consentResult.completed) {
+        // The partner had already consented — resolve the reveal right away.
+        const { mine, partner } = resolveRevealPair(room, user.id, consentResult);
+        await safeEditReply(btn, { components: [createRevealResultContainer(partner, consentResult.agreedFields)] });
+
+        if (partnerDiscordId) {
+          const partnerUser = await btn.client.users.fetch(partnerDiscordId).catch(() => null);
+          if (partnerUser) {
+            await partnerUser.send({
+              components: [createRevealResultContainer(mine, consentResult.agreedFields)],
+              flags: [MessageFlags.IsComponentsV2],
+            }).catch(() => {});
+          }
+        }
+        return;
+      }
 
       // Show waiting container to requester
       const waitingContainer = embedService.createRevealWaitingContainer();
       await safeEditReply(btn, { components: [waitingContainer] });
 
       // Deliver interactive prompt to partner
-      const isUser1 = room.user1Id === user.id;
-      const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
       const myPseudonym = isUser1 ? room.user1Pseudonym : room.user2Pseudonym;
       const myAvatar = isUser1 ? room.user1Avatar : room.user2Avatar;
 
@@ -1065,28 +963,27 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         return;
       }
 
-      const consentResult = await revealService.submitConsent(room.id, user.id, ['discordTag', 'age', 'gender', 'interests']);
+      const consentResult = await revealService.submitConsent(
+        room.id,
+        user.id,
+        ['discordTag', 'destinyId', 'age', 'gender', 'interests'],
+        'narrow'
+      );
       if (consentResult.completed) {
         const isUser1 = room.user1Id === user.id;
-        const partnerUserId = isUser1 ? room.user2Id : room.user1Id;
         const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
 
-        const [partnerProfile, myProfile] = await Promise.all([
-          db.getUserById(partnerUserId),
-          db.getUserById(user.id),
-        ]);
+        // Only the mutually agreed fields are shown to each side.
+        const { mine, partner } = resolveRevealPair(room, user.id, consentResult);
 
         // Reveal card for accepting user
-        if (partnerProfile && partnerDiscordId) {
-          const successForAcceptor = embedService.createRevealSuccessContainer(partnerProfile, partnerDiscordId);
-          await safeEditReply(btn, { components: [successForAcceptor] });
-        }
+        await safeEditReply(btn, { components: [createRevealResultContainer(partner, consentResult.agreedFields)] });
 
         // Deliver reveal card to requester
-        if (myProfile && partnerDiscordId) {
+        if (partnerDiscordId) {
           const partnerUser = await btn.client.users.fetch(partnerDiscordId).catch(() => null);
           if (partnerUser) {
-            const successForRequester = embedService.createRevealSuccessContainer(myProfile, discordUser.id);
+            const successForRequester = createRevealResultContainer(mine, consentResult.agreedFields);
             await partnerUser.send({
               components: [successForRequester],
               flags: [MessageFlags.IsComponentsV2],
@@ -1263,151 +1160,60 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
 }
 
 /**
- * Opens Discord Modal for Profile Creation or Editing with Ultra-Low Latency (<10ms)
+ * Opens the shared profile setup / edit modal.
  */
 async function handleOpenProfileModal(btn: ButtonInteraction): Promise<void> {
   try {
-    const userPromise = db.getUserByDiscordId(btn.user.id).catch(() => null);
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 600));
-    const user = await Promise.race([userPromise, timeoutPromise]);
-
-    const modal = new ModalBuilder()
-      .setCustomId('modal_destiny_profile')
-      .setTitle('Destiny — Profile Setup');
-
-    // 1. Age input (Required, min 2, max 2)
-    const ageInput = new TextInputBuilder()
-      .setCustomId('profile_age')
-      .setLabel('Your Age (Must be 18+)')
-      .setStyle(TextInputStyle.Short)
-      .setMinLength(2)
-      .setMaxLength(2)
-      .setPlaceholder('18')
-      .setRequired(true);
-
-    if (user && user.age >= 18) {
-      ageInput.setValue(user.age.toString());
-    }
-
-    // 2. Gender input (Required, min 3, max 25)
-    const genderInput = new TextInputBuilder()
-      .setCustomId('profile_gender')
-      .setLabel('Your Gender (Male / Female / Other)')
-      .setStyle(TextInputStyle.Short)
-      .setMinLength(3)
-      .setMaxLength(25)
-      .setPlaceholder('Male, Female, Non-binary, etc.')
-      .setRequired(true);
-
-    if (user && user.gender && user.gender !== 'prefer_not_to_say') {
-      genderInput.setValue(user.gender.slice(0, 25));
-    }
-
-    // 3. Interests (Optional, max 150)
-    const interestsInput = new TextInputBuilder()
-      .setCustomId('profile_interests')
-      .setLabel('Interests & Hobbies (Comma separated)')
-      .setStyle(TextInputStyle.Paragraph)
-      .setMaxLength(150)
-      .setPlaceholder('Gaming, Anime, Music, Coding, Travel')
-      .setRequired(false);
-
-    if (user && user.interests && user.interests.length > 0) {
-      interestsInput.setValue(user.interests.join(', ').slice(0, 150));
-    }
-
-    // 4. Languages (Optional, max 50)
-    const languagesInput = new TextInputBuilder()
-      .setCustomId('profile_languages')
-      .setLabel('Languages Spoken')
-      .setStyle(TextInputStyle.Short)
-      .setMaxLength(50)
-      .setPlaceholder('English, Spanish, Hindi')
-      .setRequired(false);
-
-    if (user && user.languages && user.languages.length > 0) {
-      languagesInput.setValue(user.languages.join(', ').slice(0, 50));
-    }
-
-    // 5. Bio / Motto (Optional, max 80)
-    const bioInput = new TextInputBuilder()
-      .setCustomId('profile_bio')
-      .setLabel('Profile Motto / Bio (Max 80 chars)')
-      .setStyle(TextInputStyle.Short)
-      .setMaxLength(80)
-      .setPlaceholder('Looking for late-night gaming friends & deep talks')
-      .setRequired(false);
-
-    if (user && user.bio) {
-      bioInput.setValue(user.bio.slice(0, 80));
-    }
-
-    modal.addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(ageInput),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(genderInput),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(interestsInput),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(languagesInput),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(bioInput)
-    );
-
-    await btn.showModal(modal);
+    const user = await db.getUserByDiscordId(btn.user.id).catch(() => null);
+    await btn.showModal(buildProfileModal(user));
   } catch (err: any) {
     console.error('[Bot] handleOpenProfileModal error:', err?.message || err);
   }
 }
 
 /**
- * Handle Profile Modal Submission and Save to Supabase in Real Time (Components V2)
+ * Handle Profile Modal Submission, persist the profile and render the card
+ * automatically — no follow-up button click required.
  */
 async function handleProfileModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {
   const ok = await safeDeferReply(interaction);
   if (!ok) return;
 
   const ageStr = interaction.fields.getTextInputValue('profile_age').trim();
-  const rawGender = interaction.fields.getTextInputValue('profile_gender').trim().toLowerCase();
-  const interestsStr = interaction.fields.getTextInputValue('profile_interests')?.trim() || '';
-  const languagesStr = interaction.fields.getTextInputValue('profile_languages')?.trim() || 'English';
-  let bioStr = '';
-  try {
-    bioStr = interaction.fields.getTextInputValue('profile_bio')?.trim() || '';
-  } catch {
-    // profile_bio might not be present if opened before update
-  }
+  const rawGender = interaction.fields.getTextInputValue('profile_gender').trim();
+  const getOptionalField = (id: string): string => {
+    try {
+      return interaction.fields.getTextInputValue(id)?.trim() || '';
+    } catch {
+      return '';
+    }
+  };
+  const interestsStr = getOptionalField('profile_interests');
+  const languagesStr = getOptionalField('profile_languages');
+  const bioStr = getOptionalField('profile_bio');
 
   const age = parseInt(ageStr, 10);
   if (isNaN(age) || age < 18 || age > 99) {
     await safeEditReply(interaction, {
-      content: '🔞 **Age Verification Failed**: You must be at least 18 years old to use Destiny (18-99).'
+      content: '🔞 **Age Verification Failed**: You must be at least 18 years old to use Destiny (18-99). Use `/profile` to try again.',
     });
     return;
   }
 
-  let gender: Gender = 'other';
-  if (/^(?:f|female|woman|women|girl)$/i.test(rawGender) || rawGender.includes('female') || rawGender.includes('woman') || rawGender.includes('girl')) {
-    gender = 'female';
-  } else if (/^(?:m|male|man|men|boy|guy)$/i.test(rawGender) || rawGender.includes('male') || rawGender.includes('man') || rawGender.includes('boy')) {
-    gender = 'male';
-  } else if (rawGender.includes('non') || rawGender.includes('nb') || rawGender.includes('enby')) {
-    gender = 'non_binary';
-  } else {
-    gender = 'other';
-  }
-
-  const interests = interestsStr
-    ? interestsStr.split(/[,;\n]+/).map((s) => s.trim().toLowerCase()).filter(Boolean).slice(0, 8)
-    : [];
-
-  const languages = languagesStr
-    ? languagesStr.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean)
-    : ['en'];
+  const gender = normalizeGender(rawGender);
+  const interests = parseList(interestsStr)
+    .map((interest) => interest.toLowerCase());
 
   const existing = await db.getUserByDiscordId(interaction.user.id);
+  const languages = languagesStr
+    ? parseList(languagesStr, 6)
+    : (existing?.languages && existing.languages.length > 0 ? existing.languages : ['en']);
+
   const preferredGender: string[] = existing?.preferredGender && existing.preferredGender.length > 0
     ? existing.preferredGender
     : ['any'];
 
   let destinyId = existing?.destinyId;
-
   if (!destinyId || destinyId.length !== 6 || !/^[A-Z0-9]{6}$/.test(destinyId)) {
     destinyId = await db.generateUniqueDestinyId();
   }
@@ -1423,8 +1229,21 @@ async function handleProfileModalSubmit(interaction: ModalSubmitInteraction): Pr
     bio: bioStr || existing?.bio,
   });
 
-  const container = embedService.createProfileCreatedContainer(savedUser);
-  await safeEditReply(interaction, { components: [container] });
+  try {
+    const { attachment } = await buildProfileCard(savedUser, interaction.user, interaction.member);
+
+    await interaction.editReply({
+      content:
+        `✅ **Profile saved!** Your anonymous Destiny ID is \`${savedUser.destinyId}\`.\n` +
+        `Update anything anytime with \`/profile\`, then tap **Find Match** when you are ready.`,
+      files: [attachment],
+      components: [createProfileActionRow()],
+    });
+  } catch (err: any) {
+    console.error('[Bot] Profile card render error after save:', err?.message || err);
+    const container = embedService.createProfileCreatedContainer(savedUser);
+    await safeEditReply(interaction, { components: [container] });
+  }
 }
 
 /**
@@ -1433,15 +1252,8 @@ async function handleProfileModalSubmit(interaction: ModalSubmitInteraction): Pr
  */
 async function handleStartMatchButton(btn: ButtonInteraction): Promise<void> {
   const user = await db.getUserByDiscordId(btn.user.id);
-  const isProfileComplete = Boolean(
-    user &&
-    user.age >= 18 &&
-    user.gender &&
-    user.gender !== 'prefer_not_to_say' &&
-    user.gender.trim().length > 0
-  );
 
-  if (!user || !isProfileComplete) {
+  if (!user || !isProfileComplete(user)) {
     const container = embedService.createProfileRequiredContainer();
     await safeEditReply(btn, { components: [container] });
     return;
@@ -1516,130 +1328,6 @@ async function handleClaimDaily(btn: ButtonInteraction): Promise<void> {
     claimRes.newStreak
   );
 
-  await safeEditReply(btn, { components: [container] });
-}
-
-/**
- * Handle Games Submenu (Components V2)
- */
-async function handleGamesMenu(btn: ButtonInteraction): Promise<void> {
-  const container = embedService.createGamesMenuContainer();
-  await safeEditReply(btn, { components: [container] });
-}
-
-/**
- * Quick Coin Flip (Components V2)
- */
-async function handleQuickFlip(btn: ButtonInteraction): Promise<void> {
-  const user = await db.getUserByDiscordId(btn.user.id);
-  if (!user || user.destinyCoins < 10) {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_claim_daily')
-        .setLabel('Claim Daily (+50 DC)')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_wallet')
-        .setLabel('View Wallet')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    const container = new ContainerBuilder()
-      .setAccentColor(COLORS.DANGER)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          '# 🪙 Insufficient Destiny Coins\n\nYou need at least **10 Destiny Coins** to play!\nClaim your free daily reward to get started.'
-        )
-      )
-      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-      .addActionRowComponents(row);
-
-    await safeEditReply(btn, { components: [container] });
-    return;
-  }
-
-  const res = await gameManager.playCoinFlip(user.id, 'heads', 10);
-  if (!res.success || !res.result) {
-    await safeEditReply(btn, { content: `❌ ${res.error || 'Coin flip failed'}` });
-    return;
-  }
-
-  const updated = await db.getUserById(user.id);
-  const won = res.result.isWin;
-  const container = embedService.createCoinFlipResultContainer(won, res.result.result, updated?.destinyCoins ?? 0);
-
-  await safeEditReply(btn, { components: [container] });
-}
-
-/**
- * Quick Dice Roll (Components V2)
- */
-async function handleQuickDice(btn: ButtonInteraction): Promise<void> {
-  const user = await db.getUserByDiscordId(btn.user.id);
-  if (!user || user.destinyCoins < 10) {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_claim_daily')
-        .setLabel('Claim Daily (+50 DC)')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_wallet')
-        .setLabel('View Wallet')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    const container = new ContainerBuilder()
-      .setAccentColor(COLORS.DANGER)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          '# 🎲 Insufficient Destiny Coins\n\nYou need at least **10 Destiny Coins** to roll!\nClaim your free daily reward to get started.'
-        )
-      )
-      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-      .addActionRowComponents(row);
-
-    await safeEditReply(btn, { components: [container] });
-    return;
-  }
-
-  const res = await gameManager.playDice(user.id, 'over', 10);
-  if (!res.success || !res.result) {
-    await safeEditReply(btn, { content: `❌ ${res.error || 'Dice roll failed'}` });
-    return;
-  }
-
-  const updated = await db.getUserById(user.id);
-  const won = res.result.isWin;
-  const outcome = res.result;
-  const netChange = won ? outcome.payout - 10 : 10;
-
-  const container = embedService.createDiceResultContainer(
-    won,
-    outcome.dice1,
-    outcome.dice2,
-    outcome.sum,
-    netChange,
-    updated?.destinyCoins ?? 0
-  );
-
-  await safeEditReply(btn, { components: [container] });
-}
-
-/**
- * Quick Trivia Question (Components V2)
- */
-async function handleQuickTrivia(btn: ButtonInteraction): Promise<void> {
-  const trivia = gameManager.getTrivia();
-  const container = embedService.createTriviaContainer(trivia);
-  await safeEditReply(btn, { components: [container] });
-}
-
-/**
- * Quick Would You Rather Dilemma (Components V2)
- */
-async function handleQuickWYR(btn: ButtonInteraction): Promise<void> {
-  const wyr = gameManager.getWouldYouRather();
-  const container = embedService.createWYRContainer(wyr);
   await safeEditReply(btn, { components: [container] });
 }
 

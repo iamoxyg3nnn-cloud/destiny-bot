@@ -227,5 +227,67 @@ describe('Matchmaking, Anonymous Rooms & Profile Reveal Integration Tests', () =
     // Discord tag MUST NOT be revealed in data payloads
     expect(completedResult.user1Data?.discordTag).toBeUndefined();
     expect(completedResult.user2Data?.discordTag).toBeUndefined();
+
+    // Fields that were not mutually agreed on MUST NOT be present in the payloads
+    expect(completedResult.user1Data?.destinyId).toBeUndefined();
+    expect(completedResult.user2Data?.destinyId).toBeUndefined();
+  });
+
+  it('should never widen a user explicit field selection through an implicit consent', async () => {
+    const ticketA: MatchTicket = {
+      userId: userA.id,
+      destinyId: userA.destinyId,
+      discordUserId: userA.discordUserId,
+      age: userA.age,
+      gender: userA.gender,
+      preferredGender: ['any'],
+      minAgePref: 18,
+      maxAgePref: 99,
+      languages: ['en'],
+      interests: ['gaming'],
+      queuedAt: Date.now(),
+    };
+
+    const ticketB: MatchTicket = {
+      userId: userB.id,
+      destinyId: userB.destinyId,
+      discordUserId: userB.discordUserId,
+      age: userB.age,
+      gender: userB.gender,
+      preferredGender: ['any'],
+      minAgePref: 18,
+      maxAgePref: 99,
+      languages: ['en'],
+      interests: ['gaming'],
+      queuedAt: Date.now(),
+    };
+
+    const room = await matchmakingManager.createMatchRoom(ticketA, ticketB);
+
+    // User A explicitly picks only 'age' via the /reveal field picker.
+    await revealService.submitConsent(room.id, userA.id, ['age']);
+
+    // User B clicks "Request Mutual Reveal" — an implicit, full consent.
+    const result = await revealService.submitConsent(
+      room.id,
+      userB.id,
+      ['discordTag', 'destinyId', 'age', 'gender', 'interests'],
+      'narrow'
+    );
+
+    expect(result.completed).toBe(true);
+
+    // Only 'age' was agreed, so nothing else may be revealed.
+    expect(result.agreedFields).toEqual(['age']);
+    expect(result.user1Data?.discordTag).toBeUndefined();
+    expect(result.user2Data?.discordTag).toBeUndefined();
+    expect(result.user1Data?.destinyId).toBeUndefined();
+    expect(result.user2Data?.destinyId).toBeUndefined();
+    expect(result.user1Data?.gender).toBeUndefined();
+    expect(result.user2Data?.gender).toBeUndefined();
+    expect(result.user1Data?.interests).toBeUndefined();
+    expect(result.user2Data?.interests).toBeUndefined();
+    expect(result.user1Data?.age).toBe(userA.age);
+    expect(result.user2Data?.age).toBe(userB.age);
   });
 });

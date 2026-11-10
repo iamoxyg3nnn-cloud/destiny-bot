@@ -75,7 +75,7 @@ Destiny is designed as a modular, distributed, multi-process ecosystem capable o
 ### D. Destiny Coins (DC) Atomic Ledger
 - Currency is non-redeemable for real money.
 - Server-authoritative settlements using SQL row-level locks (`FOR UPDATE`) and idempotency keys (`reference_id`).
-- All 9 games run provably fair PRNG with server seeds.
+- Conversation rewards, daily streaks, and cosmetics are settled server-side with the same idempotency guarantees.
 
 ### E. Scheduled 7:30 PM IST Daily Reminders
 - Daily social matchmaking event scheduled at 7:30 PM IST (19:30 Asia/Kolkata).

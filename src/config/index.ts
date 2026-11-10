@@ -48,12 +48,37 @@ const envSchema = z.object({
 
 export type Config = z.infer<typeof envSchema>;
 
+/**
+ * Treats empty strings as "not set".
+ *
+ * `scripts/setup-env.js` writes `KEY=` for any secret that is absent from the
+ * environment, and a hand-written `.env` may do the same. Zod's `.default()`
+ * only kicks in for `undefined`, so an empty string would otherwise be
+ * accepted as a literal value and silently shadow the real configuration.
+ */
+function withoutEmptyStrings(source: NodeJS.ProcessEnv): Record<string, string> {
+  const cleaned: Record<string, string> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === 'string' && value.trim() === '') continue;
+    if (value !== undefined) cleaned[key] = value;
+  }
+  return cleaned;
+}
+
 function loadConfig(): Config {
-  const result = envSchema.safeParse(process.env);
+  const cleaned = withoutEmptyStrings(process.env);
+  const result = envSchema.safeParse(cleaned);
+
   if (!result.success) {
     console.error('❌ Invalid environment configuration:', result.error.format());
-    return envSchema.parse({});
+    // Fall back per-field so one bad variable cannot discard every other
+    // (previously this dropped the whole environment back to hardcoded
+    // defaults, which silently ignored real secrets).
+    const fallback: Record<string, unknown> = {};
+    for (const key of Object.keys(cleaned)) fallback[key] = cleaned[key];
+    return envSchema.parse(fallback);
   }
+
   return result.data;
 }
 

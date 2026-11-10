@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { usePathname } from 'next/navigation';
-import { RefreshCw, Radio, Zap, Shield, Sparkles } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { RefreshCw, Radio, Zap, Shield, Sparkles, LogOut } from 'lucide-react';
 import { CommandMenu } from './ui/command-menu';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 
 export function Header() {
   const pathname = usePathname();
+  const router = useRouter();
   const [syncing, setSyncing] = useState(false);
   const [pingMs, setPingMs] = useState(18);
 
@@ -26,8 +27,6 @@ export function Header() {
         return 'Gender Verification Queue';
       case '/economy':
         return 'Economy & Currency Ledger';
-      case '/games':
-        return 'Provably Fair Games & Odds';
       case '/settings':
         return 'System Settings & Automation';
       case '/logs':
@@ -47,6 +46,15 @@ export function Header() {
       // ignore
     } finally {
       setTimeout(() => setSyncing(false), 500);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      router.replace('/login');
+      router.refresh();
     }
   };
 
@@ -83,6 +91,12 @@ export function Header() {
         >
           <RefreshCw className={`w-3.5 h-3.5 text-zinc-400 ${syncing ? 'animate-spin text-zinc-200' : ''}`} />
           <span className="hidden sm:inline">Sync</span>
+        </Button>
+
+        {/* End Session */}
+        <Button size="sm" variant="secondary" onClick={handleLogout} title="End console session">
+          <LogOut className="w-3.5 h-3.5 text-zinc-400" />
+          <span className="hidden sm:inline">Sign out</span>
         </Button>
       </div>
     </header>

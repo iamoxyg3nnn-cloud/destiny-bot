@@ -24,7 +24,7 @@ In compliance with open-source licensing rules, **zero proprietary code was blin
 | **Anonymity Guarantee** | Partial (leaks user tags on deanon) | **None** (publicly tags `@user1 <-> @user2`) | **Broken** (posts usernames to mod log) | N/A |
 | **Scalability** | Single server / basic sharding | Single node / SQLite bottleneck | Single server / in-memory | N/A |
 | **Web Dashboard** | None | None | None | N/A |
-| **Economy & Games** | None | None | None | N/A |
+| **Economy & Rewards** | None | None | None | N/A |
 
 ---
 
@@ -47,7 +47,7 @@ In compliance with open-source licensing rules, **zero proprietary code was blin
   - Interest overlap scoring formula:
     $$\text{Score} = \frac{|\text{Interests}_A \cap \text{Interests}_B|}{\max(|\text{Interests}_A|, |\text{Interests}_B|)} \times 100$$
   - Daily scheduled reminder cadence (configured for 7:30 PM IST with quiet hours and opt-out).
-  - Engaging ice-breakers and trivia starters when a new room connects.
+  - Engaging ice-breakers and conversation starters when a new room connects.
 
 ### C. `stealth-bot` (Finite-Loop-Club-NMAMIT)
 - **Vulnerabilities**:
@@ -58,7 +58,7 @@ In compliance with open-source licensing rules, **zero proprietary code was blin
 
 ### D. `warrensteph/discord-economy-bot`
 - The repository was confirmed deleted or private on GitHub (`fatal: repository not found`).
-- **Destiny Solution**: Destiny builds a brand new, bank-grade atomic economy engine from scratch with PostgreSQL row-level locks (`FOR UPDATE`), idempotency keys (`reference_id`), 9 casino/social games (Coin Flip, Blackjack, Dice, Slots, Higher/Lower, Truth or Dare, Would You Rather, Trivia, Compatibility Quiz), daily streak multipliers, missions, and cosmetics shop.
+- **Destiny Solution**: Destiny builds a brand new, bank-grade atomic economy engine from scratch with PostgreSQL row-level locks (`FOR UPDATE`), idempotency keys (`reference_id`), conversation rewards, daily streak multipliers, room milestones, missions, and a cosmetics shop.
 
 ---
 

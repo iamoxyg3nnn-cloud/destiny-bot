@@ -20,20 +20,15 @@
 - **Mutual-Consent Profile Reveal**: Fine-grained field selection (`age`, `gender`, `interests`, `destinyId`, `discordTag`). A field is **only revealed if both partners agree**.
 - **Global Cross-Server Safety**: Blocking and abuse restrictions apply globally across all joined Discord servers.
 
-### 🪙 Step 3 — Destiny Coins (DC), Progression & 9 Games
+### 🪙 Step 3 — Destiny Coins (DC), Progression & Conversation Rewards
 - **Atomic DC Ledger**: Bank-grade SQL row-level locks (`FOR UPDATE`) with unique idempotency keys (`reference_id`) preventing double rewards, race conditions, or negative balances. Currency is non-redeemable for real money.
-- **All 9 Built-in Games**:
-  1. 🪙 **Coin Flip**: Provably fair heads/tails with 2x payout.
-  2. 🃏 **Blackjack**: Classic casino blackjack with dealer soft-17 rules and 3:2 natural payouts.
-  3. 🎲 **Dice**: 2d6 rolls with under 7 (2.3x), exact 7 (5.8x), and over 7 (2.3x) predictions.
-  4. 🎰 **Slots**: 3-reel slot machine with cherries, bells, diamonds, and a 200x Lucky 7 Jackpot.
-  5. 📈 **Higher / Lower**: Streak card comparison game.
-  6. 🔍 **Truth or Dare**: 120+ curated anonymous-safe questions and dares across chill, fun, deep, and spicy levels.
-  7. 🤔 **Would You Rather**: Engaging dilemmas with real-time global vote percentages.
-  8. 🧠 **Trivia Duel**: Timed knowledge questions awarding 25 DC on correct answers.
-  9. 🪐 **Compatibility Quiz**: 5-question partner vibe assessment calculating synergy score (50%-100%) and awarding Connection XP.
-- **Connection Tiers**: `Strangers` ➔ `Acquaintances` ➔ `Familiar` ➔ `Connection` ➔ `Trusted Connection` ➔ `Destiny`.
-- **Daily Streak System**: 24-hour claim window with consecutive streak multipliers.
+- **Conversation-First Rewards**:
+  1. 💬 **Icebreakers**: Curated conversation prompts delivered in DMs or to both partners in an active room.
+  2. 🔥 **Daily Streaks**: 24-hour claim window with consecutive streak multipliers.
+  3. 🏆 **Connection Tiers**: `Strangers` ➔ `Acquaintances` ➔ `Familiar` ➔ `Connection` ➔ `Trusted Connection` ➔ `Destiny`.
+  4. 🎁 **Room Milestones**: Earn DC and Connection XP for meaningful conversations.
+- **Identity Wardrobe**: Unlock and equip card themes, titles, badges, and a 5-slot insignia rack.
+- **Cosmetics Shop**: Spend DC on profile themes, badges, titles, and reveal tokens.
 
 ### 📊 Step 4 — Modern Web Admin Dashboard
 - **Built with Next.js 14, Tailwind CSS, and Recharts**.
@@ -107,11 +102,12 @@ Open **http://localhost:3000** to access the Admin Dashboard.
 | `/match [gender_pref] [interests]` | Join anonymous matchmaking queue with customizable filters |
 | `/leave` | Exit current room session or queue |
 | `/reveal` | Request mutual profile reveal with field selection |
-| `/profile [age] [gender]` | View/edit your anonymous Destiny ID and profile stats |
+| `/profile [age] [gender] [bio] [interests] [languages] [looking_for]` | Auto-setup or edit your anonymous profile and render your card |
 | `/coins` | Check Destiny Coins balance and transaction history |
 | `/daily` | Claim 24h daily streak reward |
-| `/games <coinflip \| blackjack \| dice \| slots \| ...>` | Play casino or social games |
-| `/shop [buy]` | Browse or purchase cosmetic titles, badges, and reveal cards |
+| `/icebreaker` | Get a curated conversation starter for your room or DMs |
+| `/wardrobe` | Equip card themes and up to 5 insignia badges |
+| `/shop [buy]` | Browse or purchase cosmetic titles, badges, themes, and reveal cards |
 | `/report <category> <description>` | Safely report user with automated chat excerpt |
 | `/block [destiny_id]` | Globally block user across all servers |
 | `/settings` | Configure 7:30 PM IST daily reminders, timezone, and quiet hours |

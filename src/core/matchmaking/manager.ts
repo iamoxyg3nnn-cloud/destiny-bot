@@ -5,7 +5,8 @@ import { redis } from '../../redis/client.js';
 import { lockManager } from '../../redis/locks.js';
 import { anonymizer } from '../anonymizer.js';
 import { MessageFlags, ContainerBuilder, TextDisplayBuilder } from 'discord.js';
-import { COLORS } from '../../bot/embeds/index.js';
+import { embedService, COLORS } from '../../bot/embeds/index.js';
+import { getDiscordClient } from '../../bot/client-registry.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -14,7 +15,7 @@ const TICKET_TTL_MS = 900_000; // 15 minutes TTL
 
 export const ICE_BREAKERS = [
   "✨ If you could travel to any era in human history for 24 hours, where and when would you go?",
-  "🎮 What's a game or movie that completely changed your perspective on life?",
+  "🎮 What's a movie or show that completely changed your perspective on life?",
   "☕ Are you a morning coffee person or a late-night midnight owl?",
   "🚀 If humanity colonized Mars tomorrow, would you take a one-way ticket?",
   "🎵 What's one song that you can listen to on repeat without ever getting tired of it?",
@@ -255,14 +256,13 @@ export class MatchmakingManager {
 
     // Notify both users in Discord DMs
     try {
-      const { bot } = await import('../../bot/index.js');
-      const { embedService } = await import('../../bot/embeds/index.js');
-      if (bot.client && bot.client.isReady()) {
+      const client = getDiscordClient();
+      if (client && client.isReady()) {
         const iceBreaker = this.getRandomIceBreaker();
 
         const [userA, userB] = await Promise.all([
-          bot.client.users.fetch(ticketA.discordUserId).catch(() => null),
-          bot.client.users.fetch(ticketB.discordUserId).catch(() => null),
+          client.users.fetch(ticketA.discordUserId).catch(() => null),
+          client.users.fetch(ticketB.discordUserId).catch(() => null),
         ]);
 
         let sentA = false;

@@ -11,7 +11,6 @@ import {
   ShopItem, 
   NotificationSettings, 
   AdminAuditLog,
-  GameOutcome,
   GuildSettings
 } from '../core/types.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -36,7 +35,6 @@ export class DatabaseService {
   public mockShopItems: Map<string, ShopItem> = new Map();
   public mockInventory: Map<string, string[]> = new Map(); // userId -> itemId[]
   public mockAuditLogs: AdminAuditLog[] = [];
-  public mockGames: GameOutcome[] = [];
   public mockNotifications: Map<string, NotificationSettings> = new Map();
   public profileExtensions: Map<string, { bio?: string; matchIntent?: string; cardTheme?: string; equippedBadges?: string[] }> = new Map();
 
@@ -296,6 +294,10 @@ export class DatabaseService {
       activeRoomId: null,
       isBanned: false,
       reputationScore: 100,
+      bio: user.bio,
+      matchIntent: user.matchIntent,
+      cardTheme: user.cardTheme,
+      equippedBadges: user.equippedBadges,
       createdAt: now,
       updatedAt: now,
     };
@@ -332,6 +334,26 @@ export class DatabaseService {
     const mapped = this.mapUser(data);
     this.userCache.set(mapped.id, { user: mapped, expires: Date.now() + 60_000 });
     this.discordUserCache.set(mapped.discordUserId, { user: mapped, expires: Date.now() + 60_000 });
+
+    if (user.bio !== undefined || user.matchIntent !== undefined || user.cardTheme !== undefined || user.equippedBadges !== undefined) {
+      const ext = {
+        bio: user.bio,
+        matchIntent: user.matchIntent,
+        cardTheme: user.cardTheme,
+        equippedBadges: user.equippedBadges,
+      };
+      this.profileExtensions.set(mapped.id, ext);
+      redis.set(`user:profile_ext:${mapped.id}`, JSON.stringify(ext), 86400 * 30).catch(() => {});
+
+      const optFields: any = {};
+      if (user.bio !== undefined) optFields.bio = user.bio;
+      if (user.matchIntent !== undefined) optFields.match_intent = user.matchIntent;
+      if (user.cardTheme !== undefined) optFields.card_theme = user.cardTheme;
+      if (user.equippedBadges !== undefined) optFields.equipped_badges = user.equippedBadges;
+      await Promise.resolve(this.client.from('users').update(optFields).eq('id', mapped.id)).catch(() => {});
+      return await this.enrichProfileExtensions(mapped);
+    }
+
     return mapped;
   }
 
@@ -871,36 +893,6 @@ export class DatabaseService {
     return !error;
   }
 
-  // ---------------- RECORD GAME OUTCOME ----------------
-  async recordGame(outcome: Omit<GameOutcome, 'id' | 'createdAt'>): Promise<GameOutcome> {
-    const id = uuidv4();
-    const now = new Date().toISOString();
-    const fullOutcome: GameOutcome = {
-      ...outcome,
-      id,
-      createdAt: now,
-    };
-
-    if (this.isMockMode || !this.client) {
-      this.mockGames.push(fullOutcome);
-      return fullOutcome;
-    }
-
-    await this.client.from('games_history').insert({
-      id: fullOutcome.id,
-      user_id: fullOutcome.userId,
-      room_id: fullOutcome.roomId,
-      game_type: fullOutcome.gameType,
-      bet_amount: fullOutcome.betAmount,
-      payout_amount: fullOutcome.payoutAmount,
-      outcome: fullOutcome.outcome,
-      server_seed: fullOutcome.serverSeed,
-      game_state: fullOutcome.gameState,
-    });
-
-    return fullOutcome;
-  }
-
   // ---------------- AUDIT LOGS ----------------
   async logAdminAction(adminId: string, action: string, targetType: string, targetId: string, changes: Record<string, any> = {}, ipAddress?: string): Promise<void> {
     const log: AdminAuditLog = {
@@ -994,29 +986,6 @@ export class DatabaseService {
       referenceId: t.reference_id,
       metadata: t.metadata || {},
       createdAt: t.created_at,
-    }));
-  }
-
-  async getGamesHistory(limit: number = 50): Promise<GameOutcome[]> {
-    if (this.isMockMode || !this.client) {
-      return [...this.mockGames].reverse().slice(0, limit);
-    }
-    const { data } = await this.client
-      .from('games_history')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    return (data || []).map((g: any) => ({
-      id: g.id,
-      userId: g.user_id,
-      roomId: g.room_id,
-      gameType: g.game_type,
-      betAmount: Number(g.bet_amount),
-      payoutAmount: Number(g.payout_amount),
-      outcome: g.outcome,
-      serverSeed: g.server_seed,
-      gameState: g.game_state || {},
-      createdAt: g.created_at,
     }));
   }
 

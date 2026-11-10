@@ -6,9 +6,9 @@ import {
   ButtonBuilder,
   ButtonStyle,
   StringSelectMenuBuilder,
-  AttachmentBuilder,
   PermissionFlagsBits,
   ChannelType,
+  ContainerBuilder,
   MessageFlags
 } from 'discord.js';
 import { db } from '../../database/supabase.js';
@@ -18,12 +18,13 @@ import { embedService, COLORS } from '../embeds/index.js';
 import { streakService } from '../../core/economy/streaks.js';
 import { walletService } from '../../core/economy/wallet.js';
 import { shopService } from '../../core/economy/shop.js';
-import { gameManager } from '../../core/games/manager.js';
 import { reporterService } from '../../core/moderation/reporter.js';
 import { blockerService } from '../../core/moderation/blocker.js';
 import { revealService } from '../../core/moderation/reveal.js';
-import { ProfileField } from '../../core/types.js';
-import { profileCardGenerator } from '../../core/profile/card-generator.js';
+import { UserProfile } from '../../core/types.js';
+import { buildProfileCard, createProfileActionRow, isProfileComplete } from '../profile-view.js';
+import { buildProfileModal, normalizeGender, parseList } from '../profile-modal.js';
+import { pickIcebreaker } from '../icebreakers.js';
 
 export const slashCommands = [
   // 1. /match
@@ -62,7 +63,7 @@ export const slashCommands = [
   // 4. /profile
   new SlashCommandBuilder()
     .setName('profile')
-    .setDescription('View your anonymous Destiny ID and profile stats card')
+    .setDescription('View your profile card or auto-create/edit your anonymous profile')
     .addIntegerOption((opt) =>
       opt.setName('age').setDescription('Update your age (must be 18+)').setRequired(false).setMinValue(18).setMaxValue(99)
     )
@@ -93,6 +94,32 @@ export const slashCommands = [
           { name: 'Gaming Duo', value: 'GAMING DUO' },
           { name: 'Chill Vibes', value: 'CHILL VIBES' }
         )
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName('interests')
+        .setDescription('Comma-separated interests (e.g. music, anime, coding)')
+        .setRequired(false)
+        .setMaxLength(150)
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName('languages')
+        .setDescription('Comma-separated languages you speak')
+        .setRequired(false)
+        .setMaxLength(50)
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName('looking_for')
+        .setDescription('Who you would like to be matched with')
+        .setRequired(false)
+        .addChoices(
+          { name: 'Anyone', value: 'any' },
+          { name: 'Male', value: 'male' },
+          { name: 'Female', value: 'female' },
+          { name: 'Non-Binary', value: 'non_binary' }
+        )
     ),
 
   // 5. /coins
@@ -105,75 +132,7 @@ export const slashCommands = [
     .setName('daily')
     .setDescription('Claim your 24h daily Destiny Coins streak reward'),
 
-  // 7. /games
-  new SlashCommandBuilder()
-    .setName('games')
-    .setDescription('Play games for fun or bet Destiny Coins')
-    .addSubcommand((sub) =>
-      sub
-        .setName('coinflip')
-        .setDescription('Flip a coin (2x payout)')
-        .addStringOption((opt) =>
-          opt
-            .setName('choice')
-            .setDescription('Heads or Tails')
-            .setRequired(true)
-            .addChoices({ name: 'Heads', value: 'heads' }, { name: 'Tails', value: 'tails' })
-        )
-        .addIntegerOption((opt) => opt.setName('bet').setDescription('Amount of DC to bet').setRequired(true).setMinValue(1))
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName('blackjack')
-        .setDescription('Play a round of classic Blackjack against the dealer')
-        .addIntegerOption((opt) => opt.setName('bet').setDescription('Amount of DC to bet').setRequired(true).setMinValue(1))
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName('dice')
-        .setDescription('Roll 2d6 dice (predict under 7, exact 7, or over 7)')
-        .addStringOption((opt) =>
-          opt
-            .setName('prediction')
-            .setDescription('Under 7 (2.3x), Exact 7 (5.8x), Over 7 (2.3x)')
-            .setRequired(true)
-            .addChoices(
-              { name: 'Under 7 (2.3x)', value: 'under' },
-              { name: 'Exact 7 (5.8x)', value: 'seven' },
-              { name: 'Over 7 (2.3x)', value: 'over' }
-            )
-        )
-        .addIntegerOption((opt) => opt.setName('bet').setDescription('Amount of DC to bet').setRequired(true).setMinValue(1))
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName('slots')
-        .setDescription('Spin the 3-reel slot machine (up to 200x Jackpot!)')
-        .addIntegerOption((opt) => opt.setName('bet').setDescription('Amount of DC to bet').setRequired(true).setMinValue(1))
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName('truthordare')
-        .setDescription('Get a curated anonymous-safe Truth or Dare prompt')
-        .addStringOption((opt) =>
-          opt
-            .setName('type')
-            .setDescription('Truth or Dare')
-            .setRequired(false)
-            .addChoices({ name: 'Truth', value: 'truth' }, { name: 'Dare', value: 'dare' })
-        )
-    )
-    .addSubcommand((sub) =>
-      sub.setName('wouldyourather').setDescription('Get a thought-provoking dilemma with global voting stats')
-    )
-    .addSubcommand((sub) =>
-      sub.setName('trivia').setDescription('Answer a trivia question to win 25 Destiny Coins')
-    )
-    .addSubcommand((sub) =>
-      sub.setName('compatibility').setDescription('Take the 5-question compatibility quiz with your partner')
-    ),
-
-  // 8. /shop
+  // 7. /shop
   new SlashCommandBuilder()
     .setName('shop')
     .setDescription('Browse and purchase cosmetic titles, badges, and reveal tokens')
@@ -280,22 +239,42 @@ export const slashCommands = [
  * Main Interaction Handler for all Discord Slash Commands
  */
 export async function handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  const { commandName, user: discordUser } = interaction;
+
+  // `/profile` must be handled before the generic defer so it can open a modal
+  // instantly for new or incomplete profiles.
+  if (commandName === 'profile') {
+    await handleProfileCommand(interaction);
+    return;
+  }
+
   // Immediately defer reply to avoid Discord 3-second timeout on network DB operations
   if (!interaction.deferred && !interaction.replied) {
     await interaction.deferReply({ ephemeral: true }).catch(() => {});
   }
 
   const respond = async (opts: any): Promise<any> => {
+    const payload = { ...opts };
+    delete payload.ephemeral;
+
+    const components = Array.isArray(payload.components) ? payload.components : [];
+    const hasV2Container = components.some((component: any) => component instanceof ContainerBuilder || component?.type === 17);
+    if (hasV2Container) {
+      payload.flags = payload.flags !== undefined
+        ? (payload.flags | MessageFlags.IsComponentsV2)
+        : MessageFlags.IsComponentsV2;
+      delete payload.content;
+      payload.embeds = [];
+    }
+
     if (interaction.deferred || interaction.replied) {
-      return await interaction.editReply(opts).catch(console.error);
+      return await interaction.editReply(payload).catch(console.error);
     }
     return await interaction.reply(opts).catch(console.error);
   };
 
-  const { commandName, user: discordUser } = interaction;
-
   // Resolve user account in Supabase
-  let user = await db.getUserByDiscordId(discordUser.id);
+  let user = await db.getUserByDiscordId(discordUser.id, true);
   if (!user) {
     user = await db.createOrUpdateUser({
       discordUserId: discordUser.id,
@@ -306,11 +285,23 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
   // 1. MATCH
   if (commandName === 'match') {
+    if (!isProfileComplete(user)) {
+      await respond({
+        content: '⚠️ Please complete your profile first with `/profile` before joining matchmaking.',
+      });
+      return;
+    }
+
     const genderPref = interaction.options.getString('gender_preference');
     const interestsStr = interaction.options.getString('interests');
 
-    if (genderPref) user.preferredGender = [genderPref];
-    if (interestsStr) user.interests = interestsStr.split(',').map((s) => s.trim().toLowerCase());
+    const updates: Partial<UserProfile> & { discordUserId: string } = { discordUserId: discordUser.id };
+    if (genderPref) updates.preferredGender = [genderPref];
+    if (interestsStr) updates.interests = parseList(interestsStr);
+
+    if (genderPref || interestsStr) {
+      user = await db.createOrUpdateUser(updates);
+    }
 
     const result = await matchmakingManager.joinQueue(user, interaction.guildId || undefined);
 
@@ -325,7 +316,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       .setDescription(
         `You are now in the Destiny matchmaking queue!\n` +
         `• **Age Criteria**: 18+\n` +
-        `• **Gender Preference**: \`${user.preferredGender.join(', ')}\`\n` +
+        `• **Gender Preference**: \`${(user.preferredGender || ['any']).join(', ')}\`\n` +
         `• **Interests**: ${user.interests.length > 0 ? user.interests.map((i) => `\`${i}\``).join(' ') : '*Any*'}\n\n` +
         `⏳ We will deliver a private DM the moment a compatible partner arrives!`
       )
@@ -340,11 +331,32 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
   // 2. LEAVE
   if (commandName === 'leave') {
-    await interaction.deferReply({ ephemeral: true });
+    let activeRoomId = user.activeRoomId;
+    if (!activeRoomId) {
+      activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+    }
 
-    if (user.activeRoomId) {
-      const room = await db.getRoomById(user.activeRoomId);
-      await db.endRoom(user.activeRoomId, 'user_left');
+    if (activeRoomId) {
+      const room = await db.getRoomById(activeRoomId);
+      await db.endRoom(activeRoomId, 'user_left');
+
+      if (room) {
+        const isUser1 = room.user1Id === user.id;
+        const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
+        if (partnerDiscordId) {
+          interaction.client.users.fetch(partnerDiscordId)
+            .then((partner) => partner.send({
+              embeds: [
+                new EmbedBuilder()
+                  .setColor(COLORS.DARK)
+                  .setTitle('🚪 Chat Session Ended')
+                  .setDescription('Your anonymous partner has left the chat session. Your real identity remained hidden.'),
+              ],
+            }))
+            .catch(() => {});
+        }
+      }
+
       await respond({ content: '🚪 You have cleanly ended the anonymous chat session. Your real identity remained hidden.' });
       return;
     }
@@ -360,79 +372,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     return;
   }
 
-  // 3. PROFILE
-  if (commandName === 'profile') {
-    const age = interaction.options.getInteger('age');
-    const gender = interaction.options.getString('gender') as any;
-    const bio = interaction.options.getString('bio');
-    const intent = interaction.options.getString('intent');
-
-    if (age || gender || bio !== null || intent) {
-      if (age) user.age = age;
-      if (gender) user.gender = gender;
-      if (bio !== null) user.bio = bio;
-      if (intent) user.matchIntent = intent;
-      user = await db.createOrUpdateUser(user);
-    }
-
-    await interaction.deferReply({ ephemeral: false });
-
-    const userRooms = await db.getUserRooms(user.id);
-    let totalMinutes = 0;
-    for (const r of userRooms) {
-      if (r.startedAt && r.endedAt) {
-        const diff = (new Date(r.endedAt).getTime() - new Date(r.startedAt).getTime()) / 60000;
-        if (diff > 0) totalMinutes += diff;
-      }
-    }
-    const hours = Math.floor(totalMinutes / 60);
-    const mins = Math.floor(totalMinutes % 60);
-    const chatHoursText = hours > 0 || mins > 0 ? `${hours}h ${mins}m` : '0h 00m';
-
-    const avatarUrl = discordUser.displayAvatarURL({ extension: 'png', size: 256 });
-    const displayName = interaction.member && 'displayName' in interaction.member
-      ? (interaction.member as any).displayName
-      : discordUser.displayName || 'Midnight Wolf';
-
-    const stats = {
-      sessionsCount: userRooms.length,
-      chatHoursText,
-      reputationPercent: user.reputationScore ?? 100,
-      personaName: displayName,
-      avatarUrl,
-      timezone: 'UTC+05:30',
-    };
-
-    const cardBuffer = await profileCardGenerator.generateCardPng(user, stats);
-    const attachment = new AttachmentBuilder(cardBuffer, { name: 'destiny_profile.png' });
-
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_profile')
-        .setLabel('Edit Profile')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_wardrobe')
-        .setLabel('Wardrobe')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_start')
-        .setLabel('Find Match')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_wallet')
-        .setLabel('Destiny Vault')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    await interaction.editReply({
-      files: [attachment],
-      components: [row],
-    });
-    return;
-  }
-
-  // 4. COINS
+  // 3. COINS
   if (commandName === 'coins') {
     const balance = await walletService.getBalance(user.id);
     const embed = new EmbedBuilder()
@@ -440,7 +380,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       .setTitle('🪙 Destiny Coins (DC) Vault')
       .setDescription(`Your current available balance: **${balance.toLocaleString()} DC**`)
       .addFields(
-        { name: '💡 Earn More', value: 'Use `/daily` for streak rewards, or win games using `/games`!', inline: false },
+        { name: '💡 Earn More', value: 'Use `/daily` for streak rewards and keep conversations going to unlock bonuses!', inline: false },
         { name: '🛍️ Cosmetic Shop', value: 'Use `/shop` to purchase exclusive titles and badges.', inline: false }
       );
 
@@ -464,121 +404,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     return;
   }
 
-    // 6. GAMES
-  if (commandName === 'games') {
-    const sub = interaction.options.getSubcommand();
-
-    if (sub === 'coinflip') {
-      const choice = interaction.options.getString('choice') as any;
-      const bet = interaction.options.getInteger('bet') || 10;
-      const res = await gameManager.playCoinFlip(user.id, choice, bet);
-
-      if (!res.success || !res.result) {
-        await respond({ content: `❌ ${res.error}`, ephemeral: true });
-        return;
-      }
-
-      const r = res.result;
-      const embed = new EmbedBuilder()
-        .setColor(r.isWin ? COLORS.SUCCESS : COLORS.DANGER)
-        .setTitle(`🪙 Coin Flip — ${r.isWin ? 'You Won!' : 'Better Luck Next Time!'}`)
-        .setDescription(
-          `You picked **${r.choice.toUpperCase()}**.\n` +
-          `The coin landed on **${r.result.toUpperCase()}**!\n\n` +
-          `• **Bet**: ${r.bet} DC\n` +
-          `• **Payout**: **${r.payout} DC**`
-        )
-        .setFooter({ text: `Provably Fair Server Seed: ${r.serverSeed.substring(0, 12)}...` });
-
-      await respond({ embeds: [embed], ephemeral: true });
-      return;
-    }
-
-    if (sub === 'slots') {
-      const bet = interaction.options.getInteger('bet') || 10;
-      const res = await gameManager.playSlots(user.id, bet);
-
-      if (!res.success || !res.result) {
-        await respond({ content: `❌ ${res.error}`, ephemeral: true });
-        return;
-      }
-
-      const s = res.result;
-      const embed = new EmbedBuilder()
-        .setColor(s.isWin ? COLORS.GOLD : COLORS.DARK)
-        .setTitle(`🎰 Destiny Slots — ${s.jackpot ? '💥 MEGA JACKPOT 💥' : (s.isWin ? 'Winner!' : 'No Match')}`)
-        .setDescription(
-          `## [ ${s.reels.join('  |  ')} ]\n\n` +
-          `• **Bet**: ${s.bet} DC\n` +
-          `• **Multiplier**: ${s.multiplier}x\n` +
-          `• **Payout**: **${s.payout} DC**`
-        );
-
-      await respond({ embeds: [embed], ephemeral: true });
-      return;
-    }
-
-    if (sub === 'truthordare') {
-      const type = interaction.options.getString('type') as any;
-      const prompt = gameManager.getTruthOrDare(type);
-      const embed = new EmbedBuilder()
-        .setColor(COLORS.DESTINY_PURPLE)
-        .setTitle(`${prompt.type === 'truth' ? '🔍 Truth' : '⚡ Dare'} (${prompt.level.toUpperCase()})`)
-        .setDescription(`> **"${prompt.content}"**`)
-        .setFooter({ text: 'Answer in chat with your partner!' });
-
-      await respond({ embeds: [embed] });
-      return;
-    }
-
-    if (sub === 'wouldyourather') {
-      const dilemma = gameManager.getWouldYouRather();
-      const embed = new EmbedBuilder()
-        .setColor(COLORS.PRIMARY)
-        .setTitle('🤔 Would You Rather?')
-        .setDescription(
-          `**A:** ${dilemma.optionA}\n\n*— OR —*\n\n` +
-          `**B:** ${dilemma.optionB}`
-        );
-
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`wyr_A_${dilemma.id}`).setLabel('Option A').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`wyr_B_${dilemma.id}`).setLabel('Option B').setStyle(ButtonStyle.Secondary)
-      );
-
-      await respond({ embeds: [embed], components: [row] });
-      return;
-    }
-
-    if (sub === 'trivia') {
-      const q = gameManager.getTrivia();
-      const embed = new EmbedBuilder()
-        .setColor(COLORS.PRIMARY)
-        .setTitle(`🧠 Trivia Duel — ${q.category} (${q.difficulty.toUpperCase()})`)
-        .setDescription(
-          `### ${q.question}\n\n` +
-          q.options.map((opt, i) => `**${i + 1}.** ${opt}`).join('\n')
-        )
-        .setFooter({ text: 'First correct answer wins +25 Destiny Coins!' });
-
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        q.options.map((_opt, i) =>
-          new ButtonBuilder()
-            .setCustomId(`triv_${q.id}_${i}`)
-            .setLabel(`${i + 1}`)
-            .setStyle(ButtonStyle.Secondary)
-        )
-      );
-
-      await respond({ embeds: [embed], components: [row] });
-      return;
-    }
-
-    await respond({ content: 'Game mode ready! Select a game option from /games', ephemeral: true });
-    return;
-  }
-
-  // 7. REVEAL
+  // 6. REVEAL
   if (commandName === 'reveal') {
     if (!user.activeRoomId) {
       await respond({ content: '❌ You must be in an active chat room to request a profile reveal.', ephemeral: true });
@@ -654,24 +480,8 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     }
 
     const catalog = await shopService.getCatalog();
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.GOLD)
-      .setTitle('🛍️ Destiny Cosmetic & Title Emporium');
-
-    if (catalog.length === 0) {
-      embed.setDescription('The Destiny Shop currently has no items in stock. Real cosmetics added by the administration will appear here!');
-    } else {
-      embed.setDescription('Use `/shop buy:<item_id>` to purchase items!');
-      embed.addFields(
-        catalog.map((item: any) => ({
-          name: `${item.icon} ${item.name} (\`${item.id}\`) — ${item.price} DC`,
-          value: item.description,
-          inline: false,
-        }))
-      );
-    }
-
-    await respond({ embeds: [embed], ephemeral: true });
+    const container = embedService.createShopContainer(catalog);
+    await respond({ components: [container], ephemeral: true });
     return;
   }
 
@@ -697,78 +507,14 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
   // 12. WARDROBE
   if (commandName === 'wardrobe') {
-    const themeMenu = new StringSelectMenuBuilder()
-      .setCustomId('destiny_select_theme')
-      .setPlaceholder(`Current Theme: ${(user.cardTheme || 'obsidian').toUpperCase()}`)
-      .addOptions(
-        { label: 'Obsidian Monochrome (Default)', value: 'obsidian', description: 'Deep obsidian void with dot-matrix hardware texture', default: (user.cardTheme || 'obsidian') === 'obsidian' },
-        { label: 'Cyber Damask', value: 'cyber_damask', description: 'Obsidian & high-contrast damask steel micro-lines', default: user.cardTheme === 'cyber_damask' },
-        { label: 'Frost Glaze', value: 'frost_glaze', description: 'Frosted titanium aesthetic with cool cyan sheen', default: user.cardTheme === 'frost_glaze' },
-        { label: 'Holographic Platinum', value: 'holographic_plat', description: 'Prestige platinum finish with iridescent micro-reflections', default: user.cardTheme === 'holographic_plat' }
-      );
-
-    const badgeOptions = [
-      { label: 'ID VERIFIED', value: 'ID VERIFIED', description: 'Emerald verified trust badge', default: user.equippedBadges?.includes('ID VERIFIED') },
-      { label: '7D STREAK', value: '7D STREAK', description: 'Flame 7-day conversation streak badge', default: user.equippedBadges?.includes('7D STREAK') },
-      { label: 'TITAN 1K', value: 'TITAN 1K', description: 'Commemorative Titan supporter badge', default: user.equippedBadges?.includes('TITAN 1K') },
-      { label: 'VETERAN', value: 'VETERAN', description: 'Awarded for completing 10+ match conversations', default: user.equippedBadges?.includes('VETERAN') },
-      { label: 'KARMA 100%', value: 'KARMA 100%', description: 'Pristine 100% reputation rating', default: user.equippedBadges?.includes('KARMA 100%') },
-      { label: 'STAR WANDERER', value: 'STAR WANDERER', description: 'Mark of an explorer across 50+ matches', default: user.equippedBadges?.includes('STAR WANDERER') },
-      { label: 'VIP', value: 'VIP', description: 'Destiny VIP patron badge', default: user.equippedBadges?.includes('VIP') },
-      { label: 'MYSTIC AURA', value: 'MYSTIC AURA', description: 'Glowing celestial aura rack insignia', default: user.equippedBadges?.includes('MYSTIC AURA') },
-    ];
-
-    const badgeMenu = new StringSelectMenuBuilder()
-      .setCustomId('destiny_select_badges')
-      .setPlaceholder('Equip up to 5 Insignia Badges for your Rack')
-      .setMinValues(1)
-      .setMaxValues(5)
-      .addOptions(badgeOptions);
-
-    const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(themeMenu);
-    const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(badgeMenu);
-    const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_card_static')
-        .setLabel('Preview Profile Card')
-        .setEmoji('📸')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_shop')
-        .setLabel('Shop Cosmetics')
-        .setEmoji('🛍️')
-        .setStyle(ButtonStyle.Primary)
-    );
-
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.DARK)
-      .setTitle('👔 Destiny Identity Wardrobe')
-      .setDescription(
-        `Customize the appearance of your **Destiny Profile Card**.\n\n` +
-        `• **Equipped Theme**: \`${(user.cardTheme || 'obsidian').toUpperCase()}\`\n` +
-        `• **Active Badges (${user.equippedBadges?.length || 5}/5)**: ${user.equippedBadges && user.equippedBadges.length > 0 ? user.equippedBadges.map((b: string) => `\`[${b}]\``).join(' ') : '\`[ID VERIFIED]\` \`[7D STREAK]\` \`[TITAN 1K]\` \`[VETERAN]\` \`[KARMA 100%]\`'}\n\n` +
-        `*Select a new card skin or choose up to 5 rack insignias below.*`
-      );
-
-    await respond({ embeds: [embed], components: [row1, row2, row3], ephemeral: true });
+    const container = embedService.createWardrobeContainer(user);
+    await respond({ components: [container], ephemeral: true });
     return;
   }
 
   // 13. ICEBREAKER
   if (commandName === 'icebreaker') {
-    const ICEBREAKERS = [
-      'If you could instantly become a master at any skill tonight, what would you choose?',
-      'What is a weird habit or ritual you have that you think nobody else does?',
-      'If you could step into the world of any anime, movie, or game for 24 hours, where are you going?',
-      'What is the best piece of advice you have ever heard that actually changed how you live?',
-      'What is a song or album that feels like a core memory to you?',
-      'If your life had a soundtrack, what genre would dominate it right now?',
-      'What is something you are secretly proud of that you do not get to brag about often?',
-      'Would you rather explore the depths of the ocean or the furthest edges of space?',
-      'What is the most spontaneous thing you have ever done that turned out amazing?',
-      'If you could talk to your future self 10 years from now, what single question would you ask?'
-    ];
-    const picked = ICEBREAKERS[Math.floor(Math.random() * ICEBREAKERS.length)];
+    const picked = pickIcebreaker();
 
     let activeRoomId = user.activeRoomId;
     if (!activeRoomId) {
@@ -782,33 +528,21 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         const partnerId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
         const partnerUser = partnerId ? await interaction.client.users.fetch(partnerId).catch(() => null) : null;
 
-        const promptEmbed = new EmbedBuilder()
-          .setColor(COLORS.DESTINY_PURPLE)
-          .setTitle('🎲 Curated Icebreaker Prompt')
-          .setDescription(`> **"${picked}"**`)
-          .setFooter({ text: 'Answer in chat with your partner!' });
+        const promptContainer = embedService.createIcebreakerContainer(picked, true);
 
         if (partnerUser) {
-          await partnerUser.send({ embeds: [promptEmbed] }).catch(() => {});
+          await partnerUser.send({
+            components: [promptContainer],
+            flags: [MessageFlags.IsComponentsV2],
+          }).catch(() => {});
         }
-        await respond({ embeds: [promptEmbed], ephemeral: false });
+        await respond({ components: [promptContainer], ephemeral: true });
         return;
       }
     }
 
-    const soloEmbed = new EmbedBuilder()
-      .setColor(COLORS.DESTINY_PURPLE)
-      .setTitle('🎲 Daily Icebreaker Question')
-      .setDescription(`> **"${picked}"**\n\n*Join a chat room to share your answer with someone new!*`);
-
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_start')
-        .setLabel('Find Match')
-        .setStyle(ButtonStyle.Success)
-    );
-
-    await respond({ embeds: [soloEmbed], components: [row], ephemeral: true });
+    const soloContainer = embedService.createIcebreakerContainer(picked, false);
+    await respond({ components: [soloContainer], ephemeral: true });
     return;
   }
 
@@ -887,4 +621,97 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     }
   }
 }
+
+/**
+ * `/profile` is fully automatic:
+ * - New or incomplete profiles open the setup modal immediately.
+ * - Complete profiles render the live profile card.
+ * - Any supplied options are merged in and the refreshed card is shown.
+ */
+async function handleProfileCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  const discordUser = interaction.user;
+  let user = await db.getUserByDiscordId(discordUser.id, true).catch(() => null);
+
+  const optionAge = interaction.options.getInteger('age');
+  const optionGender = interaction.options.getString('gender');
+  const optionBio = interaction.options.getString('bio');
+  const optionIntent = interaction.options.getString('intent');
+  const optionInterests = interaction.options.getString('interests');
+  const optionLanguages = interaction.options.getString('languages');
+  const optionLookingFor = interaction.options.getString('looking_for');
+
+  const hasOptions = [optionAge, optionGender, optionBio, optionIntent, optionInterests, optionLanguages, optionLookingFor]
+    .some((value) => value !== null && value !== undefined);
+
+  // New / incomplete users get the setup modal instantly, no extra button click needed.
+  if (!hasOptions && (!user || !isProfileComplete(user))) {
+    try {
+      await interaction.showModal(buildProfileModal(user));
+    } catch (err: any) {
+      console.error('[Bot] Failed to open profile modal:', err?.message || err);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: '⚠️ Could not open the profile editor. Please try `/profile` again in a moment.',
+          ephemeral: true,
+        }).catch(() => {});
+      }
+    }
+    return;
+  }
+
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferReply({ ephemeral: true }).catch(() => {});
+  }
+
+  try {
+    if (!user) {
+      user = await db.createOrUpdateUser({
+        discordUserId: discordUser.id,
+        age: optionAge ?? 18,
+        gender: optionGender ? normalizeGender(optionGender) : 'prefer_not_to_say',
+      });
+    }
+
+    if (hasOptions) {
+      const updates: Partial<UserProfile> & { discordUserId: string } = { discordUserId: discordUser.id };
+
+      if (optionAge !== null) updates.age = optionAge;
+      if (optionGender) updates.gender = normalizeGender(optionGender);
+      if (optionBio !== null) updates.bio = optionBio.trim();
+      if (optionIntent) updates.matchIntent = optionIntent;
+      if (optionInterests !== null && optionInterests.trim().length > 0) {
+        updates.interests = parseList(optionInterests);
+      }
+      if (optionLanguages !== null && optionLanguages.trim().length > 0) {
+        updates.languages = parseList(optionLanguages, 6);
+      }
+      if (optionLookingFor) updates.preferredGender = [optionLookingFor];
+
+      user = await db.createOrUpdateUser(updates);
+    }
+
+    if (!isProfileComplete(user)) {
+      await interaction.editReply({
+        content:
+          '⚠️ Your profile is still incomplete. Age (18+) and gender are required before you can match.\n' +
+          'Use `/profile` again to finish setup — it only takes a few seconds.',
+      }).catch(() => {});
+      return;
+    }
+
+    const { attachment } = await buildProfileCard(user, discordUser, interaction.member);
+
+    await interaction.editReply({
+      content: '🪐 **Your Destiny Profile** — update anything anytime with `/profile`.',
+      files: [attachment],
+      components: [createProfileActionRow()],
+    });
+  } catch (err: any) {
+    console.error('[Bot] handleProfileCommand error:', err?.message || err);
+    await interaction.editReply({
+      content: '⚠️ Something went wrong while loading your profile. Please try again.',
+    }).catch(() => {});
+  }
+}
+
 

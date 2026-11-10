@@ -16,10 +16,10 @@ async function bootstrap() {
   // 1. Start Workers
   startAllWorkers();
 
-  // 2. Start API Server
+  // 2. Start API Server (loopback only — never exposed directly)
   const port = config.PORT || 4000;
-  const server = apiApp.listen(port, () => {
-    console.log(`🌐 [API] Admin Backend listening on http://localhost:${port}`);
+  const server = apiApp.listen(port, '127.0.0.1', () => {
+    console.log(`🌐 [API] Admin Backend listening on http://127.0.0.1:${port}`);
   });
 
   // 3. Start Discord Bot

@@ -46,7 +46,7 @@ describe('Discord Components V2 ContainerBuilder Tests', () => {
     expect(buttonIds).toContain('destiny_btn_profile');
     expect(buttonIds).toContain('destiny_btn_verify');
     expect(buttonIds).toContain('destiny_btn_wallet');
-    expect(buttonIds).toContain('destiny_btn_games');
+    expect(buttonIds).toContain('destiny_btn_icebreaker');
   });
 
   it('should generate Verification Prompt container with Submit Verification button', () => {
@@ -106,7 +106,7 @@ describe('Discord Components V2 ContainerBuilder Tests', () => {
     expect(actionRows[0].components[0].custom_id).toBe('destiny_btn_cancel_queue');
   });
 
-  it('should generate Wallet container with Claim Daily and Games buttons nested inside', () => {
+  it('should generate Wallet container with Claim Daily and Icebreaker buttons nested inside', () => {
     const container = embedService.createWalletContainer(mockUser);
     const json: any = container.toJSON();
 
@@ -115,21 +115,22 @@ describe('Discord Components V2 ContainerBuilder Tests', () => {
     expect(actionRows.length).toBe(1);
     const ids = actionRows[0].components.map((b: any) => b.custom_id);
     expect(ids).toContain('destiny_btn_claim_daily');
-    expect(ids).toContain('destiny_btn_games');
+    expect(ids).toContain('destiny_btn_icebreaker');
   });
 
-  it('should generate Games Arcade container with 4 quick play buttons nested inside', () => {
-    const container = embedService.createGamesMenuContainer();
+  it('should generate Icebreaker container with a conversation prompt and follow-up action', () => {
+    const container = embedService.createIcebreakerContainer('What is your favourite late-night snack?');
     const json: any = container.toJSON();
 
     expect(json.type).toBe(17);
+    const textComponents = json.components.filter((c: any) => c.type === 10);
+    expect(textComponents[0].content).toContain('favourite late-night snack');
+
     const actionRows = json.components.filter((c: any) => c.type === 1);
     expect(actionRows.length).toBe(1);
     const ids = actionRows[0].components.map((b: any) => b.custom_id);
-    expect(ids).toContain('game_quick_flip');
-    expect(ids).toContain('game_quick_dice');
-    expect(ids).toContain('game_quick_trivia');
-    expect(ids).toContain('game_quick_wyr');
+    expect(ids).toContain('destiny_btn_icebreaker');
+    expect(ids).toContain('destiny_btn_start');
   });
 
   it('should generate Match Connection container with Reveal and Leave buttons inside the container', () => {

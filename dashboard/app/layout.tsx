@@ -10,7 +10,6 @@ import {
   ShieldAlert, 
   BadgeCheck, 
   Coins, 
-  Gamepad2, 
   Settings, 
   FileText,
   Activity,
@@ -44,10 +43,9 @@ export default function RootLayout({
       ],
     },
     {
-      label: 'Economy & Games',
+      label: 'Economy',
       items: [
         { name: 'Destiny Coins', href: '/economy', icon: Coins },
-        { name: 'Games & Probabilities', href: '/games', icon: Gamepad2 },
       ],
     },
     {

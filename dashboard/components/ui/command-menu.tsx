@@ -10,7 +10,6 @@ import {
   ShieldAlert, 
   BadgeCheck, 
   Coins, 
-  Gamepad2, 
   Settings, 
   FileText, 
   ExternalLink,
@@ -46,7 +45,6 @@ export function CommandMenu() {
     { title: 'Moderation & Safety Desk', href: '/moderation', icon: ShieldAlert, category: 'Navigation' },
     { title: 'Gender Verification Queue', href: '/verification', icon: BadgeCheck, category: 'Navigation' },
     { title: 'Destiny Coins & Ledger', href: '/economy', icon: Coins, category: 'Navigation' },
-    { title: 'Provable Games & Odds', href: '/games', icon: Gamepad2, category: 'Navigation' },
     { title: 'System Settings', href: '/settings', icon: Settings, category: 'Navigation' },
     { title: 'Administrative Audit Logs', href: '/logs', icon: FileText, category: 'Navigation' },
   ];

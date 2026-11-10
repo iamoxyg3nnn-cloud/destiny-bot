@@ -28,7 +28,7 @@ describe('Destiny Coins Wallet & Idempotency Tests', () => {
 
   it('should execute valid atomic credit and debit transactions', async () => {
     const creditRef = `test:credit:${uuidv4()}`;
-    const creditRes = await db.executeCoinTransaction(testUserId, 50, 'game_win', creditRef);
+    const creditRes = await db.executeCoinTransaction(testUserId, 50, 'room_milestone', creditRef);
     expect(creditRes.success).toBe(true);
     expect(creditRes.newBalance).toBe(150);
 
@@ -53,12 +53,12 @@ describe('Destiny Coins Wallet & Idempotency Tests', () => {
     const uniqueRef = `idempotent:bet:${uuidv4()}`;
 
     // First call charges 40 DC
-    const firstCall = await db.executeCoinTransaction(testUserId, -40, 'game_loss', uniqueRef);
+    const firstCall = await db.executeCoinTransaction(testUserId, -40, 'shop_purchase', uniqueRef);
     expect(firstCall.success).toBe(true);
     expect(firstCall.newBalance).toBe(60);
 
     // Second call with same referenceId must NOT deduct again
-    const secondCall = await db.executeCoinTransaction(testUserId, -40, 'game_loss', uniqueRef);
+    const secondCall = await db.executeCoinTransaction(testUserId, -40, 'shop_purchase', uniqueRef);
     expect(secondCall.success).toBe(true);
     expect(secondCall.newBalance).toBe(60);
 

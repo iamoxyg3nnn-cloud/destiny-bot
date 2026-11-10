@@ -41,3 +41,6 @@ data/assets/
 # Temporary scratch test scripts
 scratch/
 coverage/
+
+# Local admin tunnel runtime logs
+logs/

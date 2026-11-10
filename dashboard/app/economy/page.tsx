@@ -36,7 +36,7 @@ export default function EconomyPage() {
     ? data.faucetSinkData
     : [
         { category: 'Daily Streak', faucet: 0, sink: 0 },
-        { category: 'Games', faucet: 0, sink: 0 },
+        { category: 'Conversation Milestones', faucet: 0, sink: 0 },
         { category: 'Shop Items', faucet: 0, sink: 0 },
         { category: 'Adjustments', faucet: 0, sink: 0 },
       ];
@@ -77,7 +77,7 @@ export default function EconomyPage() {
         <CardHeader>
           <div>
             <CardTitle>Currency Circulation: Faucet vs Sink</CardTitle>
-            <CardDescription>Total coins minted into circulation versus coins burned in games and shop</CardDescription>
+            <CardDescription>Total coins minted for conversations and daily streaks versus coins burned in the shop</CardDescription>
           </div>
           <div className="flex items-center gap-3 text-xs font-mono">
             <Badge variant="emerald" dot>Minted (Faucet)</Badge>
@@ -124,7 +124,7 @@ export default function EconomyPage() {
                 <EmptyState
                   icon={Coins}
                   title="No Transactions Recorded"
-                  description="When users claim daily streaks or play games in Discord, transactions stream here."
+                  description="When users claim daily streaks or reach conversation milestones in Discord, transactions stream here."
                 />
               ) : (
                 data.transactions.map((tx: any) => (

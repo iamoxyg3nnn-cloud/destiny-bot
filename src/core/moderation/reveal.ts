@@ -10,6 +10,16 @@ export interface RevealConsentResult {
   message: string;
 }
 
+/**
+ * How a consent submission should combine with any consent the user already gave.
+ *
+ * - `replace`: the user made an explicit choice (e.g. the /reveal field picker),
+ *   so their new selection fully replaces their previous one.
+ * - `narrow`: the consent was granted implicitly (e.g. "Request Mutual Reveal"
+ *   button), so it may only narrow what the user already agreed to — never widen it.
+ */
+export type ConsentMode = 'replace' | 'narrow';
+
 export class RevealService {
   /**
    * Submit reveal consent and selected fields for a user in an active room
@@ -17,7 +27,8 @@ export class RevealService {
   async submitConsent(
     roomId: string,
     userId: string,
-    fields: ProfileField[]
+    fields: ProfileField[],
+    mode: ConsentMode = 'replace'
   ): Promise<RevealConsentResult> {
     return await lockManager.withLock(`lock:reveal:${roomId}`, async () => {
       const room = await db.getRoomById(roomId);
@@ -33,10 +44,20 @@ export class RevealService {
       }
 
       // Update the user's reveal preferences
+      const previous = isUser1 ? room.revealStatusUser1 : room.revealStatusUser2;
+      const effectiveFields = mode === 'narrow' && previous?.consented
+        ? fields.filter((f) => previous.revealedFields.includes(f))
+        : fields;
+
+      // Detect whether the reveal was already completed before this submission so
+      // the bonus XP is only granted on the transition into a completed reveal.
+      const otherStatus = isUser1 ? room.revealStatusUser2 : room.revealStatusUser1;
+      const wasAlreadyComplete = Boolean(previous?.consented && otherStatus?.consented);
+
       if (isUser1) {
-        room.revealStatusUser1 = { consented: true, revealedFields: fields };
+        room.revealStatusUser1 = { consented: true, revealedFields: effectiveFields };
       } else {
-        room.revealStatusUser2 = { consented: true, revealedFields: fields };
+        room.revealStatusUser2 = { consented: true, revealedFields: effectiveFields };
       }
 
       await db.updateRoom(room);
@@ -51,9 +72,10 @@ export class RevealService {
         const u2 = await db.getUserById(room.user2Id);
 
         // Filter user data to ONLY agreed fields
-        const filterData = (user: UserProfile | null) => {
+        const filterData = (user: UserProfile | null): Partial<UserProfile> & { discordTag?: string } => {
           if (!user) return {};
-          const filtered: any = { destinyId: user.destinyId };
+          const filtered: Partial<UserProfile> & { discordTag?: string } = {};
+          if (agreedFields.includes('destinyId')) filtered.destinyId = user.destinyId;
           if (agreedFields.includes('age')) filtered.age = user.age;
           if (agreedFields.includes('gender')) filtered.gender = user.gender;
           if (agreedFields.includes('interests')) filtered.interests = user.interests;
@@ -61,8 +83,10 @@ export class RevealService {
           return filtered;
         };
 
-        // Award bonus Connection XP for mutual reveal
-        await db.updateRoomXP(roomId, 100);
+        // Award bonus Connection XP for mutual reveal (only once per room).
+        if (!wasAlreadyComplete) {
+          await db.updateRoomXP(roomId, 100);
+        }
 
         return {
           completed: true,

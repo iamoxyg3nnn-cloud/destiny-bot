@@ -17,7 +17,9 @@ import { matchmakingManager } from '../../core/matchmaking/manager.js';
 import { handleReputationCheck } from '../../core/moderation/reputation.js';
 import { embedService, COLORS } from '../embeds/index.js';
 import { UserProfile } from '../../core/types.js';
-import { profileCardGenerator } from '../../core/profile/card-generator.js';
+import { buildProfileCard, createProfileActionRow, isProfileComplete } from '../profile-view.js';
+import { createRevealResultContainer, resolveRevealPair } from '../reveal-view.js';
+import { pickIcebreaker } from '../icebreakers.js';
 
 /**
  * Safe message reply helper with Components V2:
@@ -175,12 +177,36 @@ export class MessageCommandHandler {
 
         // Subcase A3: Request mutual reveal command
         if (/^\s*(?:destiny\s+reveal|reveal)\s*$/i.test(rawContent)) {
-          await revealService.submitConsent(activeRoom.id, user.id, ['discordTag', 'age', 'gender', 'interests']);
-          const waitingContainer = embedService.createRevealWaitingContainer();
-          await safeV2Reply(message, waitingContainer);
+          const consentResult = await revealService.submitConsent(
+            activeRoom.id,
+            user.id,
+            ['discordTag', 'destinyId', 'age', 'gender', 'interests'],
+            'narrow'
+          );
 
           const isUser1 = activeRoom.user1Id === user.id;
           const partnerDiscordId = isUser1 ? activeRoom.user2DiscordId : activeRoom.user1DiscordId;
+
+          if (consentResult.completed) {
+            // Partner had already consented — resolve the reveal immediately.
+            const { mine, partner } = resolveRevealPair(activeRoom, user.id, consentResult);
+            await safeV2Reply(message, createRevealResultContainer(partner, consentResult.agreedFields));
+
+            if (partnerDiscordId) {
+              const partnerUser = await client.users.fetch(partnerDiscordId).catch(() => null);
+              if (partnerUser) {
+                await partnerUser.send({
+                  components: [createRevealResultContainer(mine, consentResult.agreedFields)],
+                  flags: [MessageFlags.IsComponentsV2],
+                }).catch(() => {});
+              }
+            }
+            return true;
+          }
+
+          const waitingContainer = embedService.createRevealWaitingContainer();
+          await safeV2Reply(message, waitingContainer);
+
           const myPseudonym = isUser1 ? activeRoom.user1Pseudonym : activeRoom.user2Pseudonym;
           const myAvatar = isUser1 ? activeRoom.user1Avatar : activeRoom.user2Avatar;
 
@@ -197,8 +223,41 @@ export class MessageCommandHandler {
           return true;
         }
 
+        // Subcase A3: Profile card while chatting
+        if (/^\s*(?:destiny\s+profile|profile|my\s+profile|card|my\s+card|destiny\s+card)\s*$/i.test(rawContent)) {
+          return await this.handleProfile(message, user);
+        }
+
+        // Subcase A3: Conversation icebreaker while chatting
+        if (/^\s*(?:destiny\s+icebreaker|icebreaker|prompt|conversation\s+starter)\s*$/i.test(rawContent)) {
+          return await this.handleIcebreaker(message, user, true);
+        }
+
+        // Subcase A3: Wallet while chatting
+        if (/^\s*(?:destiny\s+wallet|wallet|coins|daily)\s*$/i.test(rawContent)) {
+          return await this.handleWallet(message, user);
+        }
+
+        // Subcase A3: Verification while chatting
+        if (/^\s*(?:destiny\s+verify|verify)\s*$/i.test(rawContent)) {
+          if (!isProfileComplete(user)) {
+            const container = embedService.createProfileRequiredContainer();
+            await safeV2Reply(message, container);
+          } else if (user.genderVerified) {
+            const container = embedService.createAlreadyVerifiedContainer(user);
+            await safeV2Reply(message, container);
+          } else if (user.genderVerificationStatus === 'pending') {
+            const container = embedService.createVerificationPendingContainer();
+            await safeV2Reply(message, container);
+          } else {
+            const container = embedService.createVerificationPromptContainer(user);
+            await safeV2Reply(message, container);
+          }
+          return true;
+        }
+
         // Subcase A3: Menu / Help command while in room
-        if (/^\s*destiny(?:\s+(?:menu|help|info|status))?\s*$/i.test(rawContent)) {
+        if (/^\s*(?:destiny(?:\s+(?:menu|help|info|status))?|start|match)\s*$/i.test(rawContent)) {
           const container = embedService.createActiveRoomPromptContainer(activeRoom.roomCode);
           await safeV2Reply(message, container);
           return true;
@@ -297,9 +356,9 @@ export class MessageCommandHandler {
       return await this.handleWallet(message, user);
     }
 
-    // Subcase C3: Games command ("games", "arcade", "destiny games")
-    if (/^\s*(?:destiny\s+games|games|arcade)\s*$/i.test(rawContent)) {
-      return await this.handleGames(message);
+    // Subcase C3: Conversation icebreaker ("icebreaker", "prompt", "destiny icebreaker")
+    if (/^\s*(?:destiny\s+icebreaker|icebreaker|prompt|conversation\s+starter)\s*$/i.test(rawContent)) {
+      return await this.handleIcebreaker(message, user, false);
     }
 
     // Subcase C4: Report command after chatting ("report", "destiny report")
@@ -589,79 +648,61 @@ export class MessageCommandHandler {
   }
 
   /**
-   * Handle Games Menu in DM (Components V2)
+   * Handle Conversation Icebreaker in DM (Components V2)
    */
-  async handleGames(message: Message): Promise<boolean> {
-    const container = embedService.createGamesMenuContainer();
+  async handleIcebreaker(message: Message, existingUser?: UserProfile | null, inRoom = false): Promise<boolean> {
+    const user = existingUser !== undefined ? existingUser : await db.getUserByDiscordId(message.author.id);
+    const prompt = pickIcebreaker();
+    const container = embedService.createIcebreakerContainer(prompt, inRoom);
     await safeV2Reply(message, container);
+
+    if (inRoom && user) {
+      let activeRoomId = user.activeRoomId;
+      if (!activeRoomId) {
+        activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+      }
+
+      if (activeRoomId) {
+        const room = await db.getRoomById(activeRoomId).catch(() => null);
+        if (room && room.status === 'active') {
+          const isUser1 = room.user1Id === user.id;
+          const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
+          if (partnerDiscordId) {
+            const partner = await message.client.users.fetch(partnerDiscordId).catch(() => null);
+            if (partner) {
+              const partnerContainer = embedService.createIcebreakerContainer(prompt, true);
+              await partner.send({
+                components: [partnerContainer],
+                flags: [MessageFlags.IsComponentsV2],
+              }).catch(() => {});
+            }
+          }
+        }
+      }
+    }
+
     return true;
   }
 
   /**
    * Handle Profile Command ("profile", "destiny profile", "card", "my profile")
-   * Throws high-end visual card attachment with real-time stats
+   * Renders the live profile card attachment with real-time stats.
    */
   async handleProfile(message: Message, existingUser?: UserProfile | null): Promise<boolean> {
     const user = existingUser !== undefined ? existingUser : await db.getUserByDiscordId(message.author.id);
-    if (!user) {
+
+    if (!user || !isProfileComplete(user)) {
       const container = embedService.createProfileRequiredContainer();
       await safeV2Reply(message, container);
       return true;
     }
 
-    // Query user rooms for real-time talk time & sessions
-    const userRooms = await db.getUserRooms(user.id);
-    let totalMinutes = 0;
-    for (const r of userRooms) {
-      if (r.startedAt && r.endedAt) {
-        const diff = (new Date(r.endedAt).getTime() - new Date(r.startedAt).getTime()) / 60000;
-        if (diff > 0) totalMinutes += diff;
-      }
-    }
-    const hours = Math.floor(totalMinutes / 60);
-    const mins = Math.floor(totalMinutes % 60);
-    const chatHoursText = hours > 0 || mins > 0 ? `${hours}h ${mins}m` : '0h 00m';
-
-    const avatarUrl = message.author.displayAvatarURL({ extension: 'png', size: 256 });
-    const displayName = (message.channel as any).recipient?.displayName ||
-                        message.member?.displayName ||
-                        message.author.displayName ||
-                        message.author.username;
-
-    // Generate high-resolution profile card PNG
-    const cardBuffer = await profileCardGenerator.generateCardPng(user, {
-      sessionsCount: userRooms.length,
-      chatHoursText,
-      reputationPercent: user.reputationScore ?? 100,
-      personaName: displayName,
-      avatarUrl,
-      timezone: 'UTC+05:30',
-    });
-
-    const attachment = new AttachmentBuilder(cardBuffer, { name: 'destiny_profile.png' });
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_card_motion')
-        .setLabel('Motion Card')
-        .setEmoji('🎬')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_profile')
-        .setLabel('Edit Profile')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_start')
-        .setLabel('Find Match')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_wallet')
-        .setLabel('Destiny Vault')
-        .setStyle(ButtonStyle.Secondary)
-    );
+    const { attachment } = await buildProfileCard(user, message.author, message.member);
 
     await message.reply({
+      content: '🪐 **Your Destiny Profile** — update anything anytime with `/profile`.',
       files: [attachment],
-      components: [row],
+      components: [createProfileActionRow()],
     });
     return true;
   }

@@ -11,6 +11,7 @@ import { config } from '../config/index.js';
 import { db } from '../database/supabase.js';
 import { ECLAIRS_GUILD_ID } from '../core/moderation/reputation.js';
 import { embedService } from './embeds/index.js';
+import { setDiscordClient } from './client-registry.js';
 import { handleInteraction } from './interactions/handler.js';
 import { messageCommandHandler } from './messages/handler.js';
 import { messageRelayService } from './relay/index.js';
@@ -36,6 +37,7 @@ export class DestinyBot {
       ],
     });
 
+    setDiscordClient(this.client);
     this.registerEvents();
   }
 
