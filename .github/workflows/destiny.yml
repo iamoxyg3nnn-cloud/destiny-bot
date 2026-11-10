@@ -116,17 +116,23 @@ jobs:
           # Supabase pooler usernames are project-scoped (postgres.<project-ref>).
           # Derive the authoritative project ref from SUPABASE_URL so a stale
           # project suffix in DATABASE_URL cannot route to a non-existent tenant.
-          export DATABASE_URL="$(node -e '
+          DATABASE_URL="$(node -e '
             const db = new URL(process.env.DATABASE_URL);
             const api = new URL(process.env.SUPABASE_URL);
-            const match = api.hostname.match(/^([a-z0-9]+)\\.supabase\\.co$/i);
-            if (!match) throw new Error("SUPABASE_URL must be a project URL ending in .supabase.co");
-            const projectRef = match[1];
+            const suffix = ".supabase.co";
+            if (!api.hostname.endsWith(suffix)) {
+              throw new Error("SUPABASE_URL must use a project hostname ending in .supabase.co");
+            }
+            const projectRef = api.hostname.slice(0, -suffix.length);
+            if (!projectRef || projectRef.includes(".")) {
+              throw new Error("Could not derive a valid Supabase project reference from SUPABASE_URL");
+            }
             if (db.hostname.endsWith(".pooler.supabase.com") && db.username.startsWith("postgres.")) {
               db.username = "postgres." + projectRef;
             }
             process.stdout.write(db.toString());
           ')"
+          export DATABASE_URL
 
           sudo apt-get update -qq
           sudo apt-get install -y postgresql-client
