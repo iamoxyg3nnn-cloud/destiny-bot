@@ -133,7 +133,7 @@ jobs:
             if(!host || !host.endsWith(".pooler.supabase.com")) throw new Error("Supabase API did not return a valid shared pooler host; check SUPABASE_ACCESS_TOKEN permissions (database_pooling_config_read).");
             const ref=new URL(process.env.SUPABASE_URL).hostname.split(".")[0];
             let password=process.env.DATABASE_PASSWORD;
-            if(/^(postgres|postgresql):\\/\\//i.test(password)) password=new URL(password).password;
+            if(password.startsWith("postgres://") || password.startsWith("postgresql://")) password=decodeURIComponent(new URL(password).password);
             if(!password) throw new Error("Database password secret is empty.");
             const url=new URL("postgresql://postgres@"+host+":5432/postgres");
             url.username="postgres."+ref;
