@@ -18,6 +18,7 @@ import { handleReputationCheck } from '../../core/moderation/reputation.js';
 import { embedService, COLORS } from '../embeds/index.js';
 import { UserProfile } from '../../core/types.js';
 import { buildProfileCard, createProfileActionRow, isProfileComplete } from '../profile-view.js';
+import { refreshBotPresence } from '../presence-manager.js';
 import { createRevealResultContainer, resolveRevealPair } from '../reveal-view.js';
 import { pickIcebreaker } from '../icebreakers.js';
 
@@ -109,6 +110,9 @@ export class MessageCommandHandler {
         // Subcase A1: Leave / End room command
         if (/^\s*(?:destiny\s+leave|leave|exit|stop|end)\s*$/i.test(rawContent)) {
           await db.endRoom(activeRoom.id, 'user_left');
+
+          // The conversation just ended — reflect it in the rotating presence.
+          refreshBotPresence();
 
           // Notify partner in DM
           const partnerDiscordId = activeRoom.user1Id === user.id ? activeRoom.user2DiscordId : activeRoom.user1DiscordId;

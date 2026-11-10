@@ -12,6 +12,7 @@ import { db } from '../database/supabase.js';
 import { ECLAIRS_GUILD_ID } from '../core/moderation/reputation.js';
 import { embedService } from './embeds/index.js';
 import { setDiscordClient } from './client-registry.js';
+import { initPresence, refreshPresence, stopPresence } from './presence-manager.js';
 import { handleInteraction } from './interactions/handler.js';
 import { messageCommandHandler } from './messages/handler.js';
 import { messageRelayService } from './relay/index.js';
@@ -45,6 +46,9 @@ export class DestinyBot {
     this.client.once(Events.ClientReady, async (c) => {
       console.log(`🤖 Destiny Bot logged in as ${c.user.tag} (ID: ${c.user.id})`);
       await this.syncSlashCommands();
+
+      // Arm the rotating streaming presence engine (purple badge).
+      initPresence(this.client);
     });
 
     // Interactive button & modal interactions

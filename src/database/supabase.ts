@@ -1069,6 +1069,20 @@ export class DatabaseService {
     return count || 0;
   }
 
+  /**
+   * Total number of registered users.
+   * Uses a HEAD count so no rows are transferred.
+   */
+  async getUserCount(): Promise<number> {
+    if (this.isMockMode || !this.client) {
+      return this.mockUsers.size;
+    }
+    const { count } = await this.client
+      .from('users')
+      .select('*', { count: 'exact', head: true });
+    return count || 0;
+  }
+
   // ---------------- INTERNAL MAPPERS ----------------
   // ---------------- GUILD SETTINGS ----------------
   async getGuildSettings(guildId: string, forceFresh = false): Promise<GuildSettings | null> {

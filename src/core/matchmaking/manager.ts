@@ -7,6 +7,7 @@ import { anonymizer } from '../anonymizer.js';
 import { MessageFlags, ContainerBuilder, TextDisplayBuilder } from 'discord.js';
 import { embedService, COLORS } from '../../bot/embeds/index.js';
 import { getDiscordClient } from '../../bot/client-registry.js';
+import { refreshBotPresence } from '../../bot/presence-manager.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -316,6 +317,9 @@ export class MatchmakingManager {
     } catch (err: any) {
       console.warn('[Matchmaking] Discord DM notification skipped:', err?.message);
     }
+
+    // A new conversation is live — reflect it in the rotating presence.
+    refreshBotPresence();
 
     return room;
   }

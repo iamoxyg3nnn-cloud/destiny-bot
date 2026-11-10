@@ -4,6 +4,7 @@ import { redis } from './redis/client.js';
 import { startAllWorkers } from './workers/index.js';
 import { apiApp } from './api/server.js';
 import { bot } from './bot/index.js';
+import { stopPresence } from './bot/presence-manager.js';
 
 async function bootstrap() {
   console.log('================================================================');
@@ -33,7 +34,10 @@ async function bootstrap() {
 
   const handleShutdown = async (signal: string) => {
     console.log(`\n🛑 Received ${signal}. Gracefully stopping Destiny Ecosystem...`);
+    const forceExit = setTimeout(() => process.exit(0), 15_000);
+    forceExit.unref();
     try {
+      stopPresence(bot.client);
       if (bot.client) {
         await bot.client.destroy();
       }

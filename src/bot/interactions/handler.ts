@@ -35,6 +35,7 @@ import {
   isProfileComplete,
 } from '../profile-view.js';
 import { buildProfileModal, normalizeGender, parseList } from '../profile-modal.js';
+import { refreshBotPresence } from '../presence-manager.js';
 import { createRevealResultContainer, resolveRevealPair } from '../reveal-view.js';
 import { pickIcebreaker } from '../icebreakers.js';
 import { handleCommand } from '../commands/definitions.js';
@@ -726,6 +727,9 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       if (user && roomId) {
         const room = await db.getRoomById(roomId);
         await db.endRoom(roomId, 'user_left');
+
+        // The conversation just ended — reflect it in the rotating presence.
+        refreshBotPresence();
 
         // Post-Room Mutual Chemistry Card (P4 Feature)
         if (room) {
