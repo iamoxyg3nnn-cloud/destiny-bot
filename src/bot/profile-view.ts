@@ -68,17 +68,14 @@ export async function buildProfileStats(
 export async function buildProfileCard(
   user: UserProfile,
   viewer: ProfileViewer,
-  member?: unknown,
-  motion = false
+  member?: unknown
 ): Promise<{ attachment: AttachmentBuilder; stats: LiveProfileStats }> {
   const stats = await buildProfileStats(user, viewer, member);
-  const buffer = motion
-    ? await profileCardGenerator.generateCardMotionWebp(user, stats)
-    : await profileCardGenerator.generateCardPng(user, stats);
+  const buffer = await profileCardGenerator.generateCardPng(user, stats);
 
   return {
     attachment: new AttachmentBuilder(buffer, {
-      name: motion ? 'destiny_profile.webp' : 'destiny_profile.png',
+      name: 'destiny_profile.png',
     }),
     stats,
   };
@@ -95,11 +92,6 @@ export function createProfileActionRow(): ActionRowBuilder<ButtonBuilder> {
       .setCustomId('destiny_btn_wardrobe')
       .setLabel('Wardrobe')
       .setEmoji('👔')
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId('destiny_btn_card_motion')
-      .setLabel('Motion Card')
-      .setEmoji('🎬')
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('destiny_btn_start')

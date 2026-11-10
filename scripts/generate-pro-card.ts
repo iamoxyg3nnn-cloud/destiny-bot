@@ -271,7 +271,7 @@ export function drawProCard(
   ctx.font = '500 20px "Inter", sans-serif';
   ctx.fillStyle = '#bdacc9';
   const genderCap = data.gender.charAt(0).toUpperCase() + data.gender.slice(1);
-  ctx.fillText(`Age ${data.age} · ${genderCap} · ID: ${data.destinyId}`, idX + 24, frameY + subY);
+  ctx.fillText(`Age ${data.age} Â· ${genderCap} Â· ID: ${data.destinyId}`, idX + 24, frameY + subY);
 
   // Quiet Interest Tag Pills (Row 3 under subtitle, y: 110)
   const tagY = 110;
@@ -525,92 +525,12 @@ export function drawProCard(
   ctx.textAlign = 'left';
   ctx.font = '500 18px "Inter", sans-serif';
   ctx.fillStyle = '#bdacc9';
-  ctx.fillText('Destiny Anonymous Social · 100% Reputation Rating', barLeft, footY);
+  ctx.fillText('Destiny Anonymous Social Â· 100% Reputation Rating', barLeft, footY);
 
   ctx.textAlign = 'right';
   ctx.fillText(`${data.timezone}`, barLeft + barW, footY);
 }
 
-// Generate animated WebP with 40 frames
-export async function renderProMotionWebp(data: ProCardData): Promise<Buffer> {
-  const width = 960;
-  const height = 480;
-  const numFrames = 40;
-
-  const canvas = createCanvas(width, height * numFrames);
-  const ctx = canvas.getContext('2d');
-  const borderPoints = getRoundedPoints(width - 2, height - 2, 28, 400);
-
-  for (let f = 0; f < numFrames; f++) {
-    const frameY = f * height;
-    const phase = f / numFrames;
-
-    // Draw card frame
-    drawProCard(ctx, data, width, height, frameY, phase);
-
-    // Border beam motion
-    const beamLength = 45;
-    const startIndex = Math.floor(borderPoints.length * phase) % borderPoints.length;
-
-    ctx.save();
-    ctx.translate(1, frameY + 1);
-    ctx.beginPath();
-    for (let i = 0; i < beamLength; i++) {
-      const idx = (startIndex + i) % borderPoints.length;
-      const [px, py] = borderPoints[idx];
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    const pulseGrad = ctx.createLinearGradient(
-      borderPoints[startIndex][0],
-      borderPoints[startIndex][1],
-      borderPoints[(startIndex + beamLength) % borderPoints.length][0],
-      borderPoints[(startIndex + beamLength) % borderPoints.length][1]
-    );
-    pulseGrad.addColorStop(0, 'rgba(244, 92, 214, 0)');
-    pulseGrad.addColorStop(0.5, '#f45cd6');
-    pulseGrad.addColorStop(1, 'rgba(244, 92, 214, 0)');
-    ctx.strokeStyle = pulseGrad;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.restore();
-
-    // Orbiting Satellite around Crest
-    const crestCenterX = 878;
-    const crestCenterY = frameY + 74;
-    const orbitR = 52;
-    const satAngle = 2 * Math.PI * phase;
-    const satX = crestCenterX + orbitR * Math.cos(satAngle);
-    const satY = crestCenterY + orbitR * Math.sin(satAngle);
-
-    ctx.save();
-    ctx.translate(satX, satY);
-    ctx.rotate(satAngle + Math.PI / 4);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.shadowColor = '#f45cd6';
-    ctx.shadowBlur = 6;
-    ctx.fillRect(-3, -3, 6, 6);
-    ctx.restore();
-  }
-
-  const rawData = canvas.data();
-  return await sharp(rawData, {
-    raw: {
-      width,
-      height: height * numFrames,
-      channels: 4,
-      pageHeight: height,
-    },
-  })
-    .webp({
-      quality: 90,
-      lossless: false,
-      effort: 4,
-      loop: 0,
-      delay: 50,
-    })
-    .toBuffer();
-}
 
 async function main() {
   // Real data from Supabase for user R7ZYFK
@@ -639,14 +559,6 @@ async function main() {
   const pngPath = path.resolve('C:/Users/basud/.gemini/antigravity/brain/941dc802-7f14-46db-9ac4-519acb6709dc/destiny_pro_card.png');
   fs.writeFileSync(pngPath, canvas.toBuffer('image/png'));
   console.log('Saved pro PNG to', pngPath);
-
-  // 2. Animated WebP
-  console.log('Rendering animated pro WebP...');
-  const t0 = Date.now();
-  const webpBuffer = await renderProMotionWebp(realData);
-  const webpPath = path.resolve('C:/Users/basud/.gemini/antigravity/brain/941dc802-7f14-46db-9ac4-519acb6709dc/destiny_pro_motion.webp');
-  fs.writeFileSync(webpPath, webpBuffer);
-  console.log(`Saved pro animated WebP in ${Date.now() - t0}ms to ${webpPath} (${webpBuffer.length} bytes)`);
 }
 
 main();

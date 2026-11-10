@@ -57,36 +57,22 @@ async function main() {
 
   console.log('Real Sessions count from rooms table:', roomsCount || 0);
 
-  // 3. Construct Live Profile Stats with ZERO default emojis
+  // 3. Construct Live Profile Stats
   const stats: LiveProfileStats = {
     sessionsCount: Math.max(1, roomsCount || 0),
     chatHoursText: '12h 45m',
     reputationPercent: user.reputationScore,
-    streakMultiplier: user.streakCount >= 7 ? '2.0x' : user.streakCount >= 3 ? '1.5x' : '1.0x',
     personaName: 'Midnight Wolf',
     timezone: 'UTC+05:30',
-    equippedBadges: [
-      { name: 'VIP Status', color: '#FBBF24', type: 'vip' },
-      { name: 'Star Explorer', color: '#60A5FA', type: 'star' },
-      { name: 'Arcane Aura', color: '#C084FC', type: 'mystic' },
-      { name: 'Verified Member', color: '#34D399', type: 'verified' },
-    ],
+    equippedBadges: user.equippedBadges || [],
   };
 
   // 4. Generate Live PNG
   console.log('Rendering live real-time PNG...');
-  const pngBuffer = profileCardGenerator.generatePng(user, stats);
+  const pngBuffer = await profileCardGenerator.generateCardPng(user, stats);
   const outPng = path.resolve('C:/Users/basud/.gemini/antigravity/brain/941dc802-7f14-46db-9ac4-519acb6709dc/destiny_realtime_card.png');
   fs.writeFileSync(outPng, pngBuffer);
   console.log(`Saved live PNG to ${outPng} (${pngBuffer.length} bytes)`);
-
-  // 5. Generate Live Motion WebP
-  console.log('Rendering live real-time Animated Motion WebP (40 frames @ 20 FPS)...');
-  const t0 = Date.now();
-  const webpBuffer = await profileCardGenerator.generateMotionWebp(user, stats);
-  const outWebp = path.resolve('C:/Users/basud/.gemini/antigravity/brain/941dc802-7f14-46db-9ac4-519acb6709dc/destiny_realtime_motion.webp');
-  fs.writeFileSync(outWebp, webpBuffer);
-  console.log(`Saved live animated WebP in ${Date.now() - t0}ms to ${outWebp} (${webpBuffer.length} bytes)`);
 }
 
 main().then(() => process.exit(0));

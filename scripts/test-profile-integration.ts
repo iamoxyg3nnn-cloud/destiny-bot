@@ -47,16 +47,6 @@ async function testIntegration() {
   const outPngPath = path.resolve('destiny_test_card.png');
   fs.writeFileSync(outPngPath, pngBuf);
 
-  // 4. Generate 20 FPS animated WebP card
-  console.log('Rendering 80-frame animated WebP card at 20 FPS...');
-  const t1 = Date.now();
-  const webpBuf = await profileCardGenerator.generateCardMotionWebp(user, stats);
-  const webpTime = Date.now() - t1;
-  console.log(`✓ Animated WebP rendered in ${webpTime}ms (${webpBuf.length} bytes)`);
-
-  const outWebpPath = path.resolve('destiny_test_motion.webp');
-  fs.writeFileSync(outWebpPath, webpBuf);
-
   console.log('--- ALL INTEGRATION TESTS PASSED! ---');
   process.exit(0);
 }

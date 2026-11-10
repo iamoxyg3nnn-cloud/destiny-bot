@@ -1,5 +1,4 @@
 import { createCanvas, GlobalFonts, Path2D, Image, loadImage } from '@napi-rs/canvas';
-import sharp from 'sharp';
 import * as path from 'path';
 import { UserProfile, ConnectionTier } from '../types.js';
 import { redis } from '../../redis/client.js';
@@ -74,70 +73,6 @@ export interface SessionRecapData {
     tier: string;
     avatarUrl?: string;
   };
-}
-
-// 80-frame perimeter points calculation for border pulse
-function getRoundedPoints(w: number, h: number, r: number, count: number): Array<[number, number]> {
-  const straightX = w - 2 * r;
-  const straightY = h - 2 * r;
-  const arc = (Math.PI * r) / 2;
-  const total = straightX * 2 + straightY * 2 + arc * 4;
-  const points: Array<[number, number]> = [];
-
-  for (let i = 0; i < count; i++) {
-    const dist = (total * i) / count;
-    let d = dist;
-
-    if (d < straightX) {
-      points.push([r + d, 0]);
-      continue;
-    }
-    d -= straightX;
-
-    if (d < arc) {
-      const angle = -Math.PI / 2 + d / r;
-      points.push([w - r + r * Math.cos(angle), r + r * Math.sin(angle)]);
-      continue;
-    }
-    d -= arc;
-
-    if (d < straightY) {
-      points.push([w, r + d]);
-      continue;
-    }
-    d -= straightY;
-
-    if (d < arc) {
-      const angle = 0 + d / r;
-      points.push([w - r + r * Math.cos(angle), h - r + r * Math.sin(angle)]);
-      continue;
-    }
-    d -= arc;
-
-    if (d < straightX) {
-      points.push([w - r - d, h]);
-      continue;
-    }
-    d -= straightX;
-
-    if (d < arc) {
-      const angle = Math.PI / 2 + d / r;
-      points.push([r + r * Math.cos(angle), h - r + r * Math.sin(angle)]);
-      continue;
-    }
-    d -= arc;
-
-    if (d < straightY) {
-      points.push([0, h - r - d]);
-      continue;
-    }
-    d -= straightY;
-
-    const angle = Math.PI + d / r;
-    points.push([r + r * Math.cos(angle), r + r * Math.sin(angle)]);
-  }
-
-  return points;
 }
 
 // Luxury Monochrome & Thin Vector Icons (Ultra-Thin 1.2px, Zero OS Emojis)
@@ -1018,13 +953,11 @@ export class ProfileCardGenerator {
     ctx: any,
     data: RenderCardParams,
     width: number,
-    height: number,
-    frameY = 0,
-    phase = 0
+    height: number
   ) {
     const roundRect = (x: number, y: number, w: number, h: number, r: number) => {
       ctx.beginPath();
-      ctx.roundRect(x, y + frameY, w, h, r);
+      ctx.roundRect(x, y, w, h, r);
       ctx.closePath();
     };
 
@@ -1033,11 +966,11 @@ export class ProfileCardGenerator {
       ctx.globalAlpha = alpha;
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.moveTo(x, y + frameY - r);
-      ctx.quadraticCurveTo(x, y + frameY, x + r, y + frameY);
-      ctx.quadraticCurveTo(x, y + frameY, x, y + frameY + r);
-      ctx.quadraticCurveTo(x, y + frameY, x - r, y + frameY);
-      ctx.quadraticCurveTo(x, y + frameY, x, y + frameY - r);
+      ctx.moveTo(x, y  - r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.quadraticCurveTo(x, y, x, y + r);
+      ctx.quadraticCurveTo(x, y, x - r, y);
+      ctx.quadraticCurveTo(x, y, x, y - r);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
@@ -1052,24 +985,24 @@ export class ProfileCardGenerator {
 
     if (theme === 'frost_glaze') {
       ctx.fillStyle = '#0c0f14';
-      ctx.fillRect(0, frameY, width, height);
+      ctx.fillRect(0, 0, width, height);
 
       // Cool crystalline frost texture
       ctx.fillStyle = 'rgba(180, 210, 255, 0.035)';
       const dotSpacing = 16;
       for (let dx = 16; dx < width; dx += dotSpacing) {
         for (let dy = 16; dy < height; dy += dotSpacing) {
-          ctx.fillRect(dx, frameY + dy, 1, 1);
+          ctx.fillRect(dx, dy, 1, 1);
         }
       }
-      const frostGlow = ctx.createLinearGradient(0, frameY, width, frameY + height);
+      const frostGlow = ctx.createLinearGradient(0, 0, width, height);
       frostGlow.addColorStop(0, 'rgba(200, 225, 255, 0.06)');
       frostGlow.addColorStop(1, 'rgba(12, 15, 20, 0)');
       ctx.fillStyle = frostGlow;
-      ctx.fillRect(0, frameY, width, height);
+      ctx.fillRect(0, 0, width, height);
     } else if (theme === 'cyber_damask') {
       ctx.fillStyle = '#08080a';
-      ctx.fillRect(0, frameY, width, height);
+      ctx.fillRect(0, 0, width, height);
 
       // Damask diagonal micro-etched lines
       ctx.save();
@@ -1077,58 +1010,58 @@ export class ProfileCardGenerator {
       ctx.lineWidth = 1;
       for (let d = -width; d < width * 2; d += 16) {
         ctx.beginPath();
-        ctx.moveTo(d, frameY);
-        ctx.lineTo(d + height, frameY + height);
+        ctx.moveTo(d, 0);
+        ctx.lineTo(d + height, height);
         ctx.stroke();
       }
       ctx.restore();
     } else if (theme === 'holographic_plat') {
       ctx.fillStyle = '#090a0d';
-      ctx.fillRect(0, frameY, width, height);
+      ctx.fillRect(0, 0, width, height);
 
       // Prismatic subtle ambient shimmer
-      const holoGlow = ctx.createLinearGradient(0, frameY, width, frameY + height);
+      const holoGlow = ctx.createLinearGradient(0, 0, width, height);
       holoGlow.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
       holoGlow.addColorStop(0.3, 'rgba(220, 235, 255, 0.04)');
       holoGlow.addColorStop(0.7, 'rgba(240, 230, 255, 0.04)');
       holoGlow.addColorStop(1, 'rgba(255, 255, 255, 0.02)');
       ctx.fillStyle = holoGlow;
-      ctx.fillRect(0, frameY, width, height);
+      ctx.fillRect(0, 0, width, height);
     } else {
       // Obsidian Pure Dark Monochrome
       ctx.fillStyle = '#090a0c';
-      ctx.fillRect(0, frameY, width, height);
+      ctx.fillRect(0, 0, width, height);
 
       // Procedural Dot-Matrix Grain (Linear / Industrial hardware texture)
       ctx.fillStyle = 'rgba(255, 255, 255, 0.025)';
       const dotSpacing = 16;
       for (let dx = 16; dx < width; dx += dotSpacing) {
         for (let dy = 16; dy < height; dy += dotSpacing) {
-          ctx.fillRect(dx, frameY + dy, 1, 1);
+          ctx.fillRect(dx, dy, 1, 1);
         }
       }
     }
 
     // Top-lit subtle ambient specular highlight
-    const topGlow = ctx.createRadialGradient(width / 2, frameY, 10, width / 2, frameY, 320);
+    const topGlow = ctx.createRadialGradient(width / 2, 0, 10, width / 2, 0, 320);
     topGlow.addColorStop(0, 'rgba(255, 255, 255, 0.05)');
     topGlow.addColorStop(1, 'rgba(9, 10, 12, 0)');
     ctx.fillStyle = topGlow;
-    ctx.fillRect(0, frameY, width, height);
+    ctx.fillRect(0, 0, width, height);
 
     // Subtle ambient glow behind avatar
-    const avGlow = ctx.createRadialGradient(88, frameY + 80, 10, 88, frameY + 80, 180);
+    const avGlow = ctx.createRadialGradient(88, 80, 10, 88, 80, 180);
     avGlow.addColorStop(0, 'rgba(255, 255, 255, 0.04)');
     avGlow.addColorStop(1, 'rgba(9, 10, 12, 0)');
     ctx.fillStyle = avGlow;
-    ctx.fillRect(0, frameY, width, height);
+    ctx.fillRect(0, 0, width, height);
 
     // Subtle ambient glow behind emblem
-    const emGlow = ctx.createRadialGradient(880, frameY + 80, 10, 880, frameY + 80, 180);
+    const emGlow = ctx.createRadialGradient(880, 80, 10, 880, 80, 180);
     emGlow.addColorStop(0, 'rgba(255, 255, 255, 0.06)');
     emGlow.addColorStop(1, 'rgba(9, 10, 12, 0)');
     ctx.fillStyle = emGlow;
-    ctx.fillRect(0, frameY, width, height);
+    ctx.fillRect(0, 0, width, height);
 
     // Twinkling stars
     const stars = [
@@ -1144,7 +1077,7 @@ export class ProfileCardGenerator {
       { x: 874, y: 29, r: 3.0, off: 0.85 },
     ];
     for (const st of stars) {
-      const alpha = 0.15 + 0.55 * Math.max(0, Math.sin(2 * Math.PI * (phase * 2 + st.off)));
+      const alpha = 0.15 + 0.55 * Math.max(0, Math.sin(2 * Math.PI * st.off));
       drawSparkle(st.x, st.y, st.r, alpha);
     }
     ctx.restore();
@@ -1159,7 +1092,7 @@ export class ProfileCardGenerator {
     // HEADER: AVATAR SQUIRCLE (x: 36, y: 30)
     // -------------------------------------------------------------
     const avX = 36;
-    const avY = 30 + frameY;
+    const avY = 30 ;
     const avSize = 96;
     const avRadius = 24;
 
@@ -1231,7 +1164,7 @@ export class ProfileCardGenerator {
     // 1. Display Name
     ctx.font = 'bold 32px "Inter", sans-serif';
     ctx.fillStyle = '#f2f4f8';
-    ctx.fillText(data.displayName, idX, frameY + 60);
+    ctx.fillText(data.displayName, idX, 60);
 
     const nameW = ctx.measureText(data.displayName).width;
 
@@ -1255,11 +1188,11 @@ export class ProfileCardGenerator {
       ICONS.verifiedBadge(ctx, badgeX + 7, badgeY + 5, 14, '#ffffff');
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(badgeText, badgeX + 25, frameY + badgeY + 16);
+      ctx.fillText(badgeText, badgeX + 25, badgeY + 16);
     } else {
       ctx.font = 'bold 11px "JetBrains Mono", monospace';
       ctx.fillStyle = '#e1e4ea';
-      ctx.fillText(badgeText, badgeX + 9, frameY + badgeY + 16);
+      ctx.fillText(badgeText, badgeX + 9, badgeY + 16);
     }
 
     // 3. Matchmaking Vibe / Intent Badge
@@ -1275,24 +1208,24 @@ export class ProfileCardGenerator {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    const dotAlpha = 0.5 + 0.5 * Math.sin(phase * 2 * Math.PI);
+    const dotAlpha = 0.5;
     ctx.fillStyle = `rgba(255, 255, 255, ${dotAlpha})`;
     ctx.beginPath();
     ctx.arc(intentX + 9, badgeY + 12, 3, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = '#d0d4dc';
-    ctx.fillText(intentText, intentX + 17, frameY + badgeY + 16);
+    ctx.fillText(intentText, intentX + 17, badgeY + 16);
 
     // 4. Demographics Row
-    const demoY = frameY + 88;
+    const demoY = 88;
     const demoText = `Age ${data.age}  ·  ${data.gender.charAt(0).toUpperCase() + data.gender.slice(1)}  ·  ${data.languages.join(', ')}`;
     ctx.font = '500 14px "Inter", sans-serif';
     ctx.fillStyle = '#8b929e';
     ctx.fillText(demoText, idX, demoY);
 
     // 5. Bio Motto Line
-    const bioY = frameY + 108;
+    const bioY = 108;
     const bioText = data.bio || 'Looking for late-night conversations & gaming duos';
     ctx.font = 'italic 12px "Inter", sans-serif';
     ctx.fillStyle = '#656c7a';
@@ -1315,7 +1248,7 @@ export class ProfileCardGenerator {
       ctx.stroke();
 
       ctx.fillStyle = '#c0c5cf';
-      ctx.fillText(cleanTag, tagX + 9, frameY + tagY + 15);
+      ctx.fillText(cleanTag, tagX + 9, tagY + 15);
 
       tagX += pw + 8;
     }
@@ -1328,19 +1261,19 @@ export class ProfileCardGenerator {
 
     ctx.font = 'bold 20px "JetBrains Mono", monospace';
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(data.tierName.toUpperCase(), rankX, frameY + 52);
+    ctx.fillText(data.tierName.toUpperCase(), rankX, 52);
 
     ctx.font = '650 22px "JetBrains Mono", monospace';
     ctx.fillStyle = '#8b929e';
-    ctx.fillText('LVL', rankX, frameY + 112);
+    ctx.fillText('LVL', rankX, 112);
 
     ctx.font = '750 56px "JetBrains Mono", monospace';
     ctx.fillStyle = '#f2f4f8';
-    ctx.fillText(data.level.toString().padStart(2, '0'), rankX + 54, frameY + 114);
+    ctx.fillText(data.level.toString().padStart(2, '0'), rankX + 54, 114);
 
     ctx.font = '550 16px "JetBrains Mono", monospace';
     ctx.fillStyle = '#8b929e';
-    ctx.fillText(`${data.totalXp.toLocaleString()} XP`, rankX, frameY + 142);
+    ctx.fillText(`${data.totalXp.toLocaleString()} XP`, rankX, 142);
 
     // -------------------------------------------------------------
     // HEADER: TIER SEAL EMBLEM (top-right, hairline 1.2px)
@@ -1350,7 +1283,7 @@ export class ProfileCardGenerator {
       // Tier-to-seal level map: each tier gets a distinct thin-line geometric seal
       const tier = (data.tierName || 'Strangers').toLowerCase();
       const ex = 877; // emblem center X
-      const ey = frameY + 76; // emblem center Y
+      const ey = 76; // emblem center Y
 
       ctx.strokeStyle = 'rgba(255,255,255,0.18)';
       ctx.lineWidth = 1;
@@ -1465,7 +1398,7 @@ export class ProfileCardGenerator {
     ctx.font = 'bold 10px "JetBrains Mono", monospace';
     ctx.fillStyle = '#575d68';
     ctx.textAlign = 'left';
-    ctx.fillText('INSIGNIA', rackX + 12, frameY + rackY + 18);
+    ctx.fillText('INSIGNIA', rackX + 12, rackY + 18);
 
     const badges = [
       { id: 'verified', label: 'ID VERIFIED', draw: ICONS.badgeVerified, active: data.isVerified },
@@ -1480,7 +1413,7 @@ export class ProfileCardGenerator {
       b.draw(ctx, bSlotX, rackY + 5, b.active);
       ctx.font = '600 10px "JetBrains Mono", monospace';
       ctx.fillStyle = b.active ? '#e1e4ea' : '#33373e';
-      ctx.fillText(b.label, bSlotX + 22, frameY + rackY + 18);
+      ctx.fillText(b.label, bSlotX + 22, rackY + 18);
       bSlotX += 150;
     }
 
@@ -1490,12 +1423,12 @@ export class ProfileCardGenerator {
     ctx.font = '600 15px "JetBrains Mono", monospace';
     ctx.fillStyle = '#8b929e';
     ctx.textAlign = 'left';
-    ctx.fillText('CONNECTION PROGRESS', 32, frameY + 204);
+    ctx.fillText('CONNECTION PROGRESS', 32, 204);
 
     ctx.font = '600 15px "JetBrains Mono", monospace';
     ctx.fillStyle = '#f2f4f8';
     ctx.textAlign = 'right';
-    ctx.fillText(`${data.currentXp.toLocaleString()} / ${data.nextLevelXp.toLocaleString()} XP`, width - 32, frameY + 204);
+    ctx.fillText(`${data.currentXp.toLocaleString()} / ${data.nextLevelXp.toLocaleString()} XP`, width - 32, 204);
 
     const progX = 32;
     const progY = 216;
@@ -1517,15 +1450,7 @@ export class ProfileCardGenerator {
     progGrad.addColorStop(0, '#737a86');
     progGrad.addColorStop(1, '#ffffff');
     ctx.fillStyle = progGrad;
-    ctx.fillRect(progX, frameY + progY, fillW, progH);
-
-    const beamX = progX - 80 + (fillW + 160) * phase;
-    const beamGrad = ctx.createLinearGradient(beamX, 0, beamX + 70, 0);
-    beamGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
-    beamGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)');
-    beamGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    ctx.fillStyle = beamGrad;
-    ctx.fillRect(beamX, frameY + progY, 70, progH);
+    ctx.fillRect(progX, progY, fillW, progH);
     ctx.restore();
 
     // -------------------------------------------------------------
@@ -1544,8 +1469,8 @@ export class ProfileCardGenerator {
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(card1X + 18, frameY + cardY + 1);
-    ctx.lineTo(card1X + card1W - 18, frameY + cardY + 1);
+    ctx.moveTo(card1X + 18, cardY + 1);
+    ctx.lineTo(card1X + card1W - 18, cardY + 1);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.lineWidth = 1;
     ctx.stroke();
@@ -1554,20 +1479,20 @@ export class ProfileCardGenerator {
     ctx.font = '600 13px "JetBrains Mono", monospace';
     ctx.fillStyle = '#8b929e';
     ctx.textAlign = 'left';
-    ctx.fillText('CONVERSATION ACTIVITY', card1X + 54, frameY + cardY + 34);
+    ctx.fillText('CONVERSATION ACTIVITY', card1X + 54, cardY + 34);
 
     ctx.font = 'bold 44px "JetBrains Mono", monospace';
     ctx.fillStyle = '#f2f4f8';
-    ctx.fillText(data.talkTime, card1X + 22, frameY + cardY + 86);
+    ctx.fillText(data.talkTime, card1X + 22, cardY + 86);
 
     ctx.font = '500 12px "Inter", sans-serif';
     ctx.fillStyle = '#575d68';
-    ctx.fillText('Total Anonymized Talk Time', card1X + 22, frameY + cardY + 108);
+    ctx.fillText('Total Anonymized Talk Time', card1X + 22, cardY + 108);
 
     const splitX = card1X + 316;
     ctx.beginPath();
-    ctx.moveTo(splitX, frameY + cardY + 20);
-    ctx.lineTo(splitX, frameY + cardY + cardH - 20);
+    ctx.moveTo(splitX, cardY + 20);
+    ctx.lineTo(splitX, cardY + cardH - 20);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
     ctx.lineWidth = 1;
     ctx.stroke();
@@ -1575,18 +1500,18 @@ export class ProfileCardGenerator {
     ICONS.users(ctx, splitX + 20, cardY + 26, '#8b929e');
     ctx.font = 'bold 16px "JetBrains Mono", monospace';
     ctx.fillStyle = '#f2f4f8';
-    ctx.fillText(`${data.sessionsCount.toString().padStart(2, '0')} SESSIONS`, splitX + 48, frameY + cardY + 40);
+    ctx.fillText(`${data.sessionsCount.toString().padStart(2, '0')} SESSIONS`, splitX + 48, cardY + 40);
     ctx.font = '500 11px "Inter", sans-serif';
     ctx.fillStyle = '#575d68';
-    ctx.fillText('Completed Match Rooms', splitX + 48, frameY + cardY + 56);
+    ctx.fillText('Completed Match Rooms', splitX + 48, cardY + 56);
 
     ICONS.shieldCheck(ctx, splitX + 20, cardY + 76, '#ffffff');
     ctx.font = 'bold 16px "JetBrains Mono", monospace';
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(`${data.reputationScore}% SCORE`, splitX + 48, frameY + cardY + 90);
+    ctx.fillText(`${data.reputationScore}% SCORE`, splitX + 48, cardY + 90);
     ctx.font = '500 11px "Inter", sans-serif';
     ctx.fillStyle = '#575d68';
-    ctx.fillText('High Reputation Rating', splitX + 48, frameY + cardY + 106);
+    ctx.fillText('High Reputation Rating', splitX + 48, cardY + 106);
 
     // -------------------------------------------------------------
     // LOWER PANEL 2: DESTINY VAULT (x: 600, width: 328, height: 156)
@@ -1602,8 +1527,8 @@ export class ProfileCardGenerator {
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(card2X + 18, frameY + cardY + 1);
-    ctx.lineTo(card2X + card2W - 18, frameY + cardY + 1);
+    ctx.moveTo(card2X + 18, cardY + 1);
+    ctx.lineTo(card2X + card2W - 18, cardY + 1);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.lineWidth = 1;
     ctx.stroke();
@@ -1612,20 +1537,20 @@ export class ProfileCardGenerator {
     ctx.font = '600 13px "JetBrains Mono", monospace';
     ctx.fillStyle = '#8b929e';
     ctx.textAlign = 'left';
-    ctx.fillText('DESTINY VAULT', card2X + 50, frameY + cardY + 34);
+    ctx.fillText('DESTINY VAULT', card2X + 50, cardY + 34);
 
     ctx.font = 'bold 44px "JetBrains Mono", monospace';
     ctx.fillStyle = '#f2f4f8';
-    ctx.fillText(`${data.coins} DC`, card2X + 20, frameY + cardY + 86);
+    ctx.fillText(`${data.coins} DC`, card2X + 20, cardY + 86);
 
     ctx.font = '500 12px "Inter", sans-serif';
     ctx.fillStyle = '#575d68';
-    ctx.fillText('Available Coins Balance', card2X + 20, frameY + cardY + 108);
+    ctx.fillText('Available Coins Balance', card2X + 20, cardY + 108);
 
     ICONS.flame(ctx, card2X + 20, cardY + 122, '#8b929e');
     ctx.font = '600 13px "JetBrains Mono", monospace';
     ctx.fillStyle = '#8b929e';
-    ctx.fillText(`${data.streakCount} DAY STREAK`, card2X + 42, frameY + cardY + 135);
+    ctx.fillText(`${data.streakCount} DAY STREAK`, card2X + 42, cardY + 135);
 
     const claimW = 86;
     const claimH = 22;
@@ -1641,7 +1566,7 @@ export class ProfileCardGenerator {
     ctx.font = 'bold 10px "JetBrains Mono", monospace';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
-    ctx.fillText('• READY', claimX + claimW / 2, frameY + claimY + 15);
+    ctx.fillText('• READY', claimX + claimW / 2, claimY + 15);
 
     // -------------------------------------------------------------
     // FOOTER (y: 444)
@@ -1650,35 +1575,15 @@ export class ProfileCardGenerator {
     ctx.font = '600 11px "JetBrains Mono", monospace';
     ctx.fillStyle = '#8b929e';
     ctx.textAlign = 'left';
-    ctx.fillText('DESTINY BOT', 56, frameY + 446);
+    ctx.fillText('DESTINY BOT', 56, 446);
 
     ctx.font = '500 11px "JetBrains Mono", monospace';
     ctx.fillStyle = '#575d68';
-    ctx.fillText('· ANONYMOUS SOCIAL · END-TO-END EPHEMERAL', 142, frameY + 446);
+    ctx.fillText('· ANONYMOUS SOCIAL · END-TO-END EPHEMERAL', 142, 446);
 
     ICONS.qrWatermark(ctx, width - 176, 435);
     ctx.textAlign = 'right';
-    ctx.fillText('CONNECT · ' + (data.timezone || 'UTC+05:30'), width - 32, frameY + 446);
-
-    // -------------------------------------------------------------
-    // ANIMATION: TRAVELING BORDER LASER LIGHT PULSE
-    // -------------------------------------------------------------
-    if (phase > 0) {
-      const perimeterPoints = getRoundedPoints(width - 2, height - 2, 28, 80);
-      const pulseIdx = Math.floor(phase * 80) % 80;
-      const [px, py] = perimeterPoints[pulseIdx];
-
-      ctx.save();
-      const pulseGlow = ctx.createRadialGradient(px + 1, py + 1 + frameY, 1, px + 1, py + 1 + frameY, 24);
-      pulseGlow.addColorStop(0, '#ffffff');
-      pulseGlow.addColorStop(0.4, 'rgba(255, 255, 255, 0.6)');
-      pulseGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = pulseGlow;
-      ctx.beginPath();
-      ctx.arc(px + 1, py + 1 + frameY, 24, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
+    ctx.fillText('CONNECT · ' + (data.timezone || 'UTC+05:30'), width - 32, 446);
   }
 
   /**
@@ -1746,66 +1651,13 @@ export class ProfileCardGenerator {
     const params = await this.prepareParams(user, stats);
     const canvas = createCanvas(this.width, this.height);
     const ctx = canvas.getContext('2d');
-    this.drawCard(ctx, params, this.width, this.height, 0, 0);
+    this.drawCard(ctx, params, this.width, this.height);
     const buffer = canvas.toBuffer('image/png');
 
     try {
       await redis.setBuffer(cacheKey, buffer, 900); // 15-minute TTL
     } catch {
       // Non-blocking cache store
-    }
-
-    return buffer;
-  }
-
-  /**
-   * Generate 20 FPS animated WebP buffer with Redis multi-tier caching
-   */
-  public async generateCardMotionWebp(user: UserProfile, stats: LiveProfileStats): Promise<Buffer> {
-    const theme = user.cardTheme || 'obsidian';
-    const hasAvatar = Boolean(stats.avatarUrl);
-    const cacheKey = `card:motion:${user.id}:${theme}:${hasAvatar}:${user.updatedAt}:${user.destinyCoins}:${stats.sessionsCount}`;
-    try {
-      const cached = await redis.getBuffer(cacheKey);
-      if (cached) return cached;
-    } catch {
-      // Continue on cache miss
-    }
-
-    const params = await this.prepareParams(user, stats);
-    const NUM_FRAMES = 80;
-
-    const tallCanvas = createCanvas(this.width, this.height * NUM_FRAMES);
-    const ctx = tallCanvas.getContext('2d');
-
-    for (let i = 0; i < NUM_FRAMES; i++) {
-      const frameY = i * this.height;
-      const phase = i / NUM_FRAMES;
-      this.drawCard(ctx, params, this.width, this.height, frameY, phase);
-    }
-
-    const rawData = tallCanvas.data();
-    const buffer = await sharp(rawData, {
-      raw: {
-        width: this.width,
-        height: this.height * NUM_FRAMES,
-        channels: 4,
-        pageHeight: this.height,
-      },
-    })
-      .webp({
-        quality: 90,
-        lossless: false,
-        effort: 4,
-        loop: 0,
-        delay: 50,
-      })
-      .toBuffer();
-
-    try {
-      await redis.setBuffer(cacheKey, buffer, 900); // 15-minute TTL
-    } catch {
-      // Non-blocking
     }
 
     return buffer;

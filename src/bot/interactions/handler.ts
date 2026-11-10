@@ -365,8 +365,8 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       return;
     }
 
-    // --- Profile Card View (Static PNG / Animated Motion WebP) ---
-    if (customId === 'destiny_btn_card_motion' || customId === 'destiny_btn_card_static') {
+    // --- Profile Card View (Static PNG) ---
+    if (customId === 'destiny_btn_card_static') {
       const user = await db.getUserByDiscordId(discordUser.id);
       if (!user) {
         await btn.reply({ content: 'Please set up your profile first with `/profile`.', ephemeral: true }).catch(() => {});
@@ -377,13 +377,10 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       if (!ok) return;
 
       try {
-        const motion = customId === 'destiny_btn_card_motion';
-        const { attachment } = await buildProfileCard(user, discordUser, btn.member, motion);
+        const { attachment } = await buildProfileCard(user, discordUser, btn.member);
 
         await btn.editReply({
-          content: motion
-            ? '🎬 **Your animated Destiny profile card** — tap **Edit Profile** to make changes.'
-            : '📸 **Your Destiny profile card** — tap **Edit Profile** to make changes.',
+          content: '📸 **Your Destiny profile card** — tap **Edit Profile** to make changes.',
           files: [attachment],
           components: [createProfileActionRow()],
         });

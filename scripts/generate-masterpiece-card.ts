@@ -439,9 +439,9 @@ export function drawMasterpieceCard(
     ctx.fillText(badgeText, badgeX + 9, frameY + badgeY + 16);
   }
 
-  // 3. Demographics Row (Age • Gender • Languages)
+  // 3. Demographics Row (Age â€¢ Gender â€¢ Languages)
   const demoY = frameY + 95;
-  const demoText = `Age ${data.age}  ·  ${data.gender.charAt(0).toUpperCase() + data.gender.slice(1)}  ·  ${data.languages.join(', ')}`;
+  const demoText = `Age ${data.age}  Â·  ${data.gender.charAt(0).toUpperCase() + data.gender.slice(1)}  Â·  ${data.languages.join(', ')}`;
   ctx.font = '500 16px "Inter", sans-serif';
   ctx.fillStyle = '#bdacc9';
   ctx.fillText(demoText, idX, demoY);
@@ -690,7 +690,7 @@ export function drawMasterpieceCard(
   ctx.font = 'bold 10px "Inter", sans-serif';
   ctx.fillStyle = '#10B981';
   ctx.textAlign = 'center';
-  ctx.fillText('• READY', claimX + claimW / 2, frameY + claimY + 15);
+  ctx.fillText('â€¢ READY', claimX + claimW / 2, frameY + claimY + 15);
 
   // -------------------------------------------------------------
   // FOOTER (y: 442)
@@ -699,7 +699,7 @@ export function drawMasterpieceCard(
   ctx.font = '500 14px "Inter", sans-serif';
   ctx.fillStyle = '#8e7a9c';
   ctx.textAlign = 'left';
-  ctx.fillText('Destiny Anonymous Social  ·  Ephemeral & End-to-End Private', 54, frameY + 446);
+  ctx.fillText('Destiny Anonymous Social  Â·  Ephemeral & End-to-End Private', 54, frameY + 446);
 
   ICONS.clock(ctx, width - 150, 432, '#8e7a9c');
   ctx.textAlign = 'right';
@@ -726,39 +726,6 @@ export function drawMasterpieceCard(
   }
 }
 
-export async function renderMasterpieceMotionWebp(data: MasterpieceCardData): Promise<Buffer> {
-  const WIDTH = 960;
-  const HEIGHT = 480;
-  const NUM_FRAMES = 80;
-
-  // Render on a single tall canvas to feed directly into Sharp raw buffer
-  const tallCanvas = createCanvas(WIDTH, HEIGHT * NUM_FRAMES);
-  const ctx = tallCanvas.getContext('2d');
-
-  for (let i = 0; i < NUM_FRAMES; i++) {
-    const frameY = i * HEIGHT;
-    const phase = i / NUM_FRAMES;
-    drawMasterpieceCard(ctx, data, WIDTH, HEIGHT, frameY, phase);
-  }
-
-  const rawData = tallCanvas.data();
-  return await sharp(rawData, {
-    raw: {
-      width: WIDTH,
-      height: HEIGHT * NUM_FRAMES,
-      channels: 4,
-      pageHeight: HEIGHT,
-    },
-  })
-    .webp({
-      quality: 90,
-      lossless: false,
-      effort: 4,
-      loop: 0,
-      delay: 50,
-    })
-    .toBuffer();
-}
 
 async function main() {
   const WIDTH = 960;
@@ -797,14 +764,6 @@ async function main() {
   const pngPath = path.join(artifactDir, 'destiny_masterpiece_card.png');
   fs.writeFileSync(pngPath, pngBuf);
   console.log(`Saved Masterpiece PNG to ${pngPath}`);
-
-  // 2. Render 80-Frame Animated WebP (20 FPS)
-  console.log('Rendering 80-frame Animated WebP at 20 FPS...');
-  const t0 = Date.now();
-  const webpBuffer = await renderMasterpieceMotionWebp(cardData);
-  const webpPath = path.join(artifactDir, 'destiny_masterpiece_motion.webp');
-  fs.writeFileSync(webpPath, webpBuffer);
-  console.log(`Saved Animated WebP in ${Date.now() - t0}ms to ${webpPath} (${webpBuffer.length} bytes)`);
 }
 
 main().catch(console.error);

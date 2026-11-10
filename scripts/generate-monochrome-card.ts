@@ -447,9 +447,9 @@ export function drawMonochromeCard(
     ctx.fillText(badgeText, badgeX + 9, frameY + badgeY + 16);
   }
 
-  // 3. Demographics Row (Age • Gender • Languages)
+  // 3. Demographics Row (Age â€¢ Gender â€¢ Languages)
   const demoY = frameY + 95;
-  const demoText = `Age ${data.age}  ·  ${data.gender.charAt(0).toUpperCase() + data.gender.slice(1)}  ·  ${data.languages.join(', ')}`;
+  const demoText = `Age ${data.age}  Â·  ${data.gender.charAt(0).toUpperCase() + data.gender.slice(1)}  Â·  ${data.languages.join(', ')}`;
   ctx.font = '500 15px "Inter", sans-serif';
   ctx.fillStyle = '#8b929e';
   ctx.fillText(demoText, idX, demoY);
@@ -721,7 +721,7 @@ export function drawMonochromeCard(
   ctx.font = 'bold 10px "JetBrains Mono", monospace';
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
-  ctx.fillText('• READY', claimX + claimW / 2, frameY + claimY + 15);
+  ctx.fillText('â€¢ READY', claimX + claimW / 2, frameY + claimY + 15);
 
   // -------------------------------------------------------------
   // FOOTER (y: 446)
@@ -730,7 +730,7 @@ export function drawMonochromeCard(
   ctx.font = '500 12px "JetBrains Mono", monospace';
   ctx.fillStyle = '#575d68';
   ctx.textAlign = 'left';
-  ctx.fillText('DESTINY ANONYMOUS SOCIAL · END-TO-END EPHEMERAL', 54, frameY + 448);
+  ctx.fillText('DESTINY ANONYMOUS SOCIAL Â· END-TO-END EPHEMERAL', 54, frameY + 448);
 
   ICONS.clock(ctx, width - 150, 436, '#575d68');
   ctx.textAlign = 'right';
@@ -757,38 +757,6 @@ export function drawMonochromeCard(
   }
 }
 
-export async function renderMonochromeMotionWebp(data: MonochromeCardData): Promise<Buffer> {
-  const WIDTH = 960;
-  const HEIGHT = 480;
-  const NUM_FRAMES = 80;
-
-  const tallCanvas = createCanvas(WIDTH, HEIGHT * NUM_FRAMES);
-  const ctx = tallCanvas.getContext('2d');
-
-  for (let i = 0; i < NUM_FRAMES; i++) {
-    const frameY = i * HEIGHT;
-    const phase = i / NUM_FRAMES;
-    drawMonochromeCard(ctx, data, WIDTH, HEIGHT, frameY, phase);
-  }
-
-  const rawData = tallCanvas.data();
-  return await sharp(rawData, {
-    raw: {
-      width: WIDTH,
-      height: HEIGHT * NUM_FRAMES,
-      channels: 4,
-      pageHeight: HEIGHT,
-    },
-  })
-    .webp({
-      quality: 90,
-      lossless: false,
-      effort: 4,
-      loop: 0,
-      delay: 50,
-    })
-    .toBuffer();
-}
 
 async function main() {
   const WIDTH = 960;
@@ -826,14 +794,6 @@ async function main() {
   const pngPath = path.join(artifactDir, 'destiny_monochrome_card.png');
   fs.writeFileSync(pngPath, pngBuf);
   console.log(`Saved Monochrome PNG to ${pngPath}`);
-
-  // 2. Animated WebP (20 FPS)
-  console.log('Rendering 80-frame Animated Monochrome WebP...');
-  const t0 = Date.now();
-  const webpBuffer = await renderMonochromeMotionWebp(cardData);
-  const webpPath = path.join(artifactDir, 'destiny_monochrome_motion.webp');
-  fs.writeFileSync(webpPath, webpBuffer);
-  console.log(`Saved Animated Monochrome WebP in ${Date.now() - t0}ms to ${webpPath} (${webpBuffer.length} bytes)`);
 }
 
 main().catch(console.error);
