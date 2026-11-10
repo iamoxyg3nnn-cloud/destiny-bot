@@ -177,7 +177,11 @@ jobs:
   # ---------------------------------------------------------------------
   admin-tunnel:
     name: Publish Admin Console
-    if: ${{ inputs.admin_tunnel != false }}
+    # Skip only when explicitly disabled on a manual dispatch. The `inputs`
+    # context is null for push/schedule events, and `null != false` evaluates
+    # to false in GitHub expressions (both coerce to 0), which would silently
+    # skip the job on every automated run.
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.admin_tunnel != false }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
