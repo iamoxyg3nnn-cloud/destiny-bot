@@ -12,10 +12,9 @@ async function bootstrap() {
   console.log('================================================================');
   console.log(`[Config] Node Environment: ${config.NODE_ENV}`);
   console.log(`[Database] Supabase Mode: ${db.isUsingMock() ? 'In-Memory Testing Store' : 'Connected to Supabase'}`);
-  console.log(`[Cache/Locks] Redis Mode: ${redis.isHealthy() ? 'Connected' : 'High-Speed Memory Fallback'}`);
-
   // 1. Start Workers
-  startAllWorkers();
+  await startAllWorkers();
+  console.log(`[Cache/Locks] Redis Mode: ${redis.isHealthy() ? 'Connected' : 'High-Speed Memory Fallback'}`);
 
   // 2. Start API Server (loopback only — never exposed directly)
   const port = config.PORT || 4000;

@@ -17,9 +17,7 @@ import { db } from '../database/supabase.js';
 import { getDiscordClient } from './client-registry.js';
 import { config } from '../config/index.js';
 
-const DEFAULT_STREAM_URL =
-  'https://discord.com/oauth2/authorize?client_id=' +
-  (config.DISCORD_CLIENT_ID || '1568212916304617557');
+const DEFAULT_STREAM_URL = config.DESTINY_STREAM_URL;
 
 /**
  * Curated Destiny community rotating statuses.

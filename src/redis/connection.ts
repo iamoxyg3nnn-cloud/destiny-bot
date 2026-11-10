@@ -8,6 +8,7 @@ import { config } from '../config/index.js';
 export interface RedisConnectionOptions {
   host: string;
   port: number;
+  username?: string;
   password?: string;
   db: number;
   tls?: { rejectUnauthorized: boolean };
@@ -16,6 +17,7 @@ export interface RedisConnectionOptions {
 interface RedisEnv {
   REDIS_HOST?: string;
   REDIS_PORT?: string | number;
+  REDIS_USERNAME?: string;
   REDIS_PASSWORD?: string;
   REDIS_TOKEN?: string;
   REDIS_URL?: string;
@@ -51,6 +53,7 @@ export function resolveRedisConnection(env: RedisEnv = process.env as RedisEnv):
   return {
     host: env.REDIS_HOST || '127.0.0.1',
     port: Number(env.REDIS_PORT) || 6379,
+    username: env.REDIS_USERNAME || undefined,
     password: password || undefined,
     db: Number(env.REDIS_DB) || 0,
     ...(isTls(env) ? { tls: { rejectUnauthorized: false } } : {}),
@@ -70,17 +73,20 @@ function fromUrl(raw: string, env: RedisEnv): RedisConnectionOptions {
     return {
       host: env.REDIS_HOST || '127.0.0.1',
       port: Number(env.REDIS_PORT) || 6379,
+      username: env.REDIS_USERNAME || undefined,
       password: env.REDIS_TOKEN || env.REDIS_PASSWORD || undefined,
       db: Number(env.REDIS_DB) || 0,
       ...(isTls(env) ? { tls: { rejectUnauthorized: false } } : {}),
     };
   }
 
+  const username = decodeURIComponent(parsed.username || '') || env.REDIS_USERNAME || undefined;
   const password = decodeURIComponent(parsed.password || '') || undefined;
 
   return {
     host: parsed.hostname || env.REDIS_HOST || '127.0.0.1',
     port: parsed.port ? Number(parsed.port) : Number(env.REDIS_PORT) || 6379,
+    username,
     password: password || env.REDIS_TOKEN || env.REDIS_PASSWORD || undefined,
     db: Number(env.REDIS_DB) || 0,
     ...(parsed.protocol === 'rediss:' || isTls(env) ? { tls: { rejectUnauthorized: false } } : {}),

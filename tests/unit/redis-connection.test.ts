@@ -4,6 +4,7 @@ import { resolveRedisConnection, describeRedisTarget } from '../../src/redis/con
 const BASE = {
   REDIS_HOST: undefined,
   REDIS_PORT: undefined,
+  REDIS_USERNAME: undefined,
   REDIS_PASSWORD: undefined,
   REDIS_TOKEN: undefined,
   REDIS_URL: undefined,
@@ -48,6 +49,11 @@ describe('Redis connection resolution', () => {
     expect(result.password).toBe('password-value');
   });
 
+  it('should use the Redis ACL username when configured directly', () => {
+    const result = resolve({ REDIS_USERNAME: 'service-user' });
+    expect(result.username).toBe('service-user');
+  });
+
   it('should enable TLS when REDIS_TLS is true', () => {
     const result = resolve({ REDIS_HOST: 'secure.example.com', REDIS_TLS: 'true' });
     expect(result.tls).toEqual({ rejectUnauthorized: false });
@@ -67,6 +73,12 @@ describe('Redis connection resolution', () => {
     expect(result.password).toBe('secret-token');
     expect(result.tls).toEqual({ rejectUnauthorized: false });
     expect(target({ REDIS_URL: 'rediss://default:secret-token@my-db.upstash.io:6380' })).not.toContain('secret-token');
+  });
+
+  it('should parse and decode the ACL username from REDIS_URL', () => {
+    const result = resolve({ REDIS_URL: 'redis://service%2Duser:secret@my-db.example.com:6379' });
+    expect(result.username).toBe('service-user');
+    expect(result.password).toBe('secret');
   });
 
   it('should URL-decode a percent-encoded password from REDIS_URL', () => {
@@ -101,4 +113,3 @@ describe('Redis connection resolution', () => {
     expect(target({ REDIS_URL: `redis://default:${secret}@h.example.com:6379` })).not.toContain(secret);
   });
 });
-

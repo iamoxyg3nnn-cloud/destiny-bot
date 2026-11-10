@@ -2,7 +2,7 @@ import { Worker, Job } from 'bullmq';
 import { matchmakingManager } from '../core/matchmaking/manager.js';
 import { redis } from '../redis/client.js';
 import { QUEUE_NAMES } from '../redis/queues.js';
-import { config } from '../config/index.js';
+import { resolveRedisConnection } from '../redis/connection.js';
 
 export class MatchmakingWorker {
   private worker: Worker | null = null;
@@ -10,6 +10,7 @@ export class MatchmakingWorker {
 
   start() {
     console.log('👷 [Worker] Starting Matchmaking Worker...');
+    const redisConnection = resolveRedisConnection();
 
     // 1. High frequency polling fallback loop (every 2.5 seconds)
     this.intervalTimer = setInterval(async () => {
@@ -32,9 +33,8 @@ export class MatchmakingWorker {
           },
           {
             connection: {
-              host: config.REDIS_HOST,
-              port: config.REDIS_PORT,
-              password: config.REDIS_PASSWORD || undefined,
+              ...redisConnection,
+              maxRetriesPerRequest: null,
             },
             concurrency: 5,
           }

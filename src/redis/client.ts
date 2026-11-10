@@ -19,6 +19,7 @@ export class RedisService {
       this.client = new Redis({
         host: options.host,
         port: options.port,
+        username: options.username,
         password: options.password,
         db: options.db,
         ...(options.tls ? { tls: options.tls } : {}),
@@ -33,12 +34,15 @@ export class RedisService {
         lazyConnect: true,
       });
 
-      this.client.connect().then(() => {
+      this.client.on('ready', () => {
         this.isConnected = true;
         console.log(`✅ Redis connected successfully (${describeRedisTarget()}).`);
-      }).catch((_err: any) => {
+      });
+
+      this.client.connect().catch((err: any) => {
         this.isConnected = false;
-        console.warn(`⚠️ Redis not reachable at ${describeRedisTarget()}. Operating in high-speed in-memory fallback mode.`);
+        const code = err?.code ? ` (${err.code})` : '';
+        console.warn(`⚠️ Redis not reachable at ${describeRedisTarget()}${code}. Operating in high-speed in-memory fallback mode.`);
       });
 
       this.client.on('error', (_err: any) => {
@@ -59,6 +63,29 @@ export class RedisService {
 
   public isHealthy(): boolean {
     return this.isConnected;
+  }
+
+  public async waitForConnection(timeoutMs = 10_000): Promise<boolean> {
+    const client = this.client;
+    if (!client) return false;
+    if (this.isConnected && client.status === 'ready') return true;
+    if (client.status === 'end') return false;
+
+    return new Promise((resolve) => {
+      const finish = () => {
+        clearTimeout(timeout);
+        client.removeListener('ready', onReady);
+        client.removeListener('end', onEnd);
+        resolve(this.isConnected && client.status === 'ready');
+      };
+      const onReady = () => finish();
+      const onEnd = () => finish();
+      const timeout = setTimeout(finish, timeoutMs);
+
+      client.once('ready', onReady);
+      client.once('end', onEnd);
+      if (client.status === 'ready') finish();
+    });
   }
 
   // ---------------- BASIC KEY-VALUE ----------------

@@ -9,7 +9,8 @@ import {
   PermissionFlagsBits,
   ChannelType,
   ContainerBuilder,
-  MessageFlags
+  MessageFlags,
+  MessageFlagsBitField
 } from 'discord.js';
 import { db } from '../../database/supabase.js';
 import { redis } from '../../redis/client.js';
@@ -250,12 +251,18 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
   // Immediately defer reply to avoid Discord 3-second timeout on network DB operations
   if (!interaction.deferred && !interaction.replied) {
-    await interaction.deferReply({ ephemeral: true }).catch(() => {});
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 
   const respond = async (opts: any): Promise<any> => {
     const payload = { ...opts };
+    const ephemeral = payload.ephemeral === true;
     delete payload.ephemeral;
+    if (ephemeral) {
+      payload.flags = new MessageFlagsBitField(payload.flags)
+        .add(MessageFlags.Ephemeral)
+        .bitfield;
+    }
 
     const components = Array.isArray(payload.components) ? payload.components : [];
     const hasV2Container = components.some((component: any) => component instanceof ContainerBuilder || component?.type === 17);
@@ -264,13 +271,13 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         ? (payload.flags | MessageFlags.IsComponentsV2)
         : MessageFlags.IsComponentsV2;
       delete payload.content;
-      payload.embeds = [];
+      delete payload.embeds;
     }
 
     if (interaction.deferred || interaction.replied) {
       return await interaction.editReply(payload).catch(console.error);
     }
-    return await interaction.reply(opts).catch(console.error);
+    return await interaction.reply(payload).catch(console.error);
   };
 
   // Resolve user account in Supabase
@@ -652,7 +659,7 @@ async function handleProfileCommand(interaction: ChatInputCommandInteraction): P
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
           content: '⚠️ Could not open the profile editor. Please try `/profile` again in a moment.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         }).catch(() => {});
       }
     }
@@ -660,7 +667,7 @@ async function handleProfileCommand(interaction: ChatInputCommandInteraction): P
   }
 
   if (!interaction.deferred && !interaction.replied) {
-    await interaction.deferReply({ ephemeral: true }).catch(() => {});
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 
   try {
@@ -713,5 +720,3 @@ async function handleProfileCommand(interaction: ChatInputCommandInteraction): P
     }).catch(() => {});
   }
 }
-
-

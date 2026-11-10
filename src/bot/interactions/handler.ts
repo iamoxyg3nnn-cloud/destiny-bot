@@ -71,7 +71,7 @@ async function safeEditReply(interaction: ButtonInteraction | StringSelectMenuIn
   try {
     const payload = { ...options };
     const components = Array.isArray(payload.components) ? payload.components : [];
-    const hasV2Container = components.some((component: any) => component instanceof ContainerBuilder || component?.type === 17);
+    let hasV2Container = components.some((component: any) => component instanceof ContainerBuilder || component?.type === 17);
 
     if (hasV2Container) {
       // Components V2 disallows legacy content/embeds alongside containers.
@@ -79,7 +79,7 @@ async function safeEditReply(interaction: ButtonInteraction | StringSelectMenuIn
         ? (payload.flags | MessageFlags.IsComponentsV2)
         : MessageFlags.IsComponentsV2;
       delete payload.content;
-      payload.embeds = [];
+      delete payload.embeds;
     } else if (payload.content && components.length === 0 && (!payload.embeds || payload.embeds.length === 0)) {
       // Text-only replies are rendered as a simple V2 notice container.
       const noticeContainer = new ContainerBuilder()
@@ -92,6 +92,19 @@ async function safeEditReply(interaction: ButtonInteraction | StringSelectMenuIn
         ? (payload.flags | MessageFlags.IsComponentsV2)
         : MessageFlags.IsComponentsV2;
       delete payload.content;
+      hasV2Container = true;
+    }
+
+    const isLegacyComponentMessage = Boolean(
+      interaction.isMessageComponent?.() &&
+      !interaction.message?.flags?.has(MessageFlags.IsComponentsV2)
+    );
+    if (hasV2Container && isLegacyComponentMessage && (interaction.deferred || interaction.replied)) {
+      await interaction.followUp({
+        ...payload,
+        flags: payload.flags | MessageFlags.Ephemeral,
+      });
+      return;
     }
 
     if (interaction.deferred || interaction.replied) {
@@ -310,7 +323,11 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
           .setStyle(ButtonStyle.Secondary)
       );
 
-      await safeEditReply(select, { content: res.message, components: [row] });
+      const container = new ContainerBuilder()
+        .setAccentColor(COLORS.DESTINY_PURPLE)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(res.message))
+        .addActionRowComponents(row);
+      await safeEditReply(select, { components: [container] });
       return;
     }
 
@@ -333,7 +350,11 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
           .setStyle(ButtonStyle.Secondary)
       );
 
-      await safeEditReply(select, { content: res.message, components: [row] });
+      const container = new ContainerBuilder()
+        .setAccentColor(COLORS.DESTINY_PURPLE)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(res.message))
+        .addActionRowComponents(row);
+      await safeEditReply(select, { components: [container] });
       return;
     }
   }
@@ -369,7 +390,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
     if (customId === 'destiny_btn_card_static') {
       const user = await db.getUserByDiscordId(discordUser.id);
       if (!user) {
-        await btn.reply({ content: 'Please set up your profile first with `/profile`.', ephemeral: true }).catch(() => {});
+        await btn.reply({ content: 'Please set up your profile first with `/profile`.', flags: MessageFlags.Ephemeral }).catch(() => {});
         return;
       }
 

@@ -2,7 +2,7 @@ import { Worker, Job } from 'bullmq';
 import { db } from '../database/supabase.js';
 import { redis } from '../redis/client.js';
 import { QUEUE_NAMES } from '../redis/queues.js';
-import { config } from '../config/index.js';
+import { resolveRedisConnection } from '../redis/connection.js';
 
 export class NotificationWorker {
   private worker: Worker | null = null;
@@ -10,6 +10,7 @@ export class NotificationWorker {
 
   start() {
     console.log('⏰ [Worker] Starting 7:30 PM IST Daily Notification Scheduler...');
+    const redisConnection = resolveRedisConnection();
 
     // Hourly / Periodic check for users whose local time matches reminder time
     this.cronTimer = setInterval(async () => {
@@ -31,9 +32,8 @@ export class NotificationWorker {
           },
           {
             connection: {
-              host: config.REDIS_HOST,
-              port: config.REDIS_PORT,
-              password: config.REDIS_PASSWORD || undefined,
+              ...redisConnection,
+              maxRetriesPerRequest: null,
             },
             concurrency: 10,
           }

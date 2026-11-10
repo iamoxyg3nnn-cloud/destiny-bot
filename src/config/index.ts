@@ -14,6 +14,7 @@ const envSchema = z.object({
   DISCORD_PUBLIC_KEY: z.string().default(''),
   DISCORD_SHARDS_TOTAL: z.string().default('1'),
   DISCORD_SHARDS_PER_CLUSTER: z.coerce.number().default(1),
+  DESTINY_STREAM_URL: z.string().url().default('https://www.twitch.tv/destinybot'),
 
   // Supabase
   SUPABASE_URL: z.string().default('https://mock-supabase.supabase.co'),
@@ -24,6 +25,7 @@ const envSchema = z.object({
   // Redis
   REDIS_HOST: z.string().default('127.0.0.1'),
   REDIS_PORT: z.coerce.number().default(6379),
+  REDIS_USERNAME: z.string().default(''),
   REDIS_PASSWORD: z.string().default(''),
   /**
    * Access token for hosted Redis providers (e.g. Upstash). Used as the

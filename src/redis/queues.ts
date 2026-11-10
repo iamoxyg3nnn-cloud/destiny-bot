@@ -20,36 +20,40 @@ export class QueueManager {
     this.redisConnectionConfig = {
       host: options.host,
       port: options.port,
+      username: options.username,
       password: options.password,
       db: options.db,
       ...(options.tls ? { tls: options.tls } : {}),
       maxRetriesPerRequest: null,
     };
 
-    if (redis.isHealthy()) {
-      try {
-        for (const name of Object.values(QUEUE_NAMES)) {
-          const q = new Queue(name, {
-            connection: this.redisConnectionConfig,
-            defaultJobOptions: {
-              removeOnComplete: 1000,
-              removeOnFail: 5000,
-              attempts: 3,
-              backoff: {
-                type: 'exponential',
-                delay: 1000,
-              },
+  }
+
+  private ensureQueues(): void {
+    if (!redis.isHealthy() || this.queues.size > 0) return;
+    try {
+      for (const name of Object.values(QUEUE_NAMES)) {
+        const q = new Queue(name, {
+          connection: this.redisConnectionConfig,
+          defaultJobOptions: {
+            removeOnComplete: 1000,
+            removeOnFail: 5000,
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 1000,
             },
-          });
-          this.queues.set(name, q);
-        }
-      } catch (err) {
-        console.warn('⚠️ BullMQ queue initialization fallback:', err);
+          },
+        });
+        this.queues.set(name, q);
       }
+    } catch (err) {
+      console.warn('⚠️ BullMQ queue initialization fallback:', err);
     }
   }
 
   getQueue(name: string): Queue | null {
+    this.ensureQueues();
     return this.queues.get(name) || null;
   }
 
@@ -61,6 +65,7 @@ export class QueueManager {
   }
 
   async getQueueStats(): Promise<Record<string, { waiting: number; active: number; completed: number; failed: number }>> {
+    this.ensureQueues();
     const stats: Record<string, any> = {};
     for (const [name, q] of this.queues.entries()) {
       try {

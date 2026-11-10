@@ -11,6 +11,7 @@
     "worker": "tsx src/workers/index.ts",
     "api": "tsx src/api/server.ts",
     "start": "tsx src/index.ts",
+    "redis:check": "tsx scripts/check-redis.ts",
     "dashboard:dev": "npm --prefix dashboard run dev",
     "dashboard:build": "npm --prefix dashboard run build",
     "dashboard:start": "npm --prefix dashboard run start",
