@@ -124,10 +124,12 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Wait for both services to answer.
+# NOTE: /api/health requires the x-api-key header, so we must send it —
+# a bare `curl -f` would treat the 401 as "not ready".
 wait_for_http() {
   local url="$1" name="$2" attempts="${3:-90}"
   for _ in $(seq 1 "$attempts"); do
-    if curl -sf -o /dev/null "$url" 2>/dev/null; then
+    if curl -s -o /dev/null -H "x-api-key: ${API_SECRET_KEY}" "$url" 2>/dev/null; then
       echo "✓ $name is up"
       return 0
     fi
@@ -137,8 +139,16 @@ wait_for_http() {
   return 1
 }
 
-wait_for_http "http://127.0.0.1:${API_PORT}/api/health" "admin API" || exit 1
-wait_for_http "http://127.0.0.1:${DASH_PORT}/login" "dashboard" || exit 1
+wait_for_http "http://127.0.0.1:${API_PORT}/api/health" "admin API" || {
+  echo "--- logs/api.log ---" >&2
+  tail -40 "$ROOT/logs/api.log" >&2 2>/dev/null || true
+  exit 1
+}
+wait_for_http "http://127.0.0.1:${DASH_PORT}/login" "dashboard" || {
+  echo "--- logs/dashboard.log ---" >&2
+  tail -40 "$ROOT/logs/dashboard.log" >&2 2>/dev/null || true
+  exit 1
+}
 
 # ---------------------------------------------------------------------------
 # Open the quick tunnel

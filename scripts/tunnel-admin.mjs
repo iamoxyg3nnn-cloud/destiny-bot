@@ -268,12 +268,16 @@ if (!process.env.DASHBOARD_SESSION_SECRET) {
 
 /**
  * Waits for an HTTP endpoint to become reachable.
+ *
+ * `/api/health` is protected by the `x-api-key` header, so it must be sent —
+ * a plain request returns 401 and would look like the API never came up.
  */
-async function waitForHttp(url, timeoutMs = 45000) {
+async function waitForHttp(url, { timeoutMs = 45000, apiKey = '' } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(url, { redirect: 'manual' });
+      const headers = apiKey ? { 'x-api-key': apiKey } : {};
+      const res = await fetch(url, { redirect: 'manual', headers });
       // Any HTTP response means the server is listening.
       if (res.status > 0) return true;
     } catch {}
@@ -315,7 +319,9 @@ async function main() {
   startApi();
   startDashboard();
 
-  const apiUp = await waitForHttp(`http://127.0.0.1:${API_PORT}/api/health`);
+  const apiUp = await waitForHttp(`http://127.0.0.1:${API_PORT}/api/health`, {
+    apiKey: process.env.API_SECRET_KEY || '',
+  });
   if (!apiUp) {
     console.error(`${C.red}✖ Admin API did not come up on 127.0.0.1:${API_PORT}.${C.reset}`);
     shutdown(1);
