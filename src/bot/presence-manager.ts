@@ -168,6 +168,14 @@ export function setCustomStatus(client: Client, message: string): void {
         type: ActivityType.Custom,
         state: truncate(message, ACTIVITY_NAME_MAX),
       },
+      {
+        // This is a third-party Twitch destination, not a claim that Destiny
+        // owns or operates the channel. Discord requires a Twitch URL to show
+        // the Streaming activity badge.
+        name: 'Destiny Community',
+        type: ActivityType.Streaming,
+        url: 'https://www.twitch.tv/ninja',
+      },
     ],
     status: 'online',
   };
