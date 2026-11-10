@@ -113,7 +113,8 @@ jobs:
 
           # Run the tunnel in the background so we can publish the URL to the
           # job summary immediately, then keep it alive for the whole window.
-          ./scripts/start-admin-tunnel.sh &
+          # Invoked via `bash` so it works regardless of the file's exec bit.
+          bash ./scripts/start-admin-tunnel.sh &
           tunnel_pid=$!
 
           # Wait for the tunnel to publish its URL.
