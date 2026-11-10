@@ -54,7 +54,6 @@ jobs:
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       REDIS_HOST: ${{ secrets.REDIS_HOST || '127.0.0.1' }}
       REDIS_PORT: ${{ secrets.REDIS_PORT || '6379' }}
       REDIS_USERNAME: ${{ secrets.REDIS_URL && secrets.REDIS_USERNAME || (secrets.REDIS_HOST && secrets.REDIS_HOST != '127.0.0.1' && secrets.REDIS_USERNAME) || '' }}
