@@ -1,7 +1,7 @@
 /**
- * Destiny — Dynamic Streaming Presence Manager (Discord Rich Activity Engine)
+ * Destiny — Dynamic Custom Status Manager
  *
- * Provides a real-time purple "Streaming" presence for the Destiny bot:
+ * Provides a rotating Discord Custom Status for the Destiny bot:
  * - Live "in conversation" status while the user is actually chatting
  * - Gapless rotation of curated Destiny community statuses when idle
  * - Dynamic {members} and {servers} counts computed in real time
@@ -16,8 +16,6 @@ import { ActivityType, Client, PresenceData } from 'discord.js';
 import { db } from '../database/supabase.js';
 import { getDiscordClient } from './client-registry.js';
 import { config } from '../config/index.js';
-
-const DEFAULT_STREAM_URL = config.DESTINY_STREAM_URL;
 
 /**
  * Curated Destiny community rotating statuses.
@@ -157,17 +155,18 @@ function truncate(text: string, length: number): string {
 }
 
 /**
- * Applies a Streaming presence to the client.
+ * Applies a genuine Discord Custom Status. Custom statuses use `state` for
+ * the visible text; they do not need a streaming URL or another activity type.
  */
-export function setStreamingPresence(client: Client, name: string, url = DEFAULT_STREAM_URL): void {
+export function setCustomStatus(client: Client, message: string): void {
   if (!client?.user) return;
 
   const presence: PresenceData = {
     activities: [
       {
-        name: truncate(name, ACTIVITY_NAME_MAX),
-        type: ActivityType.Streaming,
-        url: url || DEFAULT_STREAM_URL,
+        name: 'Custom Status',
+        type: ActivityType.Custom,
+        state: truncate(message, ACTIVITY_NAME_MAX),
       },
     ],
     status: 'online',
@@ -176,7 +175,7 @@ export function setStreamingPresence(client: Client, name: string, url = DEFAULT
   try {
     client.user.setPresence(presence);
   } catch (err: any) {
-    console.debug('[Presence] Failed to set streaming presence:', err?.message || err);
+    console.debug('[Presence] Failed to set custom status:', err?.message || err);
   }
 }
 
@@ -290,14 +289,13 @@ async function getCounts(client: Client): Promise<PresenceCounts> {
 /**
  * Builds the live status shown while people are actually chatting.
  */
-async function buildLiveStatus(client: Client): Promise<{ name: string; url: string } | null> {
+async function buildLiveStatus(client: Client): Promise<{ name: string } | null> {
   const counts = await getCounts(client);
 
   // Someone is talking right now — surface it.
   if (counts.activeRooms > 0) {
     return {
       name: `💬 ${counts.activeRooms} Anonymous Conversation${counts.activeRooms === 1 ? '' : 's'} Live`,
-      url: DEFAULT_STREAM_URL,
     };
   }
 
@@ -325,7 +323,7 @@ export async function updatePresence(client: Client): Promise<void> {
   if (live) {
     // Free the idle status so other shards may use it.
     currentStatusIndices.set(id, null);
-    setStreamingPresence(client, live.name, live.url);
+    setCustomStatus(client, live.name);
     return;
   }
 
@@ -337,7 +335,7 @@ export async function updatePresence(client: Client): Promise<void> {
     .replace(/\{members\}/g, counts.members.toLocaleString())
     .replace(/\{servers\}/g, counts.servers.toLocaleString());
 
-  setStreamingPresence(client, message, DEFAULT_STREAM_URL);
+  setCustomStatus(client, message);
 }
 
 /**

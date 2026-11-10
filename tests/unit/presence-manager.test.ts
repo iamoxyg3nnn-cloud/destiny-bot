@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ActivityType } from 'discord.js';
-import { DESTINY_STATUSES, pickRandomStatusIndex, setStreamingPresence } from '../../src/bot/presence-manager.js';
+import { DESTINY_STATUSES, pickRandomStatusIndex, setCustomStatus } from '../../src/bot/presence-manager.js';
 
 /**
  * Minimal stand-in for a discord.js Client — the presence manager only
@@ -22,13 +22,16 @@ function fakeClient(id: string, guilds = 3) {
 }
 
 describe('Destiny Rotating Presence', () => {
-  it('should use a supported streaming URL so Discord displays the Streaming badge', () => {
-    const client = fakeClient('client_stream');
-    setStreamingPresence(client, 'Live status');
+  it('should publish a genuine Custom Status without Streaming, Watching or Playing activity', () => {
+    const client = fakeClient('client_custom');
+    setCustomStatus(client, '💜 Live status');
 
     const [activity] = client.sent[0].activities;
-    expect(activity.type).toBe(ActivityType.Streaming);
-    expect(activity.url).toMatch(/^https:\/\/(www\.)?(twitch\.tv|youtube\.com)\//);
+    expect(activity.type).toBe(ActivityType.Custom);
+    expect(activity.name).toBe('Custom Status');
+    expect(activity.state).toBe('💜 Live status');
+    expect(activity.url).toBeUndefined();
+    expect([ActivityType.Streaming, ActivityType.Watching, ActivityType.Playing]).not.toContain(activity.type);
   });
 
   it('should expose a rich set of rotating statuses', () => {
