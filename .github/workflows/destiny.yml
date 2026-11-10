@@ -108,6 +108,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         run: |
+          set -euo pipefail
           if [ -z "${DATABASE_URL}" ] || [ -z "${SUPABASE_URL}" ]; then
             echo "::error::Both DATABASE_URL and SUPABASE_URL secrets are required to apply schema migrations before deploying this version."
             exit 1
@@ -127,8 +128,12 @@ jobs:
             if (!projectRef || projectRef.includes(".")) {
               throw new Error("Could not derive a valid Supabase project reference from SUPABASE_URL");
             }
-            if (db.hostname.endsWith(".pooler.supabase.com") && db.username.startsWith("postgres.")) {
+            if (db.hostname.endsWith(".pooler.supabase.com")) {
+              // Migrations need a persistent PostgreSQL session. Supavisor
+              // transaction mode (6543) is intended for short-lived app queries.
+              db.port = "5432";
               db.username = "postgres." + projectRef;
+              db.searchParams.set("sslmode", "require");
             }
             process.stdout.write(db.toString());
           ')"
