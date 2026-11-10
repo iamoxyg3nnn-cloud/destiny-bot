@@ -8,17 +8,21 @@ firewall port or owning a domain.
 
 ## In GitHub Actions (recommended)
 
-The admin console is published by the **same workflow** that runs the bot —
-`.github/workflows/destiny.yml` — as a second job named **Publish Admin
-Console**. There is no separate workflow to manage.
-
-Both jobs run **in parallel** under the same run:
+The admin console is published by the **same job** that runs the bot —
+`.github/workflows/destiny.yml`, job `run-bot`. There is no second workflow and
+no second runner.
 
 ```
-                  ┌─ job: run-bot ────────────┐   bot + workers, 345m window
- workflow run ───┤                            │
-                  └─ job: admin-tunnel ───────┘   dashboard + tunnel, same window
+job: run-bot
+ ├─ build + prepare env
+ ├─ pnpm start (bot + workers + admin API)   ── background
+ ├─ cloudflared tunnel → dashboard           ── background
+ └─ wait for the bot session to finish
 ```
+
+The bot session already serves the admin API on `127.0.0.1:4000`, so the tunnel
+script runs with `--reuse-api` and starts only the dashboard — there is no second
+API instance and no extra runner, which halves the runner minutes per cycle.
 
 Trigger it and read the URL from the run's job summary:
 
@@ -30,12 +34,12 @@ gh workflow run destiny.yml --repo apunabhibhilegendhai/destiny-bot \
 gh run view --repo apunabhibhilegendhai/destiny-bot --log | grep trycloudflare
 ```
 
-The URL is also written to the **Publish Admin Console** job summary on the
-Actions run page, and exported as the `ADMIN_TUNNEL_URL` job output.
+The URL is also written to the **Publish Admin Console** section of the run's
+job summary and exported as the `ADMIN_TUNNEL_URL` job output.
 
-The tunnel is **ephemeral**: the URL changes on every run and dies when the
-job ends. Because the bot workflow chains itself every ~6 hours, the URL
-rotates roughly that often — always check the latest run.
+The tunnel is **ephemeral**: the URL changes on every run and dies when the job
+ends. Because the bot workflow chains itself every ~6 hours, the URL rotates
+roughly that often — always check the latest run.
 
 To disable it for a run: `-f admin_tunnel=false`.
 

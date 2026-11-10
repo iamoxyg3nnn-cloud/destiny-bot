@@ -12,6 +12,11 @@
 #
 # Usage:
 #   scripts/start-admin-tunnel.sh [--port 3000] [--api-port 4000]
+#                                 [--reuse-api] [--url-file <file>]
+#
+# --reuse-api : do not start an admin API; reuse the one already listening
+#               on --api-port (used when this runs alongside `pnpm start`,
+#               which serves the admin API itself).
 #
 # Requires DASHBOARD_ADMIN_PASSWORD, DASHBOARD_SESSION_SECRET and
 # API_SECRET_KEY in the environment (or the project-root .env).
@@ -25,12 +30,14 @@ DASH_PORT=3000
 API_PORT=4000
 TUNNEL_URL_FILE="${TUNNEL_URL_FILE:-$ROOT/logs/tunnel.url}"
 CLOUDFLARED_VERSION="${CLOUDFLARED_VERSION:-2026.10.7}"
+REUSE_API=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --port) DASH_PORT="$2"; shift 2 ;;
     --api-port) API_PORT="$2"; shift 2 ;;
     --url-file) TUNNEL_URL_FILE="$2"; shift 2 ;;
+    --reuse-api) REUSE_API=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -99,10 +106,15 @@ pnpm --dir dashboard build
 # ---------------------------------------------------------------------------
 # Start the admin API (loopback only) and the dashboard
 # ---------------------------------------------------------------------------
-echo "▸ starting admin API on 127.0.0.1:${API_PORT}"
-RUN_API=true PORT="$API_PORT" NODE_ENV=production \
-  node_modules/.bin/tsx src/api/server.ts >"$ROOT/logs/api.log" 2>&1 &
-API_PID=$!
+API_PID=""
+if [ "$REUSE_API" -eq 1 ]; then
+  echo "▸ reusing the admin API already listening on 127.0.0.1:${API_PORT}"
+else
+  echo "▸ starting admin API on 127.0.0.1:${API_PORT}"
+  RUN_API=true PORT="$API_PORT" NODE_ENV=production \
+    node_modules/.bin/tsx src/api/server.ts >"$ROOT/logs/api.log" 2>&1 &
+  API_PID=$!
+fi
 
 echo "▸ starting dashboard on 127.0.0.1:${DASH_PORT}"
 (
@@ -118,7 +130,8 @@ DASH_PID=$!
 
 cleanup() {
   echo "▸ tearing down"
-  kill "$API_PID" "$DASH_PID" 2>/dev/null || true
+  [ -n "$API_PID" ] && kill "$API_PID" 2>/dev/null || true
+  kill "$DASH_PID" 2>/dev/null || true
   pkill -f "cloudflared tunnel" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
@@ -139,11 +152,20 @@ wait_for_http() {
   return 1
 }
 
-wait_for_http "http://127.0.0.1:${API_PORT}/api/health" "admin API" || {
-  echo "--- logs/api.log ---" >&2
-  tail -40 "$ROOT/logs/api.log" >&2 2>/dev/null || true
-  exit 1
-}
+if [ "$REUSE_API" -eq 1 ]; then
+  # The API is started by `pnpm start`, which boots the whole bot stack first.
+  # Give it a generous window to come up.
+  wait_for_http "http://127.0.0.1:${API_PORT}/api/health" "admin API" 180 || {
+    echo "::warning::Reused admin API never became ready — the dashboard will proxy to it anyway." >&2
+  }
+else
+  wait_for_http "http://127.0.0.1:${API_PORT}/api/health" "admin API" || {
+    echo "--- logs/api.log ---" >&2
+    tail -40 "$ROOT/logs/api.log" >&2 2>/dev/null || true
+    exit 1
+  }
+fi
+
 wait_for_http "http://127.0.0.1:${DASH_PORT}/login" "dashboard" || {
   echo "--- logs/dashboard.log ---" >&2
   tail -40 "$ROOT/logs/dashboard.log" >&2 2>/dev/null || true

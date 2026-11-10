@@ -44,3 +44,6 @@ coverage/
 
 # Local admin tunnel runtime logs
 logs/
+
+# Downloaded tooling (e.g. the cloudflared binary)
+.tools/
