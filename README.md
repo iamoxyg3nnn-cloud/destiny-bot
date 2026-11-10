@@ -41,6 +41,17 @@
 - **7:30 PM IST Reminders**: Configure automated daily notifications with timezone support, quiet hours, and user opt-out.
 - **Admin Audit Trail**: Immutable logging of all moderator actions.
 
+### 🌌 Step 5 — Dynamic Rotating Presence
+- **Purple "Streaming" badge** (`ActivityType.Streaming`) with a rotating community status.
+- **102 curated statuses** with live `{members}` and `{servers}` counts computed in real time.
+- **Live contextual status**: switches to "*N Anonymous Conversations Live*" or
+  "*Finding You a Match • N in Queue*" whenever there is real activity, and falls
+  back to the idle rotation otherwise.
+- **Shard-aware**: every shard in the cluster rotates independently and never
+  displays the same status as another shard at the same time.
+- **20-second rotation**, staggered per shard so gateway presence updates stay
+  spread out; counts are cached for 30s so the rotation never hammers the database.
+
 ---
 
 ## 🚀 Quick Start Guide
