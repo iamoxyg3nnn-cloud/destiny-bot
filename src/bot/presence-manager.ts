@@ -303,7 +303,6 @@ async function buildLiveStatus(client: Client): Promise<{ name: string } | null>
   if (counts.queued > 0) {
     return {
       name: `✨ Finding You a Match • ${counts.queued} in Queue`,
-      url: DEFAULT_STREAM_URL,
     };
   }
 
