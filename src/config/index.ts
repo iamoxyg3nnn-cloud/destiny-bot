@@ -12,9 +12,12 @@ const envSchema = z.object({
   DISCORD_CLIENT_ID: z.string().default(''),
   DISCORD_CLIENT_SECRET: z.string().default(''),
   DISCORD_PUBLIC_KEY: z.string().default(''),
-  DISCORD_SHARDS_TOTAL: z.string().default('1'),
-  DISCORD_SHARDS_PER_CLUSTER: z.coerce.number().default(1),
-  DESTINY_STREAM_URL: z.string().url().default('https://www.twitch.tv/ninja'),
+  DISCORD_SHARDS_TOTAL: z.string().default('1').refine((value) => value === 'auto' || (/^[1-9][0-9]*$/.test(value) && Number(value) <= 1000)),
+  DISCORD_SHARDS_PER_CLUSTER: z.coerce.number().int().min(1).max(100).default(1),
+  DESTINY_STREAM_URL: z.string().url().refine((value) => {
+    const host = new URL(value).hostname.toLowerCase();
+    return new URL(value).protocol === 'https:' && (host === 'twitch.tv' || host.endsWith('.twitch.tv') || host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be');
+  }).default('https://www.twitch.tv/ninja'),
 
   // Supabase
   SUPABASE_URL: z.string().default('https://mock-supabase.supabase.co'),
@@ -24,7 +27,7 @@ const envSchema = z.object({
 
   // Redis
   REDIS_HOST: z.string().default('127.0.0.1'),
-  REDIS_PORT: z.coerce.number().default(6379),
+  REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
   REDIS_USERNAME: z.string().default(''),
   REDIS_PASSWORD: z.string().default(''),
   /**
@@ -38,25 +41,26 @@ const envSchema = z.object({
    * host/port/password variables when set.
    */
   REDIS_URL: z.string().default(''),
-  REDIS_DB: z.coerce.number().default(0),
-  REDIS_TLS: z.string().transform((v) => v === 'true').default('false'),
+  REDIS_DB: z.coerce.number().int().nonnegative().default(0),
+  REDIS_TLS: z.string().transform((v) => v.toLowerCase() === 'true').default('false'),
   REDIS_KEY_PREFIX: z.string().default('destiny:'),
 
   // Notifications
   REMINDER_CRON_SCHEDULE: z.string().default('30 19 * * *'), // 7:30 PM
   REMINDER_DEFAULT_TIMEZONE: z.string().default('Asia/Kolkata'), // IST
-  BULLMQ_CONCURRENCY: z.coerce.number().default(50),
+  BULLMQ_CONCURRENCY: z.coerce.number().int().min(1).max(1000).default(50),
 
   // API & Dashboard
-  PORT: z.coerce.number().default(4000),
-  API_SECRET_KEY: z.string().default('destiny_internal_secret_32bytes_min_key!'),
-  NEXTAUTH_SECRET: z.string().default('destiny_dashboard_secret_key_32bytes!'),
+  PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+  API_HOST: z.string().default('127.0.0.1'),
+  API_SECRET_KEY: z.string().default(''),
+  NEXTAUTH_SECRET: z.string().default(''),
 
   // Moderation & Anonymity
-  ENCRYPTION_KEY: z.string().default('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
-  AUTO_MOD_ENABLED: z.string().transform((v) => v === 'true').default('true'),
-  MAX_MESSAGE_RATE_PER_3S: z.coerce.number().default(5),
-  MAX_QUEUE_WAIT_SECONDS: z.coerce.number().default(180),
+  ENCRYPTION_KEY: z.string().default(''),
+  AUTO_MOD_ENABLED: z.string().transform((v) => v.toLowerCase() === 'true').default('true'),
+  MAX_MESSAGE_RATE_PER_3S: z.coerce.number().int().min(1).max(100).default(5),
+  MAX_QUEUE_WAIT_SECONDS: z.coerce.number().int().min(1).max(3600).default(180),
 });
 
 export type Config = z.infer<typeof envSchema>;
@@ -81,18 +85,21 @@ function withoutEmptyStrings(source: NodeJS.ProcessEnv): Record<string, string> 
 function loadConfig(): Config {
   const cleaned = withoutEmptyStrings(process.env);
   const result = envSchema.safeParse(cleaned);
+  if (result.success) return result.data;
 
-  if (!result.success) {
-    console.error('❌ Invalid environment configuration:', result.error.format());
-    // Fall back per-field so one bad variable cannot discard every other
-    // (previously this dropped the whole environment back to hardcoded
-    // defaults, which silently ignored real secrets).
-    const fallback: Record<string, unknown> = {};
-    for (const key of Object.keys(cleaned)) fallback[key] = cleaned[key];
-    return envSchema.parse(fallback);
+  console.error('❌ Invalid environment configuration:', result.error.format());
+
+  // Validate each supplied variable independently. The previous fallback
+  // reparsed the same invalid values and could crash startup unexpectedly.
+  const resolved: Record<string, unknown> = envSchema.parse({});
+  for (const [key, value] of Object.entries(cleaned)) {
+    const field = (envSchema.shape as Record<string, z.ZodTypeAny>)[key];
+    if (!field) continue;
+    const parsed = field.safeParse(value);
+    if (parsed.success) resolved[key] = parsed.data;
+    else console.error(`[Config] Ignoring invalid ${key}; using its safe default.`);
   }
-
-  return result.data;
+  return resolved as Config;
 }
 
 export const config = loadConfig();

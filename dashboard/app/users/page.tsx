@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, 
   CheckCircle, 
@@ -35,6 +35,7 @@ export default function UsersPage() {
   const [banReason, setBanReason] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState('');
+  const pendingAdjustmentIds = useRef(new Map<string, { amount: number; key: string }>());
 
   const fetchUsers = async () => {
     try {
@@ -62,14 +63,22 @@ export default function UsersPage() {
   };
 
   const handleAdjustCoins = async (userId: string) => {
-    const amount = parseInt(coinDelta, 10);
-    if (isNaN(amount)) return;
+    const amount = Number(coinDelta);
+    if (!Number.isSafeInteger(amount) || amount === 0 || Math.abs(amount) > 1_000_000) return;
+    const previous = pendingAdjustmentIds.current.get(userId);
+    const idempotencyKey = previous?.amount === amount ? previous.key : crypto.randomUUID();
+    pendingAdjustmentIds.current.set(userId, { amount, key: idempotencyKey });
     try {
-      await fetch(`/api/users/${userId}/adjust-coins`, {
+      const response = await fetch(`/api/users/${userId}/adjust-coins`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, reason: 'Console balance adjustment', adminId: 'admin_console' }),
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify({ amount, reason: 'Console balance adjustment' }),
       });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || 'Balance adjustment failed.');
+      }
+      pendingAdjustmentIds.current.delete(userId);
       setSelectedUser(null);
       fetchUsers();
     } catch (err) {

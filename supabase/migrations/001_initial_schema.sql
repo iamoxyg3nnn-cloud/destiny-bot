@@ -233,4 +233,5 @@ ALTER TABLE public.admin_audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Note: The Destiny backend communicates using the secure Supabase service role key,
 -- bypassing RLS for server-side verification, while client-side anon access is strictly read-restricted.
+DROP POLICY IF EXISTS "Public items are viewable" ON public.shop_items;
 CREATE POLICY "Public items are viewable" ON public.shop_items FOR SELECT USING (is_active = true);

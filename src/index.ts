@@ -7,19 +7,27 @@ import { bot } from './bot/index.js';
 import { stopPresence } from './bot/presence-manager.js';
 
 async function bootstrap() {
+  if (config.NODE_ENV === 'production') {
+    if (!config.DISCORD_TOKEN || config.DISCORD_TOKEN.startsWith('mock_') || !config.DISCORD_CLIENT_ID) {
+      throw new Error('DISCORD_TOKEN and DISCORD_CLIENT_ID are required in production.');
+    }
+    if (config.API_SECRET_KEY.length < 32 || config.API_SECRET_KEY === 'destiny_internal_secret_32bytes_min_key!') {
+      throw new Error('API_SECRET_KEY must be a unique secret of at least 32 characters in production.');
+    }
+  }
   console.log('================================================================');
   console.log('🌌 DESTINY — ANONYMOUS SOCIAL & MATCHMAKING ECOSYSTEM');
   console.log('================================================================');
   console.log(`[Config] Node Environment: ${config.NODE_ENV}`);
   console.log(`[Database] Supabase Mode: ${db.isUsingMock() ? 'In-Memory Testing Store' : 'Connected to Supabase'}`);
   // 1. Start Workers
-  await startAllWorkers();
+  await startAllWorkers({ includeMatchmaking: false });
   console.log(`[Cache/Locks] Redis Mode: ${redis.isHealthy() ? 'Connected' : 'High-Speed Memory Fallback'}`);
 
   // 2. Start API Server (loopback only — never exposed directly)
   const port = config.PORT || 4000;
-  const server = apiApp.listen(port, '127.0.0.1', () => {
-    console.log(`🌐 [API] Admin Backend listening on http://127.0.0.1:${port}`);
+  const server = apiApp.listen(port, config.API_HOST, () => {
+    console.log(`🌐 [API] Admin Backend listening on http://${config.API_HOST}:${port}`);
   });
 
   // 3. Start Discord Bot

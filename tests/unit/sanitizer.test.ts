@@ -35,10 +35,48 @@ describe('ContentSanitizer Unit Tests', () => {
     expect(result.sanitizedText).not.toContain(fakeToken);
   });
 
+  it('should block phishing domains even without a URL scheme', () => {
+    const result = sanitizer.sanitize('Please visit grabify.link/track?id=123');
+    expect(result.sanitizedText).toContain('[Blocked Suspicious Link]');
+    expect(result.sanitizedText).not.toContain('grabify.link');
+    expect(result.violations).toContain('MALICIOUS_DOMAIN_GRABIFY.LINK');
+  });
+
+  it('should not flag a benign domain that merely contains a suspicious domain name', () => {
+    const result = sanitizer.sanitize('https://notgrabify.link.example.com');
+    expect(result.sanitizedText).toContain('notgrabify.link.example.com');
+    expect(result.violations).not.toContain('MALICIOUS_DOMAIN_GRABIFY.LINK');
+  });
+
+  it('should mask mass mentions even when zero-width characters are inserted', () => {
+    const result = sanitizer.sanitize('hello @\u200Beveryone and @\u200Dhere');
+    expect(result.sanitizedText).toContain('@\u200b everyone');
+    expect(result.sanitizedText).toContain('@\u200b here');
+    expect(result.violations).toContain('MASS_PING_MASKED');
+  });
+
+  it('should reject trusted CDN attachment URLs containing credentials', () => {
+    const cleaned = sanitizer.sanitizeAttachments([
+      { name: 'credential.png', url: 'https://user:password@cdn.discordapp.com/attachments/1/2/file.png', size: 1024, contentType: 'image/png' },
+    ]);
+    expect(cleaned).toHaveLength(0);
+  });
+
+  it('should allow only trusted Discord CDN media/PDF attachments under 10 MB', () => {
+    const cleaned = sanitizer.sanitizeAttachments([
+      { name: 'photo.png', url: 'https://cdn.discordapp.com/attachments/1/2/photo.png', size: 1024, contentType: 'image/png' },
+      { name: 'remote.png', url: 'https://evil.example/remote.png', size: 1024, contentType: 'image/png' },
+      { name: 'large.pdf', url: 'https://cdn.discordapp.com/attachments/1/2/large.pdf', size: 11 * 1024 * 1024, contentType: 'application/pdf' },
+      { name: 'spoofed.png', url: 'https://cdn.discordapp.com/attachments/1/2/spoofed.png', size: 1024, contentType: 'application/x-msdownload' },
+    ]);
+    expect(cleaned).toHaveLength(1);
+    expect(cleaned[0].name).toBe('photo.png');
+  });
+
   it('should filter out dangerous executable attachments', () => {
     const rawAttachments = [
       { name: 'trojan.exe', url: 'https://cdn.discordapp.com/attachments/1/2/trojan.exe' },
-      { name: 'photo.jpg', url: 'https://cdn.discordapp.com/attachments/1/2/photo.jpg' },
+      { name: 'photo.jpg', url: 'https://cdn.discordapp.com/attachments/1/2/photo.jpg', size: 1024, contentType: 'image/jpeg' },
       { name: 'script.bat', url: 'https://cdn.discordapp.com/attachments/1/2/script.bat' },
     ];
     const cleaned = sanitizer.sanitizeAttachments(rawAttachments);

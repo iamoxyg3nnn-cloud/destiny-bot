@@ -9,6 +9,7 @@ import {
 } from 'discord.js';
 import { config } from '../config/index.js';
 import { db } from '../database/supabase.js';
+import { redis } from '../redis/client.js';
 import { ECLAIRS_GUILD_ID } from '../core/moderation/reputation.js';
 import { embedService } from './embeds/index.js';
 import { setDiscordClient } from './client-registry.js';
@@ -17,6 +18,28 @@ import { handleInteraction } from './interactions/handler.js';
 import { messageCommandHandler } from './messages/handler.js';
 import { messageRelayService } from './relay/index.js';
 import { slashCommands } from './commands/definitions.js';
+import { matchmakingWorker } from '../workers/matchmaking.worker.js';
+
+let guildSnapshotTimer: NodeJS.Timeout | null = null;
+
+async function publishGuildSnapshot(client: Client): Promise<void> {
+  if (!client.isReady()) return;
+  const shardId = client.shard?.ids?.[0] ?? 0;
+  const guilds = Array.from(client.guilds.cache.values()).map((guild) => ({
+    id: guild.id,
+    name: guild.name,
+    icon: guild.iconURL(),
+    memberCount: guild.memberCount,
+    channels: Array.from(guild.channels.cache.values())
+      .filter((channel: any) => channel && (channel.type === 0 || channel.type === 5))
+      .map((channel: any) => ({ id: channel.id, name: channel.name })),
+  }));
+
+  await Promise.all([
+    redis.set(`bot:guilds:${shardId}`, JSON.stringify(guilds), 180),
+    redis.sAdd('bot:guild-shards', String(shardId)),
+  ]);
+}
 
 export class DestinyBot {
   public client: Client;
@@ -43,12 +66,27 @@ export class DestinyBot {
   }
 
   private registerEvents() {
-    this.client.once(Events.ClientReady, async (c) => {
-      console.log(`🤖 Destiny Bot logged in as ${c.user.tag} (ID: ${c.user.id})`);
-      await this.syncSlashCommands();
-
-      // Arm the rotating streaming presence engine (purple badge).
-      initPresence(this.client);
+    this.client.once(Events.ClientReady, async (readyClient) => {
+      try {
+        console.log(`🤖 Destiny Bot is online as ${readyClient.user.tag}`);
+        console.log(`📊 Serving ${readyClient.guilds.cache.size} servers`);
+        await publishGuildSnapshot(readyClient).catch((error) => console.warn('[Bot] Guild snapshot publish failed:', error?.message || error));
+        if (!guildSnapshotTimer) {
+          guildSnapshotTimer = setInterval(() => {
+            void publishGuildSnapshot(readyClient).catch((error) => console.warn('[Bot] Guild snapshot refresh failed:', error?.message || error));
+          }, 60_000);
+          guildSnapshotTimer.unref?.();
+        }
+        const isPrimaryShard = !readyClient.shard || readyClient.shard.ids.includes(0);
+        if (isPrimaryShard) {
+          await this.syncSlashCommands();
+          matchmakingWorker.start();
+        }
+        initPresence(readyClient);
+      } catch (error) {
+        console.error('[Bot] Startup initialization failed:', error);
+        if (config.NODE_ENV === 'production') process.exit(1);
+      }
     });
 
     // Interactive button & modal interactions
@@ -90,11 +128,16 @@ export class DestinyBot {
     // When Destiny joins a new server, automatically send the Setup Console to the admins!
     this.client.on(Events.GuildCreate, async (guild) => {
       console.log(`🤖 Destiny joined new server: ${guild.name} (${guild.id}) with ${guild.memberCount} members`);
+      await publishGuildSnapshot(this.client).catch((error) => console.warn('[Bot] Guild snapshot update failed:', error?.message || error));
       try {
         await sendGuildSetupWelcome(guild);
       } catch (err: any) {
         console.warn(`[Bot] Failed to send setup welcome in ${guild.name}:`, err?.message);
       }
+    });
+
+    this.client.on(Events.GuildDelete, async () => {
+      await publishGuildSnapshot(this.client).catch((error) => console.warn('[Bot] Guild snapshot update failed:', error?.message || error));
     });
 
     // Enforce reputation drop when a member leaves discord.gg/eclairs

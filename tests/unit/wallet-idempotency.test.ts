@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { db } from '../../src/database/supabase.js';
 import { streakService } from '../../src/core/economy/streaks.js';
+import { walletService } from '../../src/core/economy/wallet.js';
 import { v4 as uuidv4 } from 'uuid';
 
 describe('Destiny Coins Wallet & Idempotency Tests', () => {
@@ -65,6 +66,59 @@ describe('Destiny Coins Wallet & Idempotency Tests', () => {
     // Verify balance is still 60
     const user = await db.getUserById(testUserId);
     expect(user?.destinyCoins).toBe(60);
+  });
+
+  it('should reject reuse of a transaction idempotency key for a different operation', async () => {
+    const reference = `idempotency-conflict:${uuidv4()}`;
+    const first = await db.executeCoinTransaction(testUserId, -10, 'shop_purchase', reference);
+    expect(first.success).toBe(true);
+
+    const replayWithDifferentAmount = await db.executeCoinTransaction(testUserId, -20, 'shop_purchase', reference);
+    const replayWithDifferentType = await db.executeCoinTransaction(testUserId, -10, 'admin_adjustment', reference);
+    expect(replayWithDifferentAmount.success).toBe(false);
+    expect(replayWithDifferentAmount.error).toBe('IDEMPOTENCY_KEY_REUSED');
+    expect(replayWithDifferentType.success).toBe(false);
+    expect(replayWithDifferentType.error).toBe('IDEMPOTENCY_KEY_REUSED');
+    expect(await walletService.getBalance(testUserId)).toBe(90);
+  });
+
+  it('should transfer coins atomically and replay idempotently', async () => {
+    const recipient = await db.createOrUpdateUser({
+      discordUserId: `test_wallet_recipient_${Date.now()}_${Math.random()}`,
+      age: 22,
+      gender: 'female',
+    });
+    const reference = `transfer-test:${uuidv4()}`;
+
+    const first = await walletService.transfer(testUserId, recipient.id, 25, reference);
+    expect(first.success).toBe(true);
+    expect(await walletService.getBalance(testUserId)).toBe(75);
+    expect(await walletService.getBalance(recipient.id)).toBe(125);
+
+    const replay = await walletService.transfer(testUserId, recipient.id, 25, reference);
+    expect(replay.success).toBe(true);
+    expect(await walletService.getBalance(testUserId)).toBe(75);
+    expect(await walletService.getBalance(recipient.id)).toBe(125);
+
+    const debit = db.mockTransactions.find((tx) => tx.referenceId === `transfer:out:${reference}`);
+    const credit = db.mockTransactions.find((tx) => tx.referenceId === `transfer:in:${reference}`);
+    expect(debit?.type).toBe('transfer_sent');
+    expect(credit?.type).toBe('transfer_received');
+
+    const conflict = await walletService.transfer(testUserId, recipient.id, 30, reference);
+    expect(conflict.success).toBe(false);
+    expect(conflict.error).toBe('IDEMPOTENCY_KEY_REUSED');
+    expect(await walletService.getBalance(testUserId)).toBe(75);
+  });
+
+  it('should reject invalid, fractional and self transfers without changing balances', async () => {
+    const self = await walletService.transfer(testUserId, testUserId, 1, `self:${uuidv4()}`);
+    const fractional = await walletService.transfer(testUserId, 'another-user', 1.5, `fraction:${uuidv4()}`);
+    const invalid = await walletService.transfer(testUserId, 'another-user', Number.NaN, `nan:${uuidv4()}`);
+    expect(self.success).toBe(false);
+    expect(fractional.success).toBe(false);
+    expect(invalid.success).toBe(false);
+    expect(await walletService.getBalance(testUserId)).toBe(100);
   });
 
   it('should enforce 24h daily streak reward cooldown and prevent duplicate claims', async () => {

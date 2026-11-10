@@ -621,7 +621,8 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
           await safeEditReply(btn, { components: [container] });
           return;
         } else {
-          await db.clearActiveRoom(user.id);
+          const cleared = await db.clearActiveRoom(user.id, activeRoomId);
+          if (!cleared) return;
           user.activeRoomId = null;
         }
       }

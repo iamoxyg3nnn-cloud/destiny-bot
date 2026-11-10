@@ -61,6 +61,10 @@ export class QueueManager {
     const queue = this.getQueue(queueName);
     if (queue) {
       await queue.add(jobName, data, opts);
+      return;
+    }
+    if (config.NODE_ENV === 'production') {
+      throw new Error(`BullMQ queue ${queueName} is unavailable in production.`);
     }
   }
 

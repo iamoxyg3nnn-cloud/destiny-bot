@@ -17,6 +17,10 @@ export class MatchmakingEngine {
     ticketB: MatchTicket
   ): Promise<MatchCandidateResult> {
     const reasons: string[] = [];
+    const validAge = (age: unknown): age is number => Number.isInteger(age) && Number(age) >= 18 && Number(age) <= 99;
+    if (!ticketA || !ticketB || !validAge(ticketA.age) || !validAge(ticketB.age)) {
+      return { score: 0, isEligible: false, sharedInterests: [], reasons: ['INVALID_PROFILE'] };
+    }
 
     // 1. Prevent self-matching
     if (ticketA.userId === ticketB.userId || ticketA.discordUserId === ticketB.discordUserId) {
@@ -30,10 +34,10 @@ export class MatchmakingEngine {
     }
 
     // 3. Mutual Age eligibility (defaults to 18-99 if omitted)
-    const aMin = ticketA.minAgePref || 18;
-    const aMax = ticketA.maxAgePref || 99;
-    const bMin = ticketB.minAgePref || 18;
-    const bMax = ticketB.maxAgePref || 99;
+    const aMin = Number.isInteger(ticketA.minAgePref) && ticketA.minAgePref >= 18 ? ticketA.minAgePref : 18;
+    const aMax = Number.isInteger(ticketA.maxAgePref) && ticketA.maxAgePref <= 99 ? ticketA.maxAgePref : 99;
+    const bMin = Number.isInteger(ticketB.minAgePref) && ticketB.minAgePref >= 18 ? ticketB.minAgePref : 18;
+    const bMax = Number.isInteger(ticketB.maxAgePref) && ticketB.maxAgePref <= 99 ? ticketB.maxAgePref : 99;
 
     const aAcceptsB = ticketB.age >= aMin && ticketB.age <= aMax;
     const bAcceptsA = ticketA.age >= bMin && ticketA.age <= bMax;
@@ -44,7 +48,7 @@ export class MatchmakingEngine {
 
     // 4. Mutual Gender Preference
     const checkWantsGender = (ticket: MatchTicket, candidate: MatchTicket): boolean => {
-      const prefs = (ticket.preferredGender || []).map((p) => p.trim().toLowerCase());
+      const prefs = (Array.isArray(ticket.preferredGender) ? ticket.preferredGender : []).filter((p) => typeof p === 'string').map((p) => p.trim().toLowerCase());
       const candidateGender = (candidate.gender || '').trim().toLowerCase();
       const myGender = (ticket.gender || '').trim().toLowerCase();
 
@@ -58,8 +62,11 @@ export class MatchmakingEngine {
         return true;
       }
 
-      // Alter / Opposite / Other gender preference
-      if (prefs.includes('alter') || prefs.includes('opposite') || prefs.includes('other')) {
+      // Explicit 'other' means the Other profile category, not every different gender.
+      if (prefs.includes('other') && candidateGender === 'other') return true;
+
+      // Legacy opposite/alter preferences are resolved relative to the requester's profile.
+      if (prefs.includes('alter') || prefs.includes('opposite')) {
         if (myGender === 'male' && candidateGender === 'female') return true;
         if (myGender === 'female' && candidateGender === 'male') return true;
         if (myGender !== candidateGender) return true;
@@ -88,8 +95,8 @@ export class MatchmakingEngine {
     }
 
     // 5. Language compatibility (at least one shared language if both configured)
-    const langsA = (ticketA.languages || []).map((l) => l.toLowerCase().trim());
-    const langsB = (ticketB.languages || []).map((l) => l.toLowerCase().trim());
+    const langsA = (Array.isArray(ticketA.languages) ? ticketA.languages : []).filter((l) => typeof l === 'string').map((l) => l.toLowerCase().trim());
+    const langsB = (Array.isArray(ticketB.languages) ? ticketB.languages : []).filter((l) => typeof l === 'string').map((l) => l.toLowerCase().trim());
     if (langsA.length > 0 && langsB.length > 0) {
       const sharedLanguages = langsA.filter((lang) => langsB.includes(lang));
       if (sharedLanguages.length === 0) {
@@ -98,20 +105,22 @@ export class MatchmakingEngine {
     }
 
     // 6. Interest overlap calculation (Jaccard Index)
-    const setA = new Set(ticketA.interests.map((i) => i.trim().toLowerCase()));
-    const setB = new Set(ticketB.interests.map((i) => i.trim().toLowerCase()));
+    const setA = new Set((Array.isArray(ticketA.interests) ? ticketA.interests : []).filter((i) => typeof i === 'string').map((i) => i.trim().toLowerCase()));
+    const setB = new Set((Array.isArray(ticketB.interests) ? ticketB.interests : []).filter((i) => typeof i === 'string').map((i) => i.trim().toLowerCase()));
     const sharedInterests = Array.from(setA).filter((interest) => setB.has(interest));
 
     let interestScore = 50; // Baseline compatibility for meeting all criteria
-    const maxInterestCount = Math.max(setA.size, setB.size);
-    if (maxInterestCount > 0) {
-      const overlapPercent = (sharedInterests.length / maxInterestCount) * 50;
+    const unionSize = new Set([...setA, ...setB]).size;
+    if (unionSize > 0) {
+      const overlapPercent = (sharedInterests.length / unionSize) * 50;
       interestScore += Math.round(overlapPercent);
     }
 
     // 7. Queue Wait Time Boost (prevent starvation)
     const now = Date.now();
-    const waitTimeSec = Math.max((now - ticketA.queuedAt) / 1000, (now - ticketB.queuedAt) / 1000);
+    const waitA = Number.isFinite(ticketA.queuedAt) ? Math.max(0, (now - ticketA.queuedAt) / 1000) : 0;
+    const waitB = Number.isFinite(ticketB.queuedAt) ? Math.max(0, (now - ticketB.queuedAt) / 1000) : 0;
+    const waitTimeSec = Math.max(waitA, waitB);
     const waitBonus = Math.min(Math.floor(waitTimeSec / 10) * 2, 10);
 
     const finalScore = Math.min(interestScore + waitBonus, 100);

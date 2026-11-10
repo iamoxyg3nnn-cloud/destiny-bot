@@ -2,7 +2,7 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 COPY package*.json pnpm-lock.yaml* tsconfig.json ./
-RUN npm install -g pnpm && pnpm install
+RUN npm install -g pnpm@9.15.9 && pnpm install
 
 COPY src ./src
 RUN pnpm build
@@ -12,9 +12,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 COPY package*.json pnpm-lock.yaml* ./
-RUN npm install -g pnpm && pnpm install --prod
+RUN npm install -g pnpm@9.15.9 && pnpm install --prod
 
 COPY --from=builder /app/dist ./dist
-COPY .env* ./
-
-CMD ["node", "dist/workers/index.js"]
+CMD ["node", "dist/src/workers/index.js"]

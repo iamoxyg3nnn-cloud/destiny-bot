@@ -29,7 +29,8 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (err: any) {
-    return NextResponse.json({ error: 'Backend unreachable', details: err?.message }, { status: 502 });
+    console.error('[Dashboard API] Backend request failed:', err);
+    return NextResponse.json({ error: 'Backend unreachable' }, { status: 502 });
   }
 }
 
@@ -41,13 +42,17 @@ export async function POST(req: NextRequest, { params }: { params: { path: strin
   try {
     const res = await fetch(targetUrl, {
       method: 'POST',
-      headers: backendHeaders({ 'Content-Type': 'application/json' }),
+      headers: backendHeaders({
+        'Content-Type': 'application/json',
+        ...(req.headers.get('idempotency-key') ? { 'Idempotency-Key': req.headers.get('idempotency-key')! } : {}),
+      }),
       body: JSON.stringify(body),
     });
 
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (err: any) {
-    return NextResponse.json({ error: 'Backend unreachable', details: err?.message }, { status: 502 });
+    console.error('[Dashboard API] Backend request failed:', err);
+    return NextResponse.json({ error: 'Backend unreachable' }, { status: 502 });
   }
 }

@@ -6,6 +6,7 @@ const keys = [
   'DISCORD_CLIENT_ID',
   'DISCORD_CLIENT_SECRET',
   'DISCORD_PUBLIC_KEY',
+  'DESTINY_STREAM_URL',
   'DISCORD_SHARDS_TOTAL',
   'DISCORD_SHARDS_PER_CLUSTER',
   'SUPABASE_URL',
@@ -26,6 +27,7 @@ const keys = [
   'REMINDER_DEFAULT_TIMEZONE',
   'BULLMQ_CONCURRENCY',
   'PORT',
+  'API_HOST',
   'API_SECRET_KEY',
   'DASHBOARD_ADMIN_PASSWORD',
   'DASHBOARD_SESSION_SECRET',
@@ -39,11 +41,34 @@ const keys = [
   'LOG_LEVEL',
 ];
 
-const lines = [];
-for (const key of keys) {
-  const val = process.env[key] !== undefined ? process.env[key] : '';
-  lines.push(`${key}=${val}`);
+// Preserve existing secrets/settings. Explicit process environment values win,
+// but running setup-env must never wipe an already configured .env file.
+const existing = new Map();
+if (fs.existsSync('.env')) {
+  for (const raw of fs.readFileSync('.env', 'utf8').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq < 1) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    existing.set(key, value);
+  }
 }
 
-fs.writeFileSync('.env', lines.join('\n') + '\n');
-console.log('✅ Generated .env configuration file successfully.');
+const lines = keys.map((key) => {
+  const value = process.env[key] !== undefined ? process.env[key] : (existing.get(key) ?? '');
+  return `${key}=${value}`;
+});
+
+// Retain custom variables that are not managed by this script.
+for (const [key, value] of existing) {
+  if (!keys.includes(key)) lines.push(`${key}=${value}`);
+}
+
+fs.writeFileSync('.env', lines.join('\n') + '\n', { mode: 0o600 });
+fs.chmodSync('.env', 0o600);
+console.log('✅ Generated .env configuration file successfully (existing values preserved).');

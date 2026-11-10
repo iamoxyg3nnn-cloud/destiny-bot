@@ -56,8 +56,12 @@ describe('Redis connection resolution', () => {
 
   it('should enable TLS when REDIS_TLS is true', () => {
     const result = resolve({ REDIS_HOST: 'secure.example.com', REDIS_TLS: 'true' });
-    expect(result.tls).toEqual({ rejectUnauthorized: false });
+    expect(result.tls).toEqual({ rejectUnauthorized: true });
     expect(target({ REDIS_HOST: 'secure.example.com', REDIS_TLS: 'true' })).toContain('rediss://');
+  });
+
+  it('should accept case-insensitive true for REDIS_TLS', () => {
+    expect(resolve({ REDIS_TLS: 'TRUE' }).tls).toEqual({ rejectUnauthorized: true });
   });
 
   it('should not enable TLS when REDIS_TLS is false', () => {
@@ -66,12 +70,13 @@ describe('Redis connection resolution', () => {
     expect(target({ REDIS_TLS: 'false' })).toContain('redis://');
   });
 
-  it('should parse host, port, password and TLS from REDIS_URL', () => {
-    const result = resolve({ REDIS_URL: 'rediss://default:secret-token@my-db.upstash.io:6380' });
+  it('should parse host, port, password, TLS and database index from REDIS_URL', () => {
+    const result = resolve({ REDIS_URL: 'rediss://default:secret-token@my-db.upstash.io:6380/2' });
     expect(result.host).toBe('my-db.upstash.io');
     expect(result.port).toBe(6380);
+    expect(result.db).toBe(2);
     expect(result.password).toBe('secret-token');
-    expect(result.tls).toEqual({ rejectUnauthorized: false });
+    expect(result.tls).toEqual({ rejectUnauthorized: true });
     expect(target({ REDIS_URL: 'rediss://default:secret-token@my-db.upstash.io:6380' })).not.toContain('secret-token');
   });
 
@@ -96,15 +101,12 @@ describe('Redis connection resolution', () => {
     expect(result.port).toBe(2222);
   });
 
-  it('should fall back to host/port when REDIS_URL is malformed', () => {
-    const result = resolve({
-      REDIS_HOST: 'fallback.example.com',
-      REDIS_PORT: '6379',
-      REDIS_TOKEN: 'tok',
-      REDIS_URL: 'not-a-valid-url',
-    });
-    expect(result.host).toBe('fallback.example.com');
-    expect(result.password).toBe('tok');
+  it('should reject malformed REDIS_URL values instead of silently connecting elsewhere', () => {
+    expect(() => resolve({ REDIS_URL: 'not-a-valid-url' })).toThrow();
+  });
+
+  it('should reject unsupported URL schemes', () => {
+    expect(() => resolve({ REDIS_URL: 'https://redis.example.com' })).toThrow('redis:// or rediss://');
   });
 
   it('should never leak the credential into the log description', () => {

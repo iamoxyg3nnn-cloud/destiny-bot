@@ -1,5 +1,6 @@
 import { redis } from './client.js';
 import { v4 as uuidv4 } from 'uuid';
+import { config } from '../config/index.js';
 
 export class DistributedLock {
   private inMemoryLocks: Map<string, { token: string; expiresAt: number }> = new Map();
@@ -29,9 +30,11 @@ export class DistributedLock {
             return token;
           }
         } catch {
+          if (config.NODE_ENV === 'production') return null;
           // Fallback to in-memory check
         }
       } else {
+        if (config.NODE_ENV === 'production') return null;
         const now = Date.now();
         const existing = this.inMemoryLocks.get(resource);
         if (!existing || existing.expiresAt < now) {
@@ -46,6 +49,27 @@ export class DistributedLock {
     }
 
     return null;
+  }
+
+  private async renew(resource: string, token: string, ttlMs: number): Promise<boolean> {
+    const rawClient = redis.getRawClient();
+    if (redis.isHealthy() && rawClient) {
+      const script = `
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+          return redis.call("pexpire", KEYS[1], ARGV[2])
+        end
+        return 0
+      `;
+      try {
+        return Number(await rawClient.eval(script, 1, resource, token, ttlMs)) === 1;
+      } catch {
+        return false;
+      }
+    }
+    const existing = this.inMemoryLocks.get(resource);
+    if (!existing || existing.token !== token) return false;
+    existing.expiresAt = Date.now() + ttlMs;
+    return true;
   }
 
   /**
@@ -92,9 +116,23 @@ export class DistributedLock {
     if (!token) {
       throw new Error(`Failed to acquire distributed lock for resource: ${resource}`);
     }
+    let renewalInFlight = false;
+    const renewalTimer = setInterval(async () => {
+      if (renewalInFlight) return;
+      renewalInFlight = true;
+      try {
+        const renewed = await this.renew(resource, token, ttlMs);
+        if (!renewed) console.warn(`[Lock] Lease renewal failed for ${resource}; the operation may be running without exclusivity.`);
+      } finally {
+        renewalInFlight = false;
+      }
+    }, Math.max(250, Math.floor(ttlMs / 3)));
+    renewalTimer.unref?.();
+
     try {
       return await fn();
     } finally {
+      clearInterval(renewalTimer);
       await this.release(resource, token);
     }
   }

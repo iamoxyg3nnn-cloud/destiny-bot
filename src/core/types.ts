@@ -115,7 +115,10 @@ export type TransactionType =
   | 'streak_bonus'
   | 'mission_reward'
   | 'room_milestone'
-  | 'admin_adjustment';
+  | 'admin_adjustment'
+  | 'transfer_sent'
+  | 'transfer_received'
+  | 'welcome_bonus';
 
 export interface CoinTransaction {
   id: string;

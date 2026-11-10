@@ -616,7 +616,8 @@ export class MessageCommandHandler {
         await safeV2Reply(message, container);
         return true;
       } else {
-        await db.clearActiveRoom(user.id);
+        const cleared = await db.clearActiveRoom(user.id, activeRoomId);
+        if (!cleared) return true;
         user.activeRoomId = null;
       }
     }

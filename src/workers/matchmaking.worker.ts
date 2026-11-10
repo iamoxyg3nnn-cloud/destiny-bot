@@ -3,16 +3,23 @@ import { matchmakingManager } from '../core/matchmaking/manager.js';
 import { redis } from '../redis/client.js';
 import { QUEUE_NAMES } from '../redis/queues.js';
 import { resolveRedisConnection } from '../redis/connection.js';
+import { config } from '../config/index.js';
+import { startWorkerHeartbeat, stopWorkerHeartbeat } from './heartbeat.js';
 
 export class MatchmakingWorker {
   private worker: Worker | null = null;
   private intervalTimer: NodeJS.Timeout | null = null;
 
   start() {
+    if (this.intervalTimer || this.worker) return;
+    if (!redis.isHealthy() && config.NODE_ENV === 'production') {
+      throw new Error('Redis is required for the production matchmaking worker.');
+    }
     console.log('👷 [Worker] Starting Matchmaking Worker...');
     const redisConnection = resolveRedisConnection();
 
     // 1. High frequency polling fallback loop (every 2.5 seconds)
+    startWorkerHeartbeat('matchmaking');
     this.intervalTimer = setInterval(async () => {
       try {
         await matchmakingManager.processMatchCycle();
@@ -40,6 +47,7 @@ export class MatchmakingWorker {
           }
         );
 
+        this.worker.on('error', (err) => console.error('[Worker:Matchmaking] BullMQ worker error:', err));
         this.worker.on('failed', (job, err) => {
           console.error(`[Worker:Matchmaking] Job ${job?.id} failed:`, err);
         });
@@ -51,7 +59,10 @@ export class MatchmakingWorker {
 
   stop() {
     if (this.intervalTimer) clearInterval(this.intervalTimer);
-    if (this.worker) this.worker.close();
+    this.intervalTimer = null;
+    if (this.worker) void this.worker.close();
+    this.worker = null;
+    void stopWorkerHeartbeat('matchmaking');
   }
 }
 

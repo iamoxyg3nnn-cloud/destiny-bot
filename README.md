@@ -16,7 +16,7 @@
 - **Complete Anonymity**: Discord usernames, user IDs, avatars, and server origins are completely masked. Each conversation generates a unique celestial persona (e.g. `Celestial Fox 🦊`, `Lunar Wolf 🐺`).
 - **Multi-Criteria Matching Engine**: Filters by age (18+), mutual gender preferences, shared languages, and Jaccard interest overlap.
 - **Race Condition Safeguards**: Distributed Redlock (`lock:reveal:${roomId}`) ensures simultaneous interactions cannot duplicate rooms or leak identities.
-- **Sanitization Pipeline**: Automatically strips Discord invite links, pings (`<@...>`, `<@&...>`, `<#...>`), tokens, IP grabbers, and malicious executable attachments.
+- **Sanitization Pipeline**: Masks Discord invites and mentions, scrubs Discord tokens, blocks known phishing/IP-logger domains, and allows only trusted Discord CDN image, video, audio, and PDF attachments up to 10 MB.
 - **Mutual-Consent Profile Reveal**: Fine-grained field selection (`age`, `gender`, `interests`, `destinyId`, `discordTag`). A field is **only revealed if both partners agree**.
 - **Global Cross-Server Safety**: Blocking and abuse restrictions apply globally across all joined Discord servers.
 
@@ -42,13 +42,12 @@
 - **Admin Audit Trail**: Immutable logging of all moderator actions.
 
 ### 🌌 Step 5 — Dynamic Rotating Presence
-- **Native Discord Custom Status** (`ActivityType.Custom`) with rotating community messages. No Streaming, Watching or Playing activity is used.
+- **Rotating Twitch Streaming activity** (`ActivityType.Streaming`) with curated Destiny messages. The default Twitch destination is a third-party channel (`ninja`); configure `DESTINY_STREAM_URL` to use another supported Twitch or YouTube channel.
 - **102 curated statuses** with live `{members}` and `{servers}` counts computed in real time.
 - **Live contextual status**: switches to "*N Anonymous Conversations Live*" or
   "*Finding You a Match • N in Queue*" whenever there is real activity, and falls
   back to the idle rotation otherwise.
-- **Shard-aware**: every shard in the cluster rotates independently and never
-  displays the same status as another shard at the same time.
+- **Shard-aware**: presence rotation runs in the bot shard process, while queue processing uses a renewable distributed Redis lock.
 - **20-second rotation**, staggered per shard so gateway presence updates stay
   spread out; counts are cached for 30s so the rotation never hammers the database.
 
@@ -57,9 +56,9 @@
 ## 🚀 Quick Start Guide
 
 ### 1. Prerequisites
-- **Node.js**: v20+ or v24+
+- **Node.js**: v20.18+ (Node 22 LTS recommended)
 - **pnpm** (recommended) or **npm**
-- **Redis Server** (optional; built-in high-speed in-memory fallback enabled automatically for testing)
+- **Redis Server** (required in production for shared queues, rate limits, and distributed locks; in-memory fallback is development/test only)
 - **Supabase Account** (or local PostgreSQL)
 
 ### 2. Environment Configuration
@@ -67,7 +66,7 @@ Copy `.env.example` to `.env`:
 ```bash
 cp .env.example .env
 ```
-Fill in your credentials:
+Fill in your credentials and generate unique secrets (never leave these blank in production):
 ```env
 DISCORD_TOKEN=your_bot_token_here
 DISCORD_CLIENT_ID=your_client_id_here
@@ -76,12 +75,19 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_secret
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 PORT=4000
+API_HOST=127.0.0.1
+API_SECRET_KEY=<at least 32 random characters>
+DESTINY_STREAM_URL=https://www.twitch.tv/ninja
+DASHBOARD_ADMIN_PASSWORD=<at least 12 characters>
+DASHBOARD_SESSION_SECRET=<at least 32 random characters>
+NEXTAUTH_SECRET=<a separate random secret>
 ```
+
+Generate secrets with `openssl rand -hex 32`. The dashboard password must be at least 12 characters. The API binds to loopback by default; Docker Compose exposes it only on the private container network.
 
 #### Connecting Redis
 
-Redis is optional — without it the bot falls back to an in-memory store (single-node
-only). Three ways to point it at an instance, checked in this order:
+Redis is required in production. Development and tests can use the in-memory fallback, but it is not safe for multi-process deployments. Three ways to point the bot at an instance, checked in this order:
 
 | Variable | Use |
 |---|---|
@@ -103,6 +109,15 @@ Execute the SQL migrations located in `supabase/migrations/` in order:
 1. `001_initial_schema.sql` — Tables, indexes, and Row Level Security.
 2. `002_functions_triggers.sql` — Stored procedures (`execute_coin_transaction`, `calculate_connection_tier`).
 3. `003_seed_data.sql` — Default cosmetic items, badges, and titles.
+4. `004_profile_enhancements.sql` — Profile fields and preferences.
+5. `005_remove_games_history.sql` — Retire legacy game-history schema.
+6. `006_security_hardening.sql` — Lock down privileged stored procedures.
+7. `007_atomic_wallet_and_idempotency.sql` — Strict ledger idempotency and atomic coin transfers.
+8. `008_atomic_rooms_and_inventory.sql` — Atomic room lifecycle and consumable inventory quantities.
+9. `009_atomic_room_xp.sql` — Atomic XP increments for concurrent chat messages.
+10. `010_dashboard_aggregates.sql` — Accurate economy totals and hourly activity buckets.
+11. `011_transfer_ledger_types.sql` — Separate peer transfers from shop and mission rewards.
+12. `012_welcome_bonus_ledger.sql` — Record signup welcome balances atomically in the coin ledger.
 
 ### 4. Running Destiny
 ```bash
@@ -122,7 +137,7 @@ pnpm start
 # Start Admin Dashboard
 pnpm dashboard:dev
 ```
-Open **http://localhost:3000** to access the Admin Dashboard.
+Open **http://localhost:3000** to access the Admin Dashboard. For Docker, copy `.env.example` to `.env`, fill all production credentials, then run `docker compose -f docker/docker-compose.yml up --build -d`. Redis and the internal API are not published on host ports.
 
 ---
 

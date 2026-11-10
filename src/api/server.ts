@@ -8,6 +8,7 @@ import { matchmakingManager } from '../core/matchmaking/manager.js';
 import { verificationService } from '../core/moderation/verification.js';
 import { queueManager } from '../redis/queues.js';
 import os from 'os';
+import { REST, Routes } from 'discord.js';
 
 /**
  * Constant-time comparison for secret material.
@@ -47,10 +48,81 @@ function requireApiKey(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
+function wrapAsyncRoutes(app: express.Express): void {
+  for (const method of ['get', 'post', 'put', 'patch', 'delete'] as const) {
+    const original = (app as any)[method].bind(app);
+    (app as any)[method] = (path: any, ...handlers: any[]) => original(
+      path,
+      ...handlers.map((handler) => {
+        if (typeof handler !== 'function') return handler;
+        return (req: Request, res: Response, next: NextFunction) => {
+          try {
+            Promise.resolve(handler(req, res, next)).catch(next);
+          } catch (error) {
+            next(error);
+          }
+        };
+      })
+    );
+  }
+}
+
+async function botCanSendToChannel(rest: REST, guildId: string, channel: any): Promise<boolean> {
+  const [roles, member] = await Promise.all([
+    rest.get(Routes.guildRoles(guildId)) as Promise<any[]>,
+    rest.get(Routes.guildMember(guildId, config.DISCORD_CLIENT_ID)) as Promise<any>,
+  ]);
+
+  let permissions = BigInt(roles.find((role) => role.id === guildId)?.permissions || '0');
+  for (const roleId of member.roles || []) {
+    const role = roles.find((candidate) => candidate.id === roleId);
+    if (role) permissions |= BigInt(role.permissions || '0');
+  }
+
+  const administrator = 8n;
+  if ((permissions & administrator) === administrator) return true;
+
+  const overwrites = Array.isArray(channel.permission_overwrites) ? channel.permission_overwrites : [];
+  const applyOverwrite = (current: bigint, deny: bigint, allow: bigint) => (current & ~deny) | allow;
+
+  const everyone = overwrites.find((overwrite: any) => overwrite.id === guildId && Number(overwrite.type) === 0);
+  if (everyone) {
+    permissions = applyOverwrite(permissions, BigInt(everyone.deny || '0'), BigInt(everyone.allow || '0'));
+  }
+
+  const memberRoleIds = new Set<string>(member.roles || []);
+  let roleDeny = 0n;
+  let roleAllow = 0n;
+  for (const overwrite of overwrites) {
+    if (Number(overwrite.type) === 0 && memberRoleIds.has(overwrite.id)) {
+      roleDeny |= BigInt(overwrite.deny || '0');
+      roleAllow |= BigInt(overwrite.allow || '0');
+    }
+  }
+  permissions = applyOverwrite(permissions, roleDeny, roleAllow);
+
+  const memberOverwrite = overwrites.find((overwrite: any) =>
+    Number(overwrite.type) === 1 && overwrite.id === config.DISCORD_CLIENT_ID
+  );
+  if (memberOverwrite) {
+    permissions = applyOverwrite(
+      permissions,
+      BigInt(memberOverwrite.deny || '0'),
+      BigInt(memberOverwrite.allow || '0')
+    );
+  }
+
+  const viewChannel = 1024n;
+  const sendMessages = 2048n;
+  return (permissions & viewChannel) === viewChannel &&
+    (permissions & sendMessages) === sendMessages;
+}
+
 export function createApiServer(): express.Express {
   const app = express();
   app.use(cors());
-  app.use(express.json());
+  app.use(express.json({ limit: '256kb' }));
+  wrapAsyncRoutes(app);
 
   // Every admin route requires the shared secret.
   app.use('/api', requireApiKey);
@@ -58,13 +130,22 @@ export function createApiServer(): express.Express {
   // 1. HEALTH & TELEMETRY
   app.get('/api/health', async (_req: Request, res: Response) => {
     const mem = process.memoryUsage();
-    res.json({
-      status: 'ok',
+    const supabaseConnected = !db.isUsingMock() && await db.assertConnection().then(() => true).catch(() => false);
+    const redisConnected = redis.isHealthy();
+    let workersConnected = false;
+    if (redisConnected) {
+      const workerIds = await redis.sMembers('worker:instances');
+      const heartbeats = await Promise.all(workerIds.map((instanceId) => redis.get(`worker:heartbeat:${instanceId}`)));
+      workersConnected = heartbeats.some(Boolean);
+    }
+    const healthy = supabaseConnected && redisConnected && workersConnected;
+    res.status(healthy ? 200 : 503).json({
+      status: healthy ? 'ok' : 'degraded',
       timestamp: new Date().toISOString(),
       services: {
-        supabase: !db.isUsingMock(),
-        redis: redis.isHealthy(),
-        workers: true,
+        supabase: supabaseConnected,
+        redis: redisConnected,
+        workers: workersConnected,
       },
       system: {
         nodeVersion: process.version,
@@ -78,36 +159,56 @@ export function createApiServer(): express.Express {
 
   // 2. OVERVIEW METRICS
   app.get('/api/overview', async (_req: Request, res: Response) => {
-    const users = await db.getAllUsers(1000);
-    const activeRooms = await db.getActiveRooms();
-    const queuedTickets = await matchmakingManager.getQueueTickets();
-    const reports = await db.getReports('pending');
-    const queueStats = await queueManager.getQueueStats();
-    const messagesCount = await db.getMessageCountLast24h();
+    const [
+      economy,
+      activeRooms,
+      queuedTickets,
+      reports,
+      queueStats,
+      messagesCount,
+      hourlyActivity,
+      shardIds,
+      workerIds,
+    ] = await Promise.all([
+      db.getEconomySummary(),
+      db.getActiveRooms(),
+      matchmakingManager.getQueueTickets(),
+      db.getReports('pending'),
+      queueManager.getQueueStats(),
+      db.getMessageCountLast24h(),
+      db.getHourlyActivity(24),
+      redis.sMembers('bot:guild-shards'),
+      redis.sMembers('worker:instances'),
+    ]);
 
-    const totalCoinsInCirculation = users.reduce((acc, u) => acc + u.destinyCoins, 0);
+    const [shardSnapshots, workerHeartbeats] = await Promise.all([
+      Promise.all(shardIds.map((shardId) => redis.get(`bot:guilds:${shardId}`))),
+      Promise.all(workerIds.map((instanceId) => redis.get(`worker:heartbeat:${instanceId}`))),
+    ]);
 
-    // Compute real recent hours throughput
-    const hourlyThroughput = [
-      { time: '04:00', messages: Math.round(messagesCount * 0.05), matches: Math.round(activeRooms.length * 0.1) },
-      { time: '08:00', messages: Math.round(messagesCount * 0.15), matches: Math.round(activeRooms.length * 0.2) },
-      { time: '12:00', messages: Math.round(messagesCount * 0.35), matches: Math.round(activeRooms.length * 0.4) },
-      { time: '16:00', messages: Math.round(messagesCount * 0.65), matches: Math.round(activeRooms.length * 0.7) },
-      { time: '19:30', messages: messagesCount, matches: activeRooms.length },
-    ];
+    const hourlyThroughput = hourlyActivity.map((bucket) => ({
+      time: new Date(bucket.hour).toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: config.REMINDER_DEFAULT_TIMEZONE,
+      }),
+      messages: bucket.messages,
+      matches: bucket.matches,
+    }));
 
     res.json({
-      activeUsers: users.length,
+      activeUsers: economy.activeUsers,
+      totalUsers: economy.totalUsers,
       activeRoomsCount: activeRooms.length,
       queuedUsersCount: queuedTickets.length,
       pendingReportsCount: reports.length,
-      totalCoinsInCirculation,
+      totalCoinsInCirculation: economy.totalCoins,
       messagesLast24h: messagesCount,
       hourlyThroughput,
       supabaseConnected: !db.isUsingMock(),
       redisConnected: redis.isHealthy(),
-      shardsOnline: 1,
-      workersActive: 3,
+      shardsOnline: shardSnapshots.filter(Boolean).length,
+      workersActive: workerHeartbeats.filter(Boolean).length,
       queueStats,
       uptimeSeconds: Math.floor(process.uptime()),
     });
@@ -130,32 +231,47 @@ export function createApiServer(): express.Express {
 
   app.post('/api/users/:id/ban', async (req: Request, res: Response) => {
     const id = req.params.id as string;
-    const { banned, reason, adminId } = req.body;
+    const { banned, reason } = req.body || {};
+    if (typeof banned !== 'boolean') return res.status(400).json({ error: 'banned must be a boolean.' });
+    if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) {
+      return res.status(400).json({ error: 'reason must be a string of at most 500 characters.' });
+    }
 
-    const user = await db.getUserById(id);
+    const user = await db.getUserById(id, true);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    user.isBanned = Boolean(banned);
-    user.banReason = reason || 'Admin moderation action';
+    user.isBanned = banned;
+    user.banReason = banned ? (reason?.trim() || 'Admin moderation action') : '';
     await db.createOrUpdateUser(user);
 
-    await db.logAdminAction(adminId || 'admin_web', banned ? 'BAN_USER' : 'UNBAN_USER', 'USER', id, { reason });
+    await db.logAdminAction('admin_web', banned ? 'BAN_USER' : 'UNBAN_USER', 'USER', id, { reason });
     res.json({ success: true, user });
   });
 
   app.post('/api/users/:id/adjust-coins', async (req: Request, res: Response) => {
     const id = req.params.id as string;
-    const { amount, reason, adminId } = req.body;
+    const { amount, reason } = req.body || {};
+    if (!Number.isSafeInteger(amount) || amount === 0 || Math.abs(amount) > 1_000_000) {
+      return res.status(400).json({ error: 'amount must be a non-zero safe integer between -1,000,000 and 1,000,000.' });
+    }
+    if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) {
+      return res.status(400).json({ error: 'reason must be a string of at most 500 characters.' });
+    }
 
+    const idempotencyKey = req.header('idempotency-key');
+    if (!idempotencyKey || !/^[A-Za-z0-9:_-]{1,118}$/.test(idempotencyKey)) {
+      return res.status(400).json({ error: 'Invalid Idempotency-Key header.' });
+    }
     const result = await db.executeCoinTransaction(
       id,
-      Number(amount),
+      amount,
       'admin_adjustment',
-      `admin:adj:${Date.now()}:${id}`,
-      { reason, adminId }
+      `admin:adj:${idempotencyKey}`,
+      { reason, adminId: 'admin_web' }
     );
 
-    await db.logAdminAction(adminId || 'admin_web', 'ADJUST_COINS', 'USER', id, { amount, reason });
+    if (!result.success) return res.status(409).json(result);
+    await db.logAdminAction('admin_web', 'ADJUST_COINS', 'USER', id, { amount, reason });
     res.json(result);
   });
 
@@ -167,10 +283,13 @@ export function createApiServer(): express.Express {
 
   app.post('/api/rooms/:id/terminate', async (req: Request, res: Response) => {
     const id = req.params.id as string;
-    const { adminId, reason } = req.body;
+    const { reason } = req.body || {};
+    if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) {
+      return res.status(400).json({ error: 'reason must be a string of at most 500 characters.' });
+    }
 
     const success = await db.endRoom(id, 'moderated');
-    await db.logAdminAction(adminId || 'admin_web', 'TERMINATE_ROOM', 'ROOM', id, { reason });
+    await db.logAdminAction('admin_web', 'TERMINATE_ROOM', 'ROOM', id, { reason });
     res.json({ success });
   });
 
@@ -189,15 +308,21 @@ export function createApiServer(): express.Express {
 
   app.post('/api/reports/:id/resolve', async (req: Request, res: Response) => {
     const id = req.params.id as string;
-    const { action, notes, adminId } = req.body;
+    const { action, notes } = req.body || {};
+    const allowedActions = ['none', 'warned', 'temp_ban', 'perma_ban'];
+    if (!allowedActions.includes(action)) return res.status(400).json({ error: 'Invalid report resolution action.' });
+    if (notes !== undefined && (typeof notes !== 'string' || notes.length > 1000)) {
+      return res.status(400).json({ error: 'notes must be a string of at most 1000 characters.' });
+    }
 
     const report = await db.getReportById(id);
     if (!report) return res.status(404).json({ error: 'Report not found' });
 
-    await db.resolveReport(id, action || 'none', notes, adminId || 'admin_web');
+    const resolved = await db.resolveReport(id, action, notes, 'admin_web');
+    if (!resolved) return res.status(409).json({ error: 'Report could not be resolved.' });
 
     if (action === 'perma_ban') {
-      const reportedUser = await db.getUserById(report.reportedId);
+      const reportedUser = await db.getUserById(report.reportedId, true);
       if (reportedUser) {
         reportedUser.isBanned = true;
         reportedUser.banReason = `Banned via safety report: ${report.category}`;
@@ -205,7 +330,7 @@ export function createApiServer(): express.Express {
       }
     }
 
-    await db.logAdminAction(adminId || 'admin_web', 'RESOLVE_REPORT', 'REPORT', id, { action, notes });
+    await db.logAdminAction('admin_web', 'RESOLVE_REPORT', 'REPORT', id, { action, notes });
     res.json({ success: true, report: { ...report, status: 'resolved', actionTaken: action } });
   });
 
@@ -221,9 +346,13 @@ export function createApiServer(): express.Express {
 
   app.post('/api/verifications/:id/review', async (req: Request, res: Response) => {
     const id = req.params.id as string;
-    const { approved, notes, adminId } = req.body;
+    const { approved, notes } = req.body || {};
+    if (typeof approved !== 'boolean') return res.status(400).json({ error: 'approved must be a boolean.' });
+    if (notes !== undefined && (typeof notes !== 'string' || notes.length > 1000)) {
+      return res.status(400).json({ error: 'notes must be a string of at most 1000 characters.' });
+    }
 
-    const result = await verificationService.reviewVerification(adminId || 'admin_web', id, approved, notes);
+    const result = await verificationService.reviewVerification('admin_web', id, approved, notes);
     res.json(result);
   });
 
@@ -239,19 +368,25 @@ export function createApiServer(): express.Express {
     let shopSink = 0;
     let adminAdjFaucet = 0;
     let adminAdjSink = 0;
+    let transferVolume = 0;
+    let welcomeBonusFaucet = 0;
 
     for (const tx of transactions) {
-      if (tx.type === 'daily_reward') dailyRewards += tx.amount;
+      if (tx.type === 'welcome_bonus') welcomeBonusFaucet += tx.amount;
+      else if (tx.type === 'daily_reward') dailyRewards += tx.amount;
       else if (tx.type === 'room_milestone' || tx.type === 'streak_bonus') conversationRewards += tx.amount;
       else if (tx.type === 'mission_reward') missionRewards += tx.amount;
       else if (tx.type === 'shop_purchase') shopSink += Math.abs(tx.amount);
       else if (tx.type === 'admin_adjustment') {
         if (tx.amount >= 0) adminAdjFaucet += tx.amount;
         else adminAdjSink += Math.abs(tx.amount);
+      } else if (tx.type === 'transfer_sent') {
+        transferVolume += Math.abs(tx.amount);
       }
     }
 
     const faucetSinkData = [
+      { category: 'Welcome Grants', faucet: welcomeBonusFaucet, sink: 0 },
       { category: 'Daily Rewards', faucet: dailyRewards, sink: 0 },
       { category: 'Conversation Milestones', faucet: conversationRewards, sink: 0 },
       { category: 'Missions & Rewards', faucet: missionRewards, sink: 0 },
@@ -263,6 +398,7 @@ export function createApiServer(): express.Express {
       transactions,
       shopItems,
       faucetSinkData,
+      transferVolume,
     });
   });
 
@@ -274,51 +410,72 @@ export function createApiServer(): express.Express {
 
   // 9. GUILDS & SERVER DEDICATED CHANNELS
   app.get('/api/guilds', async (_req: Request, res: Response) => {
-    try {
-      const { bot } = await import('../bot/index.js');
-      if (!bot.client || !bot.client.isReady()) {
-        return res.json([]);
+    const shardIds = await redis.sMembers('bot:guild-shards');
+    const snapshots = await Promise.all(shardIds.map(async (shardId) => {
+      const raw = await redis.get(`bot:guilds:${shardId}`);
+      if (!raw) return [];
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        console.warn(`[API] Ignoring malformed guild snapshot for shard ${shardId}.`);
+        return [];
       }
-      const guilds = await Promise.all(
-        Array.from(bot.client.guilds.cache.values()).map(async (g) => {
-          const settings = await db.getGuildSettings(g.id);
-          const channels = Array.from(g.channels.cache.values())
-            .filter((c: any) => c && c.isTextBased())
-            .map((c: any) => ({ id: c.id, name: c.name }));
-          return {
-            id: g.id,
-            name: g.name,
-            icon: g.iconURL() || null,
-            memberCount: g.memberCount,
-            matchChannelId: settings?.matchChannelId || null,
-            modLogChannelId: settings?.modLogChannelId || null,
-            channels,
-          };
-        })
-      );
-      res.json(guilds);
-    } catch (err: any) {
-      console.error('[API] Failed to fetch guilds:', err?.message || err);
-      res.status(500).json({ error: 'Failed to fetch guilds' });
-    }
+    }));
+    const guilds = snapshots.flat();
+    const enriched = await Promise.all(guilds.map(async (guild: any) => {
+      const settings = await db.getGuildSettings(guild.id);
+      return {
+        ...guild,
+        matchChannelId: settings?.matchChannelId || null,
+        modLogChannelId: settings?.modLogChannelId || null,
+      };
+    }));
+    res.json(enriched);
   });
 
   app.post('/api/guilds/:id/settings', async (req: Request, res: Response) => {
     try {
       const guildId = req.params.id as string;
-      const { channelId, guildName } = req.body;
-      if (!guildId) return res.status(400).json({ error: 'Missing guildId' });
+      const { channelId, guildName } = req.body || {};
+      if (!/^[0-9]{17,20}$/.test(guildId)) return res.status(400).json({ error: 'Invalid guild ID.' });
+      if (guildName !== undefined && (typeof guildName !== 'string' || guildName.length > 100)) {
+        return res.status(400).json({ error: 'Invalid guild name.' });
+      }
 
       if (channelId) {
-        await db.setGuildAdminChannel(guildId, channelId, guildName);
+        if (typeof channelId !== 'string' || !/^[0-9]{17,20}$/.test(channelId)) {
+          return res.status(400).json({ error: 'Invalid channel ID.' });
+        }
+        if (!config.DISCORD_TOKEN || config.DISCORD_TOKEN.startsWith('mock_')) {
+          return res.status(503).json({ error: 'Discord bot credentials are not configured.' });
+        }
+        const rest = new REST({ version: '10' }).setToken(config.DISCORD_TOKEN);
+        const channels = await rest.get(Routes.guildChannels(guildId)) as any[];
+        const channel = channels.find((entry) => entry.id === channelId);
+        if (!channel || ![0, 5].includes(Number(channel.type))) {
+          return res.status(400).json({ error: 'Channel must be a text or announcement channel in the selected server.' });
+        }
+        if (!(await botCanSendToChannel(rest, guildId, channel))) {
+          return res.status(403).json({ error: 'Destiny needs View Channel and Send Messages permissions in that channel.' });
+        }
+        const saved = await db.setGuildAdminChannel(guildId, channelId, guildName);
+        if (!saved) return res.status(500).json({ error: 'Could not save guild channel settings.' });
       } else {
-        await db.clearGuildChannels(guildId);
+        const cleared = await db.clearGuildChannels(guildId);
+        if (!cleared) return res.status(500).json({ error: 'Could not clear guild channel settings.' });
       }
-      res.json({ success: true, guildId, channelId });
+      res.json({ success: true, guildId, channelId: channelId || null });
     } catch (err: any) {
       console.error('[API] Failed to update guild channel settings:', err?.message || err);
       res.status(500).json({ error: 'Failed to update guild settings' });
     }
+  });
+
+  app.use((error: any, _req: Request, res: Response, next: NextFunction) => {
+    console.error('[API] Unhandled request error:', error?.message || error);
+    if (res.headersSent) return next(error);
+    return res.status(500).json({ error: 'Internal server error' });
   });
 
   return app;
@@ -330,7 +487,7 @@ if (process.env.RUN_API === 'true') {
   const port = config.PORT || 4000;
   // Bind to loopback only — the admin API must never be directly reachable
   // from outside the host. The dashboard proxies to it over localhost.
-  apiApp.listen(port, '127.0.0.1', () => {
-    console.log(`🌐 Destiny Admin API Server listening on http://127.0.0.1:${port}`);
+  apiApp.listen(port, config.API_HOST, () => {
+    console.log(`🌐 Destiny Admin API Server listening on http://${config.API_HOST}:${port}`);
   });
 }

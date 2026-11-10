@@ -1,0 +1,64 @@
+import { describe, expect, it } from 'vitest';
+import { matchmakingEngine } from '../../src/core/matchmaking/engine.js';
+import { MatchTicket } from '../../src/core/types.js';
+
+function ticket(overrides: Partial<MatchTicket> = {}): MatchTicket {
+  return {
+    userId: 'user-a',
+    destinyId: 'DEST-A',
+    discordUserId: 'discord-a',
+    age: 24,
+    gender: 'female',
+    preferredGender: ['any'],
+    minAgePref: 18,
+    maxAgePref: 99,
+    languages: ['en'],
+    interests: ['music'],
+    queuedAt: Date.now(),
+    ...overrides,
+  };
+}
+
+describe('Matchmaking edge-case guards', () => {
+  it('rejects invalid ages without throwing', async () => {
+    const result = await matchmakingEngine.evaluateMatch(ticket({ age: Number.NaN }), ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b' }));
+    expect(result.isEligible).toBe(false);
+    expect(result.reasons).toContain('INVALID_PROFILE');
+  });
+
+  it('handles missing language and interest arrays safely', async () => {
+    const a = ticket({ languages: undefined as any, interests: undefined as any });
+    const b = ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b', languages: undefined as any, interests: undefined as any });
+    const result = await matchmakingEngine.evaluateMatch(a, b);
+    expect(result.isEligible).toBe(true);
+    expect(result.sharedInterests).toEqual([]);
+  });
+
+  it('does not award a negative wait-time score for future-dated tickets', async () => {
+    const result = await matchmakingEngine.evaluateMatch(
+      ticket({ queuedAt: Date.now() + 60_000, interests: ['music'] }),
+      ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b', queuedAt: Date.now() + 60_000, interests: ['sports'] })
+    );
+    expect(result.isEligible).toBe(true);
+    expect(result.score).toBe(50);
+  });
+
+  it('uses Jaccard union size when scoring shared interests', async () => {
+    const result = await matchmakingEngine.evaluateMatch(
+      ticket({ interests: ['music', 'gaming'] }),
+      ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b', interests: ['music', 'travel'] })
+    );
+    expect(result.isEligible).toBe(true);
+    expect(result.sharedInterests).toEqual(['music']);
+    expect(result.score).toBe(67);
+  });
+
+  it('rejects mutually incompatible age ranges', async () => {
+    const result = await matchmakingEngine.evaluateMatch(
+      ticket({ minAgePref: 30, maxAgePref: 40 }),
+      ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b', age: 25 })
+    );
+    expect(result.isEligible).toBe(false);
+    expect(result.reasons).toContain('AGE_INCOMPATIBLE');
+  });
+});

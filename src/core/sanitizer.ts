@@ -4,13 +4,6 @@ export interface SanitizationResult {
   violations: string[];
 }
 
-const INVITE_REGEX = /(https?:\/\/)?(www\.)?(discord\.(gg|io|me|li)|discord(app)?\.com\/invite)\/[a-zA-Z0-9_-]+/gi;
-const USER_MENTION_REGEX = /<@!?(\d+)>/g;
-const ROLE_MENTION_REGEX = /<@&(\d+)>/g;
-const CHANNEL_MENTION_REGEX = /<#(\d+)>/g;
-const CUSTOM_EMOJI_REGEX = /<(a?):([a-zA-Z0-9_]+):(\d+)>/g;
-const DISCORD_TOKEN_REGEX = /[\w-]{24}\.[\w-]{6}\.[\w-]{27,38}/g;
-
 const SUSPICIOUS_DOMAINS = [
   'grabify.link',
   'iplogger.org',
@@ -19,73 +12,70 @@ const SUSPICIOUS_DOMAINS = [
   'blasze.com',
   'kek.host',
   'discorcl.app',
-  'dlscord.gg'
+  'dlscord.gg',
 ];
 
-const DISALLOWED_FILE_EXTENSIONS = [
-  '.exe', '.bat', '.cmd', '.sh', '.scr', '.vbs', '.js', '.jar', '.msi', '.pif'
-];
+const DISCORD_TOKEN_REGEX = /(?:mfa\.[\w-]{80,100}|[\w-]{24}\.[\w-]{6}\.[\w-]{27,38})/g;
+const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif',
+  '.mp4', '.webm', '.mov',
+  '.mp3', '.wav', '.ogg', '.m4a',
+  '.pdf',
+]);
+const ALLOWED_MIME_TYPES = new RegExp(
+  '^(image/(png|jpeg|gif|webp|avif)|video/(mp4|webm|quicktime)|audio/(mpeg|wav|ogg|mp4|x-m4a)|application/pdf)$',
+  'i'
+);
+const TRUSTED_ATTACHMENT_HOSTS = new Set([
+  'cdn.discordapp.com',
+  'media.discordapp.net',
+  'cdn.discordapp.net',
+]);
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 export class ContentSanitizer {
-  /**
-   * Comprehensive content sanitization pipeline for incoming anonymous messages
-   */
   sanitize(text: string): SanitizationResult {
-    let current = text;
+    let current = typeof text === 'string' ? text : '';
     const violations: string[] = [];
 
-    // 1. Strip Discord Invites (uses fresh RegExp or replace directly to avoid stateful lastIndex bug)
     const beforeInvite = current;
-    current = current.replace(/(https?:\/\/)?(www\.)?(discord\.(gg|io|me|li)|discord(app)?\.com\/invite)\/[a-zA-Z0-9_-]+/gi, '`[Invite Link Removed]`');
-    if (current !== beforeInvite) {
-      violations.push('DISCORD_INVITE_BLOCKED');
-    }
+    current = current.replace(
+      /(https?:\/\/)?(www\.)?(discord\.(gg|io|me|li)|discord(app)?\.com\/invite)\/[a-zA-Z0-9_-]+/gi,
+      '\x60[Invite Link Removed]\x60'
+    );
+    if (current !== beforeInvite) violations.push('DISCORD_INVITE_BLOCKED');
 
-    // 2. Mask user mentions (<@123456789> -> @User)
     const beforeUser = current;
-    current = current.replace(/<@!?(\d+)>/g, '@User');
-    if (current !== beforeUser) {
-      violations.push('USER_MENTION_MASKED');
-    }
+    current = current.replace(/<@!?\d+>/g, '@User');
+    if (current !== beforeUser) violations.push('USER_MENTION_MASKED');
 
-    // 3. Mask role mentions (<@&123456789> -> @Role)
     const beforeRole = current;
-    current = current.replace(/<@&(\d+)>/g, '@Role');
-    if (current !== beforeRole) {
-      violations.push('ROLE_MENTION_MASKED');
-    }
+    current = current.replace(/<@&\d+>/g, '@Role');
+    if (current !== beforeRole) violations.push('ROLE_MENTION_MASKED');
 
-    // 4. Mask channel mentions (<#123456789> -> #channel)
     const beforeChannel = current;
-    current = current.replace(/<#(\d+)>/g, '#channel');
-    if (current !== beforeChannel) {
-      violations.push('CHANNEL_MENTION_MASKED');
-    }
+    current = current.replace(/<#\d+>/g, '#channel');
+    if (current !== beforeChannel) violations.push('CHANNEL_MENTION_MASKED');
 
-    // 5. Mask @everyone and @here pings
     const beforePings = current;
-    current = current.replace(/@(everyone|here)/gi, '@\u200b$1');
-    if (current !== beforePings) {
-      violations.push('MASS_PING_MASKED');
-    }
+    current = current.replace(/@[\u200B-\u200D\uFEFF]*(everyone|here)/gi, '@\u200b $1');
+    if (current !== beforePings) violations.push('MASS_PING_MASKED');
 
-    // 6. Sanitize custom emojis (<a:spark:123456> -> :spark:)
     current = current.replace(/<(a?):([a-zA-Z0-9_]+):(\d+)>/g, ':$2:');
 
-    // 7. Scrub token leaks
     const beforeToken = current;
-    current = current.replace(/[\w-]{24}\.[\w-]{6}\.[\w-]{27,38}/g, '`[Secret Token Scrubbed]`');
-    if (current !== beforeToken) {
-      violations.push('AUTH_TOKEN_STRIPPED');
-    }
+    current = current.replace(new RegExp(DISCORD_TOKEN_REGEX.source, 'g'), '\x60[Secret Token Scrubbed]\x60');
+    if (current !== beforeToken) violations.push('AUTH_TOKEN_STRIPPED');
 
-    // 8. Check for suspicious phishing/IP loggers
     for (const domain of SUSPICIOUS_DOMAINS) {
-      if (current.toLowerCase().includes(domain)) {
-        violations.push(`MALICIOUS_DOMAIN_${domain.toUpperCase()}`);
-        const reg = new RegExp(`https?://[^\\s]*${domain}[^\\s]*`, 'gi');
-        current = current.replace(reg, '`[Blocked Suspicious Link]`');
-      }
+      const escapedDomain = domain.split('.').join('\\.');
+      const expression = new RegExp(
+        '(^|[^a-z0-9.-])((?:https?://)?(?:www\\.)?' + escapedDomain + '(?:[/?#]\\S*)?)(?![a-z0-9.-])',
+        'gi'
+      );
+      const before = current;
+      current = current.replace(expression, '$1[Blocked Suspicious Link]');
+      if (current !== before) violations.push('MALICIOUS_DOMAIN_' + domain.toUpperCase());
     }
 
     return {
@@ -95,19 +85,53 @@ export class ContentSanitizer {
     };
   }
 
-  /**
-   * Sanitizes attachment files to prevent malicious uploads and scrub metadata
-   */
-  sanitizeAttachments(attachments: Array<{ url: string; name: string; size?: number; contentType?: string }>) {
-    return attachments.filter((att) => {
-      const lowerName = att.name.toLowerCase();
-      const isDisallowed = DISALLOWED_FILE_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
-      return !isDisallowed;
-    }).map((att) => ({
-      url: att.url,
-      name: att.name.replace(/[^a-zA-Z0-9._-]/g, '_'),
-      contentType: att.contentType,
-      size: att.size,
+  sanitizeAttachments(
+    attachments: Array<{ url: string; name: string; size?: number; contentType?: string }>
+  ): Array<{ url: string; name: string; contentType?: string; size?: number }> {
+    return attachments.filter((attachment) => {
+      if (!attachment || typeof attachment.url !== 'string') return false;
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(attachment.url);
+      } catch {
+        return false;
+      }
+
+      if (
+        parsedUrl.protocol !== 'https:' ||
+        parsedUrl.username.length > 0 ||
+        parsedUrl.password.length > 0 ||
+        (parsedUrl.port !== '' && parsedUrl.port !== '443') ||
+        !TRUSTED_ATTACHMENT_HOSTS.has(parsedUrl.hostname.toLowerCase())
+      ) return false;
+
+      if (
+        typeof attachment.name !== 'string' ||
+        attachment.name.length === 0 ||
+        attachment.name.length > 255
+      ) return false;
+
+      if (
+        !Number.isFinite(attachment.size) ||
+        attachment.size! < 0 ||
+        attachment.size! > MAX_ATTACHMENT_BYTES
+      ) return false;
+
+      const lowerName = attachment.name.toLowerCase();
+      const extension = lowerName.includes('.') ? lowerName.slice(lowerName.lastIndexOf('.')) : '';
+      if (!ALLOWED_ATTACHMENT_EXTENSIONS.has(extension)) return false;
+
+      if (
+        attachment.contentType &&
+        !ALLOWED_MIME_TYPES.test(attachment.contentType.split(';')[0].trim())
+      ) return false;
+
+      return true;
+    }).map((attachment) => ({
+      url: attachment.url,
+      name: attachment.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100),
+      contentType: attachment.contentType,
+      size: attachment.size,
     }));
   }
 }

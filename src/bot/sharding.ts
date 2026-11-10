@@ -1,5 +1,8 @@
 import { ShardingManager } from 'discord.js';
+import '../api/server.js'; // Starts the protected API when RUN_API=true (Docker deployment).
 import { config } from '../config/index.js';
+import { db } from '../database/supabase.js';
+import { redis } from '../redis/client.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -9,10 +12,19 @@ const __dirname = path.dirname(__filename);
 export class ShardCoordinator {
   private manager: ShardingManager | null = null;
 
-  start() {
+  async start() {
     if (!config.DISCORD_TOKEN || config.DISCORD_TOKEN.startsWith('mock_')) {
+      if (config.NODE_ENV === 'production') throw new Error('A real DISCORD_TOKEN is required in production.');
       console.log('ℹ️ Sharding Coordinator running in mock development mode.');
       return;
+    }
+    if (!config.DISCORD_CLIENT_ID || config.API_SECRET_KEY.length < 32 || config.API_SECRET_KEY === 'destiny_internal_secret_32bytes_min_key!') {
+      throw new Error('DISCORD_CLIENT_ID and a 32+ character API_SECRET_KEY are required in production.');
+    }
+
+    await db.assertConnection();
+    if (config.NODE_ENV === 'production' && !(await redis.waitForConnection())) {
+      throw new Error('Redis is required before the Discord shard cluster can start.');
     }
 
     const botFile = path.join(__dirname, 'index.js');
@@ -74,5 +86,8 @@ export class ShardCoordinator {
 export const shardCoordinator = new ShardCoordinator();
 
 if (process.env.RUN_SHARDS === 'true') {
-  shardCoordinator.start();
+  shardCoordinator.start().catch((err) => {
+    console.error('❌ Shard coordinator startup failed:', err);
+    process.exit(1);
+  });
 }

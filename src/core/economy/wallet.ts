@@ -1,5 +1,4 @@
 import { db } from '../../database/supabase.js';
-import { lockManager } from '../../redis/locks.js';
 import { CoinTransaction } from '../types.js';
 
 export class WalletService {
@@ -14,28 +13,7 @@ export class WalletService {
     amount: number,
     referenceId: string
   ): Promise<{ success: boolean; error?: string }> {
-    if (amount <= 0) return { success: false, error: 'Transfer amount must be positive.' };
-
-    return await lockManager.withLock(`lock:wallet:transfer:${fromUserId}`, async () => {
-      const debitRes = await db.executeCoinTransaction(
-        fromUserId,
-        -amount,
-        'shop_purchase',
-        `transfer:out:${referenceId}`,
-        { toUserId }
-      );
-      if (!debitRes.success) return { success: false, error: debitRes.error };
-
-      await db.executeCoinTransaction(
-        toUserId,
-        amount,
-        'mission_reward',
-        `transfer:in:${referenceId}`,
-        { fromUserId }
-      );
-
-      return { success: true };
-    });
+    return db.transferCoins(fromUserId, toUserId, amount, referenceId);
   }
 
   async getTransactionHistory(userId: string, limit: number = 20): Promise<CoinTransaction[]> {

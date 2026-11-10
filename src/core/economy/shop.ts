@@ -14,20 +14,23 @@ export class ShopService {
     itemId: string
   ): Promise<{ success: boolean; message: string; remainingBalance?: number }> {
     const items = await db.getShopItems();
-    const item = items.find((i) => i.id === itemId);
+    const item = items.find((i) => i.id === itemId && i.isActive);
     if (!item) {
       return { success: false, message: 'Item not found in shop catalog.' };
+    }
+    if (!Number.isSafeInteger(item.price) || item.price <= 0) {
+      return { success: false, message: 'This shop item has an invalid price. Please contact an administrator.' };
     }
 
     return await lockManager.withLock(`lock:shop:${userId}`, async () => {
       // Check existing inventory (unless consumable)
       const userInv = await db.getUserInventory(userId);
-      if (!item.metadata.consumable && userInv.includes(itemId)) {
+      if (!item.metadata?.consumable && userInv.includes(itemId)) {
         return { success: false, message: `You already own ${item.name}. Visit your \`/wardrobe\` to equip it!` };
       }
 
       // Deduct coins atomically
-      const refId = `shop:buy:${userId}:${itemId}:${uuidv4()}`;
+      const refId = `shop:buy:${uuidv4()}`;
       const tx = await db.executeCoinTransaction(
         userId,
         -item.price,
@@ -40,8 +43,29 @@ export class ShopService {
         return { success: false, message: tx.error || 'Insufficient Destiny Coins balance.' };
       }
 
-      // Add to inventory
-      await db.addToUserInventory(userId, itemId);
+      // Persist inventory before confirming purchase. If persistence fails,
+      // compensate the debit with a unique, idempotent refund transaction.
+      let added = false;
+      try {
+        added = await db.addToUserInventory(userId, itemId, Boolean(item.metadata?.consumable));
+      } catch {
+        added = false;
+      }
+      if (!added) {
+        const refund = await db.executeCoinTransaction(
+          userId,
+          item.price,
+          'admin_adjustment',
+          `shop:refund:${refId}`,
+          { itemId, reason: 'inventory_persistence_failed' }
+        );
+        return {
+          success: false,
+          message: refund.success
+            ? 'Purchase could not be saved; your coins have been refunded. Please try again.'
+            : 'Purchase could not be saved and the automatic refund failed. Please contact support.',
+        };
+      }
 
       return {
         success: true,
@@ -100,7 +124,28 @@ export class ShopService {
     user: UserProfile,
     badgeNames: string[]
   ): Promise<{ success: boolean; message: string; equippedBadges: string[] }> {
-    const cleanBadges = badgeNames.slice(0, 5);
+    const requested = Array.isArray(badgeNames)
+      ? [...new Set(badgeNames.filter((name) => typeof name === 'string' && name.trim().length > 0))]
+      : [];
+    const [inventory, items] = await Promise.all([
+      db.getUserInventory(user.id),
+      db.getShopItems(),
+    ]);
+    const ownedBadgeAliases = new Set<string>();
+    for (const item of items) {
+      if (!item.isActive || item.category !== 'badge' || !inventory.includes(item.id)) continue;
+      ownedBadgeAliases.add(item.id);
+      ownedBadgeAliases.add(item.name);
+      if (typeof item.metadata?.badge === 'string') ownedBadgeAliases.add(item.metadata.badge);
+    }
+    const cleanBadges = requested.filter((name) => ownedBadgeAliases.has(name)).slice(0, 5);
+    if (cleanBadges.length !== requested.length) {
+      return {
+        success: false,
+        message: 'You can equip only badges you own. Purchase additional insignias from the shop first.',
+        equippedBadges: user.equippedBadges || [],
+      };
+    }
     user.equippedBadges = cleanBadges;
     await db.createOrUpdateUser(user);
 

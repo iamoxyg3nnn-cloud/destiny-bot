@@ -1,4 +1,5 @@
 import { db } from '../../database/supabase.js';
+import { sanitizer } from '../sanitizer.js';
 import { ReportItem } from '../types.js';
 
 export class ReporterService {
@@ -8,12 +9,21 @@ export class ReporterService {
     description: string,
     roomId?: string
   ): Promise<{ success: boolean; reportId?: string; message: string }> {
+    const validCategories: ReportItem['category'][] = ['harassment', 'identity_leak', 'inappropriate_content', 'spam', 'underage', 'other'];
+    const cleanDescription = typeof description === 'string' ? description.trim() : '';
+    if (!validCategories.includes(category) || cleanDescription.length < 1 || cleanDescription.length > 1000) {
+      return { success: false, message: 'Please provide a valid report category and a description of 1–1000 characters.' };
+    }
+    if (!reporterUserId || !roomId) {
+      return { success: false, message: 'Could not resolve the reported user context.' };
+    }
+
     let reportedUserId = '';
     let chatExcerpt: Array<{ senderPseudonym: string; content: string; timestamp: string }> = [];
 
-    if (roomId) {
+    {
       const room = await db.getRoomById(roomId);
-      if (room) {
+      if (room && (room.user1Id === reporterUserId || room.user2Id === reporterUserId)) {
         reportedUserId = room.user1Id === reporterUserId ? room.user2Id : room.user1Id;
         const messages = await db.getRoomMessages(roomId, 15);
         chatExcerpt = messages.map((m) => ({
@@ -24,43 +34,44 @@ export class ReporterService {
       }
     }
 
-    if (!reportedUserId) {
-      return { success: false, message: 'Could not resolve the reported user context.' };
+    if (!reportedUserId || reportedUserId === reporterUserId) {
+      return { success: false, message: 'You can only report the other participant in a chat you were part of.' };
     }
 
-    const report = await db.createReport({
-      reporterId: reporterUserId,
-      reportedId: reportedUserId,
-      roomId,
-      category,
-      description,
-      chatExcerpt,
-    });
-
-    // Auto-block the reported user
-    await db.addBlock(reporterUserId, reportedUserId, `Auto-blocked following safety report (${category})`);
-
-    // Deduct 20 reputation points from reported user
-    const reportedUser = await db.getUserById(reportedUserId);
-    if (reportedUser) {
-      const currentScore = typeof reportedUser.reputationScore === 'number' ? reportedUser.reputationScore : 100;
-      reportedUser.reputationScore = Math.max(0, currentScore - 20);
-      if (reportedUser.reputationScore < 10) {
-        reportedUser.isBanned = true;
-        reportedUser.banReason = 'Low reputation (< 10). Join discord.gg/eclairs to regain access.';
-      }
-      await db.createOrUpdateUser(reportedUser);
+    let report: ReportItem;
+    try {
+      report = await db.createReport({
+        reporterId: reporterUserId,
+        reportedId: reportedUserId,
+        roomId,
+        category,
+        description: cleanDescription,
+        chatExcerpt,
+      });
+    } catch (error) {
+      console.error('[Reports] Could not persist report:', error);
+      return { success: false, message: 'The report could not be saved. Please try again.' };
     }
 
-    // Gracefully terminate the reported room
-    if (roomId) {
-      await db.endRoom(roomId, 'moderated');
-    }
+    // Auto-block the reported user; moderation penalties are applied only after review.
+    // The report remains saved if a secondary safety action fails.
+    const [blockResult, roomResult] = await Promise.allSettled([
+      db.addBlock(reporterUserId, reportedUserId, `Auto-blocked following safety report (${category})`),
+      db.endRoom(roomId, 'moderated'),
+    ]);
+    const blocked = blockResult.status === 'fulfilled' && blockResult.value;
+    const roomClosed = roomResult.status === 'fulfilled' && roomResult.value;
+    if (!blocked) console.error('[Reports] Report saved but automatic block failed:', blockResult);
+    if (roomResult.status === 'rejected') console.error('[Reports] Report saved but room closure failed:', roomResult.reason);
 
     return {
       success: true,
       reportId: report.id,
-      message: 'Report submitted successfully. The user has been blocked and our moderation team has been alerted.',
+      message: blocked
+        ? (roomClosed
+          ? 'Report submitted successfully. The user has been blocked and the room has been closed.'
+          : 'Report submitted and user blocked. The room was already closed or could not be closed.')
+        : 'Report submitted successfully, but automatic blocking failed. Please block the user manually.',
     };
   }
 }

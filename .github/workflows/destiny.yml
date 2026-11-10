@@ -57,12 +57,12 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       REDIS_HOST: ${{ secrets.REDIS_HOST || '127.0.0.1' }}
       REDIS_PORT: ${{ secrets.REDIS_PORT || '6379' }}
-      REDIS_USERNAME: ${{ secrets.REDIS_USERNAME }}
-      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
-      REDIS_TOKEN: ${{ secrets.REDIS_TOKEN }}
+      REDIS_USERNAME: ${{ secrets.REDIS_URL && secrets.REDIS_USERNAME || (secrets.REDIS_HOST && secrets.REDIS_HOST != '127.0.0.1' && secrets.REDIS_USERNAME) || '' }}
+      REDIS_PASSWORD: ${{ secrets.REDIS_URL && secrets.REDIS_PASSWORD || (secrets.REDIS_HOST && secrets.REDIS_HOST != '127.0.0.1' && secrets.REDIS_PASSWORD) || '' }}
+      REDIS_TOKEN: ${{ secrets.REDIS_URL && secrets.REDIS_TOKEN || (secrets.REDIS_HOST && secrets.REDIS_HOST != '127.0.0.1' && secrets.REDIS_TOKEN) || '' }}
       REDIS_URL: ${{ secrets.REDIS_URL }}
       REDIS_DB: ${{ secrets.REDIS_DB || '0' }}
-      REDIS_TLS: ${{ secrets.REDIS_TLS || 'false' }}
+      REDIS_TLS: ${{ (secrets.REDIS_URL || (secrets.REDIS_HOST && secrets.REDIS_HOST != '127.0.0.1')) && secrets.REDIS_TLS || 'false' }}
       REDIS_KEY_PREFIX: "destiny:"
       REMINDER_CRON_SCHEDULE: "30 19 * * *"
       REMINDER_DEFAULT_TIMEZONE: "Asia/Kolkata"
@@ -102,6 +102,21 @@ jobs:
 
       - name: Build TypeScript Project
         run: pnpm run build
+
+      - name: Apply Supabase schema migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "::error::DATABASE_URL secret is required to apply schema migrations before deploying this version."
+            exit 1
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+          for migration in supabase/migrations/*.sql; do
+            echo "Applying ${migration}"
+            psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -f "${migration}"
+          done
 
       - name: Prepare Environment Configuration
         env:

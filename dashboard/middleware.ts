@@ -29,15 +29,11 @@ export async function middleware(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Build the redirect from the *forwarded* host so it points at the public
-  // tunnel origin rather than the internal listener (e.g. localhost:3000).
-  const forwardedHost =
-    req.headers.get('x-forwarded-host') || req.headers.get('host') || req.nextUrl.host;
-  const forwardedProto =
-    req.headers.get('x-forwarded-proto') || (forwardedHost === req.nextUrl.host ? req.nextUrl.protocol.replace(':', '') : 'https');
-
-  const loginUrl = new URL('/login', `${forwardedProto}://${forwardedHost}`);
-  return NextResponse.redirect(loginUrl);
+  // Keep redirects same-origin; never trust attacker-controlled forwarded-host headers.
+  const loginUrl = req.nextUrl.clone();
+  loginUrl.pathname = '/login';
+  loginUrl.search = '';
+  return NextResponse.redirect(loginUrl);;
 }
 
 export const config = {

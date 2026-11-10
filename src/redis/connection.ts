@@ -1,5 +1,3 @@
-import { config } from '../config/index.js';
-
 /**
  * Resolved Redis connection parameters, shared by the ioredis client and the
  * BullMQ queues so both always talk to the same instance with the same
@@ -43,53 +41,55 @@ interface RedisEnv {
  */
 export function resolveRedisConnection(env: RedisEnv = process.env as RedisEnv): RedisConnectionOptions {
   const url = (env.REDIS_URL || '').trim();
-
-  if (url) {
-    return fromUrl(url, env);
-  }
+  if (url) return fromUrl(url, env);
 
   const password = env.REDIS_TOKEN || env.REDIS_PASSWORD || undefined;
-
   return {
     host: env.REDIS_HOST || '127.0.0.1',
-    port: Number(env.REDIS_PORT) || 6379,
+    port: validInteger(env.REDIS_PORT, 6379, 1, 65535),
     username: env.REDIS_USERNAME || undefined,
-    password: password || undefined,
-    db: Number(env.REDIS_DB) || 0,
-    ...(isTls(env) ? { tls: { rejectUnauthorized: false } } : {}),
+    password,
+    db: validInteger(env.REDIS_DB, 0, 0, Number.MAX_SAFE_INTEGER),
+    ...(isTls(env) ? { tls: { rejectUnauthorized: true } } : {}),
   };
 }
 
+function validInteger(value: string | number | undefined, fallback: number, min: number, max: number): number {
+  const parsed = value === undefined || value === '' ? fallback : Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
+}
+
 function isTls(env: RedisEnv): boolean {
-  return env.REDIS_TLS === true || env.REDIS_TLS === 'true';
+  return env.REDIS_TLS === true || String(env.REDIS_TLS || '').toLowerCase() === 'true';
 }
 
 function fromUrl(raw: string, env: RedisEnv): RedisConnectionOptions {
-  let parsed: URL;
+  const parsed = new URL(raw);
+  if (parsed.protocol !== 'redis:' && parsed.protocol !== 'rediss:') {
+    throw new Error('REDIS_URL must use redis:// or rediss://.');
+  }
+  if (!parsed.hostname) throw new Error('REDIS_URL must include a hostname.');
+
+  let username: string | undefined;
+  let password: string | undefined;
   try {
-    parsed = new URL(raw);
+    username = decodeURIComponent(parsed.username || '') || env.REDIS_USERNAME || undefined;
+    password = decodeURIComponent(parsed.password || '') || undefined;
   } catch {
-    console.warn('[Redis] REDIS_URL is not a valid URL — falling back to host/port.');
-    return {
-      host: env.REDIS_HOST || '127.0.0.1',
-      port: Number(env.REDIS_PORT) || 6379,
-      username: env.REDIS_USERNAME || undefined,
-      password: env.REDIS_TOKEN || env.REDIS_PASSWORD || undefined,
-      db: Number(env.REDIS_DB) || 0,
-      ...(isTls(env) ? { tls: { rejectUnauthorized: false } } : {}),
-    };
+    throw new Error('REDIS_URL contains invalid percent-encoding in its credentials.');
   }
 
-  const username = decodeURIComponent(parsed.username || '') || env.REDIS_USERNAME || undefined;
-  const password = decodeURIComponent(parsed.password || '') || undefined;
+  const pathDb = parsed.pathname.replace(/^\/+/, '');
+  const db = pathDb ? validInteger(pathDb, -1, 0, Number.MAX_SAFE_INTEGER) : validInteger(env.REDIS_DB, 0, 0, Number.MAX_SAFE_INTEGER);
+  if (db < 0) throw new Error('REDIS_URL database path must be a non-negative integer.');
 
   return {
-    host: parsed.hostname || env.REDIS_HOST || '127.0.0.1',
-    port: parsed.port ? Number(parsed.port) : Number(env.REDIS_PORT) || 6379,
+    host: parsed.hostname,
+    port: validInteger(parsed.port || env.REDIS_PORT, 6379, 1, 65535),
     username,
     password: password || env.REDIS_TOKEN || env.REDIS_PASSWORD || undefined,
-    db: Number(env.REDIS_DB) || 0,
-    ...(parsed.protocol === 'rediss:' || isTls(env) ? { tls: { rejectUnauthorized: false } } : {}),
+    db,
+    ...(parsed.protocol === 'rediss:' || isTls(env) ? { tls: { rejectUnauthorized: true } } : {}),
   };
 }
 

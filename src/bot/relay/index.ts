@@ -28,6 +28,14 @@ export class MessageRelayService {
 
     const room = await db.getRoomById(activeRoomId);
     if (!room || room.status !== 'active') return false;
+    if (authorUser.activeRoomId !== room.id) {
+      console.warn('[Relay] Refusing message because the sender no longer points to this active room.');
+      return false;
+    }
+    if (room.user1Id !== authorUser.id && room.user2Id !== authorUser.id) {
+      console.warn('[Relay] Refusing message from a user who is not a room participant.');
+      return false;
+    }
 
     // Rate limit check: max 5 messages per 3s
     const rateLimit = await redis.checkRateLimit(`relay:${authorUser.id}`, 5, 3);
@@ -69,47 +77,9 @@ export class MessageRelayService {
       contentType: a.contentType || undefined,
     }));
     const cleanAttachments = sanitizer.sanitizeAttachments(rawAttachments);
-
-    // 3. Save message record in Supabase
-    const savedMsg = await db.saveMessage({
-      roomId: room.id,
-      senderUserId: authorUser.id,
-      senderPseudonym,
-      sanitizedContent: sanitized.sanitizedText,
-      attachmentsMeta: cleanAttachments,
-      isPinned: false,
-      flaggedForModeration: !sanitized.isClean,
-      moderationReason: sanitized.violations.join(', ') || undefined,
-    });
-
-    // 4. Update room connection XP and check for Tier Level-Up
-    const prevLevel = room.connectionLevel;
-    const { newXp, level: currentLevel } = await db.updateRoomXP(room.id, 2);
-
-    if (currentLevel !== prevLevel) {
-      room.connectionLevel = currentLevel;
-      // Award 25 DC milestone bonus to both participants
-      const partnerUserId = isUser1 ? room.user2Id : room.user1Id;
-      const ref1 = `levelup:${room.id}:${currentLevel}:${authorUser.id}`;
-      const ref2 = `levelup:${room.id}:${currentLevel}:${partnerUserId}`;
-      Promise.all([
-        db.executeCoinTransaction(authorUser.id, 25, 'room_milestone', ref1, { level: currentLevel, roomId: room.id }),
-        db.executeCoinTransaction(partnerUserId, 25, 'room_milestone', ref2, { level: currentLevel, roomId: room.id }),
-      ]).catch(() => {});
-
-      const tierData = progressionService.getTierFromXp(newXp);
-      const levelUpEmbed = new EmbedBuilder()
-        .setColor(COLORS.GOLD)
-        .setTitle(`🎉 Connection Evolved: ${currentLevel.toUpperCase()}!`)
-        .setDescription(
-          `Your conversation has evolved to **${currentLevel}** (${newXp} XP)!\n\n` +
-          `✨ **+25 Destiny Coins** granted to both of you!\n` +
-          `🔓 **Unlocked Perks**: ${tierData.perks.join(', ')}`
-        )
-        .setFooter({ text: 'Keep chatting to unlock higher tiers & deeper reveals!' });
-
-      message.author.send({ embeds: [levelUpEmbed] }).catch(() => {});
-      client.users.fetch(recipientDiscordId).then((u) => u.send({ embeds: [levelUpEmbed] })).catch(() => {});
+    if (!sanitized.sanitizedText && cleanAttachments.length === 0) {
+      await message.reply('⚠️ Your message contained no text or supported attachments. Allowed files: images, video, audio and PDF up to 10 MB.');
+      return true;
     }
 
     // 5. Deliver to recipient Discord DM
@@ -142,6 +112,59 @@ export class MessageRelayService {
           flags: [MessageFlags.IsComponentsV2],
         });
       }
+
+    // Persist only after Discord accepts delivery so history and XP do not
+    // claim a message was delivered when the recipient's DMs are closed.
+    try {
+      await db.saveMessage({
+        roomId: room.id,
+        senderUserId: authorUser.id,
+        senderPseudonym,
+        sanitizedContent: sanitized.sanitizedText,
+        attachmentsMeta: cleanAttachments,
+        isPinned: false,
+        flaggedForModeration: !sanitized.isClean,
+        moderationReason: sanitized.violations.join(', ') || undefined,
+      });
+    } catch (error) {
+      console.error('[Relay] Message was delivered but could not be persisted:', error);
+      await message.reply('⚠️ Your message was delivered, but chat history could not be saved. Please try again later.').catch(() => {});
+      return true;
+    }
+
+    // Award connection XP after the message has been delivered and recorded.
+    try {
+      const prevLevel = room.connectionLevel;
+      const { newXp, level: currentLevel } = await db.updateRoomXP(room.id, 2);
+      if (currentLevel !== prevLevel) {
+        room.connectionLevel = currentLevel;
+        const partnerUserId = isUser1 ? room.user2Id : room.user1Id;
+        const ref1 = `levelup:${room.id}:${currentLevel}:${authorUser.id}`;
+        const ref2 = `levelup:${room.id}:${currentLevel}:${partnerUserId}`;
+        const rewards = await Promise.all([
+          db.executeCoinTransaction(authorUser.id, 25, 'room_milestone', ref1, { level: currentLevel, roomId: room.id }),
+          db.executeCoinTransaction(partnerUserId, 25, 'room_milestone', ref2, { level: currentLevel, roomId: room.id }),
+        ]);
+        const rewardsGranted = rewards.every((reward) => reward.success);
+        if (!rewardsGranted) console.error('[Relay] One or more connection milestone rewards failed:', rewards);
+
+        const tierData = progressionService.getTierFromXp(newXp);
+        const levelUpEmbed = new EmbedBuilder()
+          .setColor(COLORS.GOLD)
+          .setTitle(`🎉 Connection Evolved: ${currentLevel.toUpperCase()}!`)
+          .setDescription(
+            `Your conversation has evolved to **${currentLevel}** (${newXp} XP)!\n\n` +
+            (rewardsGranted ? '✨ **+25 Destiny Coins** granted to both of you!\n' : '⚠️ Your milestone reward is being checked by the system.\n') +
+            `🔓 **Unlocked Perks**: ${tierData.perks.join(', ')}`
+          )
+          .setFooter({ text: 'Keep chatting to unlock higher tiers & deeper reveals!' });
+
+        await message.author.send({ embeds: [levelUpEmbed] }).catch(() => {});
+        await client.users.fetch(recipientDiscordId).then((u) => u.send({ embeds: [levelUpEmbed] })).catch(() => {});
+      }
+    } catch (error) {
+      console.error('[Relay] Connection XP update failed:', error);
+    }
 
       // Acknowledge reaction on original message
       await message.react('✨').catch(() => {});
