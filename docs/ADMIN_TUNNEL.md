@@ -6,7 +6,42 @@ firewall port or owning a domain.
 
 ---
 
-## Quick start
+## In GitHub Actions (recommended)
+
+The admin console is published by the **same workflow** that runs the bot —
+`.github/workflows/destiny.yml` — as a second job named **Publish Admin
+Console**. There is no separate workflow to manage.
+
+Both jobs run **in parallel** under the same run:
+
+```
+                  ┌─ job: run-bot ────────────┐   bot + workers, 345m window
+ workflow run ───┤                            │
+                  └─ job: admin-tunnel ───────┘   dashboard + tunnel, same window
+```
+
+Trigger it and read the URL from the run's job summary:
+
+```bash
+gh workflow run destiny.yml --repo apunabhibhilegendhai/destiny-bot \
+  -f session_minutes=345 -f admin_tunnel=true
+
+# Then read the published URL:
+gh run view --repo apunabhibhilegendhai/destiny-bot --log | grep trycloudflare
+```
+
+The URL is also written to the **Publish Admin Console** job summary on the
+Actions run page, and exported as the `ADMIN_TUNNEL_URL` job output.
+
+The tunnel is **ephemeral**: the URL changes on every run and dies when the
+job ends. Because the bot workflow chains itself every ~6 hours, the URL
+rotates roughly that often — always check the latest run.
+
+To disable it for a run: `-f admin_tunnel=false`.
+
+---
+
+## Locally
 
 All secrets live in the **project-root `.env`** — that is the single source of
 truth for the bot, the API and the dashboard:
@@ -21,10 +56,7 @@ API_SECRET_KEY=<32 random bytes>
 Then build and launch:
 
 ```bash
-# Build the dashboard
 npm run dashboard:build
-
-# Launch API + dashboard + tunnel (foreground)
 npm run tunnel:admin
 ```
 
@@ -83,6 +115,31 @@ Internet ──► cloudflared ──► 127.0.0.1:3000  (Next.js dashboard)
 
 Verified: `http://<public-ip>:4000` and `http://<public-ip>:3000` both refuse
 connections; only the tunnel origin works.
+
+---
+
+## CI notes
+
+The `admin-tunnel` job in `.github/workflows/destiny.yml`:
+
+- Installs `cloudflared` from the pinned GitHub release
+  (`CLOUDFLARED_VERSION`, default `2026.10.7`).
+- The tunnel script is invoked via `bash ./scripts/start-admin-tunnel.sh`
+  rather than `./scripts/...` so it works regardless of the file's exec bit
+  (Windows does not preserve the mode when staging).
+- The readiness probe sends `x-api-key` — `/api/health` is protected by the
+  shared-secret check, so a bare request returns 401 and the API would look
+  like it never started.
+- Secrets resolve at **runtime**, not build time, so the values can be passed
+  as ordinary environment variables.
+
+Required repository secrets:
+
+| Secret | Used by |
+|---|---|
+| `API_SECRET_KEY` | both jobs — shared by the API and the dashboard proxy |
+| `DASHBOARD_ADMIN_PASSWORD` | `admin-tunnel` — console login password |
+| `DASHBOARD_SESSION_SECRET` | `admin-tunnel` — HMAC key for session cookies |
 
 ---
 
