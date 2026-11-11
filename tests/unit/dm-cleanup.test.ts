@@ -68,7 +68,7 @@ describe('sendCleanDmPanel', () => {
     fetched.set(old.id, old);
     vi.mocked(redis.get).mockResolvedValue(old.id);
 
-    const sent = await sendCleanDmPanel(user, { content: 'new panel' } as any);
+    const sent = await sendCleanDmPanel(user, { embeds: [{ title: 'new panel' }] } as any);
 
     expect(old.delete).toHaveBeenCalledOnce();
     expect(sent).toBe(sentMessages[0]);
@@ -89,7 +89,7 @@ describe('sendCleanDmPanel', () => {
     fetched.set(deleted.id, deleted);
     vi.mocked(redis.get).mockResolvedValue(JSON.stringify([failed.id, deleted.id, deleted.id]));
 
-    const sent = await sendCleanDmPanel(user, { content: 'new panel' } as any);
+    const sent = await sendCleanDmPanel(user, { embeds: [{ title: 'new panel' }] } as any);
 
     expect(failed.delete).toHaveBeenCalledOnce();
     expect(deleted.delete).toHaveBeenCalledOnce();
@@ -103,12 +103,12 @@ describe('sendCleanDmPanel', () => {
     const { user, channel, sentMessages } = makeHarness();
     vi.mocked(redis.get).mockRejectedValueOnce(new Error('Redis unavailable'));
 
-    const first = await sendCleanDmPanel(user, { content: 'first' } as any);
+    const first = await sendCleanDmPanel(user, { embeds: [{ title: 'first' }] } as any);
     expect(first).toBe(sentMessages[0]);
     expect(redis.set).not.toHaveBeenCalled();
     expect(channel.messages.fetch).not.toHaveBeenCalled();
 
-    const second = await sendCleanDmPanel(user, { content: 'second' } as any);
+    const second = await sendCleanDmPanel(user, { embeds: [{ title: 'second' }] } as any);
     expect(channel.messages.fetch).toHaveBeenCalledWith(first.id);
     expect(redis.set).toHaveBeenLastCalledWith(
       `dm:active-panel:${USER_ID}`,
@@ -123,7 +123,7 @@ describe('sendCleanDmPanel', () => {
     vi.mocked(redis.get).mockResolvedValue(old.id);
     vi.mocked(redis.set).mockRejectedValueOnce(new Error('Redis write failed'));
 
-    await sendCleanDmPanel(user, { content: 'new panel' } as any);
+    await sendCleanDmPanel(user, { embeds: [{ title: 'new panel' }] } as any);
 
     expect(old.delete).not.toHaveBeenCalled();
     expect(channel.messages.fetch).not.toHaveBeenCalled();
@@ -135,7 +135,7 @@ describe('sendCleanDmPanel', () => {
     vi.mocked(redis.get).mockResolvedValue('11111111111111111');
     channel.send.mockRejectedValueOnce(new Error('Discord send failed'));
 
-    await expect(sendCleanDmPanel(user, { content: 'replacement' } as any)).rejects.toThrow('Discord send failed');
+    await expect(sendCleanDmPanel(user, { embeds: [{ title: 'replacement' }] } as any)).rejects.toThrow('Discord send failed');
     expect(channel.messages.fetch).not.toHaveBeenCalled();
     expect(redis.set).not.toHaveBeenCalled();
   });
@@ -146,7 +146,7 @@ describe('sendCleanDmPanel', () => {
     fetched.set(foreign.id, foreign);
     vi.mocked(redis.get).mockResolvedValue(JSON.stringify([foreign.id]));
 
-    const sent = await sendCleanDmPanel(user, { content: 'new panel' } as any);
+    const sent = await sendCleanDmPanel(user, { embeds: [{ title: 'new panel' }] } as any);
 
     expect(foreign.delete).not.toHaveBeenCalled();
     expect(redis.set).toHaveBeenLastCalledWith(
@@ -159,7 +159,7 @@ describe('sendCleanDmPanel', () => {
     const { user, channel } = makeHarness();
     vi.mocked(lockManager.withLock).mockRejectedValueOnce(new Error('lock unavailable'));
 
-    const sent = await sendCleanDmPanel(user, { content: 'safe fallback' } as any);
+    const sent = await sendCleanDmPanel(user, { embeds: [{ title: 'safe fallback' }] } as any);
 
     expect(sent).toBeDefined();
     expect(channel.messages.fetch).not.toHaveBeenCalled();
@@ -175,7 +175,7 @@ describe('sendCleanDmPanel', () => {
       Object.assign(new Error('Missing permissions'), { code: 50013 })
     );
 
-    const sent = await sendCleanDmPanel(user, { content: 'new panel' } as any);
+    const sent = await sendCleanDmPanel(user, { embeds: [{ title: 'new panel' }] } as any);
 
     expect(redis.set).toHaveBeenLastCalledWith(
       `dm:active-panel:${USER_ID}`,
@@ -185,7 +185,7 @@ describe('sendCleanDmPanel', () => {
 
   it('does not expire tracking keys', async () => {
     const { user } = makeHarness();
-    await sendCleanDmPanel(user, { content: 'persistent panel' } as any);
+    await sendCleanDmPanel(user, { embeds: [{ title: 'persistent panel' }] } as any);
     expect(redis.set).toHaveBeenCalledWith(
       `dm:active-panel:${USER_ID}`,
       expect.any(String)
@@ -200,12 +200,25 @@ describe('sendCleanDmPanel', () => {
     user.client.user = null;
     vi.mocked(redis.get).mockResolvedValue(JSON.stringify([old.id]));
 
-    const sent = await sendCleanDmPanel(user, { content: 'new panel' } as any);
+    const sent = await sendCleanDmPanel(user, { embeds: [{ title: 'new panel' }] } as any);
 
     expect(old.delete).not.toHaveBeenCalled();
     expect(redis.set).toHaveBeenLastCalledWith(
       `dm:active-panel:${USER_ID}`,
       JSON.stringify([old.id, sent.id])
     );
+  });
+
+  it('sends plain-text messages without ever tracking or deleting them', async () => {
+    const { user, channel } = makeHarness();
+    const old = makeMessage('11111111111111111');
+    vi.mocked(redis.get).mockResolvedValue(old.id);
+
+    const sent = await sendCleanDmPanel(user, { content: 'conversation text' } as any);
+
+    expect(sent).toBeDefined();
+    expect(channel.messages.fetch).not.toHaveBeenCalled();
+    expect(redis.get).not.toHaveBeenCalled();
+    expect(redis.set).not.toHaveBeenCalled();
   });
 });

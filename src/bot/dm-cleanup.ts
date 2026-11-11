@@ -64,6 +64,17 @@ export async function sendCleanDmPanel(
   user: User,
   payload: MessageCreateOptions
 ): Promise<Message> {
+  // Fail-safe boundary: only explicitly structured UI panels may enter the
+  // replacement/cleanup lifecycle. Plain text messages are never tracked or
+  // eligible for deletion, even if a future caller accidentally uses this API.
+  const isStructuredPanel =
+    (Array.isArray(payload.components) && payload.components.length > 0) ||
+    (Array.isArray(payload.embeds) && payload.embeds.length > 0);
+  if (!isStructuredPanel) {
+    const channel = await user.createDM();
+    return await channel.send(payload);
+  }
+
   const previousTask = panelQueues.get(user.id);
   let release!: () => void;
   const currentTask = new Promise<void>((resolve) => { release = resolve; });
