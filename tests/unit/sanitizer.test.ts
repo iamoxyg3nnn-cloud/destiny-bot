@@ -26,8 +26,14 @@ describe('ContentSanitizer Unit Tests', () => {
     expect(result.sanitizedText).toBe('Check out #channel');
   });
 
+  it('should preserve static and animated custom emoji markup for native Discord rendering', () => {
+    const input = 'hello <:wave:123456789012345678> <a:dance:234567890123456789> 😍';
+    const result = sanitizer.sanitize(input);
+    expect(result.sanitizedText).toBe(input);
+    expect(result.isClean).toBe(true);
+  });
+
   it('should scrub exposed Discord authentication tokens', () => {
-    // Construct fake test token dynamically to prevent GitHub Push Protection false-positive matches
     const fakeToken = ['mock_test_token_part1_12345', 'mock02', 'mock_part3_123456789012345678901234'].join('.');
     const input = `Here is my bot token: ${fakeToken}`;
     const result = sanitizer.sanitize(input);
