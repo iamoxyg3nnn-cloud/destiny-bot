@@ -67,7 +67,7 @@ if [ -z "$CLOUDFLARED_BIN" ]; then
   curl -fsSL "$URL" -o "$CLOUDFLARED_BIN"
   chmod +x "$CLOUDFLARED_BIN"
 fi
-echo "▸ cloudflared: $(" $CLOUDFLARED_BIN" --version 2>&1 | head -n1)"
+echo "▸ cloudflared: $("$CLOUDFLARED_BIN" --version 2>&1 | head -n1)"
 
 if [ ! -d "$ROOT/dashboard/node_modules" ]; then
   echo "▸ installing dashboard dependencies"
