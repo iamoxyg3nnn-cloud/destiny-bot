@@ -219,6 +219,7 @@ jobs:
           if [ "${ENABLE_ADMIN_TUNNEL}" = "true" ]; then
             echo "▸ starting admin console tunnel"
             bash ./scripts/start-admin-tunnel.sh --reuse-api --api-port 4000 &
+            tunnel_pid=$!
 
             url=""
             for _ in $(seq 1 150); do
@@ -226,23 +227,29 @@ jobs:
                 url="$(cat logs/tunnel.url 2>/dev/null | tr -d '\r\n')"
                 [ -n "${url}" ] && break
               fi
+              if ! kill -0 "${tunnel_pid}" 2>/dev/null; then
+                break
+              fi
               sleep 2
             done
 
-            if [ -n "${url}" ]; then
-              echo "Admin console: ${url}"
-              echo "ADMIN_TUNNEL_URL=${url}" >> "$GITHUB_OUTPUT"
-              {
-                echo "### 🌌 Destiny Admin Console"
-                echo ""
-                echo "- **URL:** ${url}"
-                echo "- **Password:** value of \`DASHBOARD_ADMIN_PASSWORD\`"
-                echo "- **Expires:** when this job ends (~${SESSION_MINUTES}m)"
-              } >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "::warning::Admin tunnel never published a URL — continuing without it."
-              tail -40 logs/tunnel.log 2>/dev/null || true
+            if [ -z "${url}" ]; then
+              echo "::error::Admin tunnel exited or failed to publish a verified URL."
+              tail -80 logs/tunnel.log 2>/dev/null || true
+              tail -120 logs/dashboard.log 2>/dev/null || true
+              kill -INT "${bot_pid}" 2>/dev/null || true
+              exit 1
             fi
+
+            echo "Admin console: ${url}"
+            echo "ADMIN_TUNNEL_URL=${url}" >> "$GITHUB_OUTPUT"
+            {
+              echo "### 🌌 Destiny Admin Console"
+              echo ""
+              echo "- **URL:** ${url}"
+              echo "- **Password:** value of \`DASHBOARD_ADMIN_PASSWORD\`"
+              echo "- **Expires:** when this job ends (~${SESSION_MINUTES}m)"
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
           # Wait for the bot session to finish, then honour its exit status.
