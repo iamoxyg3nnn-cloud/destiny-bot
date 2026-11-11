@@ -12,37 +12,49 @@ export default function ModerationPage() {
   const [loading, setLoading] = useState(false);
   const [modNotes, setModNotes] = useState('');
   const [lastSync, setLastSync] = useState('');
+  const [statusFilter, setStatusFilter] = useState('pending');
+  const [error, setError] = useState('');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const fetchReports = async () => {
     try {
-      const res = await fetch('/api/reports', { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        setReports(data);
-        setLastSync(new Date().toLocaleTimeString());
-      }
-    } catch (err) {
+      const query = statusFilter === 'all' ? '' : '?status=' + encodeURIComponent(statusFilter);
+      const res = await fetch('/api/reports' + query, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !Array.isArray(data)) throw new Error(data.error || 'Unable to load reports (' + res.status + ').');
+      setReports(data);
+      setError('');
+      setLastSync(new Date().toLocaleTimeString());
+    } catch (err: any) {
       console.error('Failed to fetch real reports:', err);
+      setError(err?.message || 'Failed to load reports.');
     }
   };
 
   useEffect(() => {
     fetchReports();
-    const interval = setInterval(fetchReports, 3000);
+    const interval = setInterval(fetchReports, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [statusFilter]);
 
-  const handleResolve = async (reportId: string, action: string) => {
+  const handleResolve = async (reportId: string, action: 'none' | 'warned' | 'perma_ban') => {
+    setActionLoading(reportId);
+    setError('');
     try {
-      await fetch(`/api/reports/${reportId}/resolve`, {
+      const res = await fetch(`/api/reports/${reportId}/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, notes: modNotes, adminId: 'mod_console' }),
+        body: JSON.stringify({ action, notes: modNotes }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || 'The moderation action could not be saved.');
       setModNotes('');
-      fetchReports();
-    } catch (err) {
-      console.error(err);
+      await fetchReports();
+    } catch (err: any) {
+      console.error('Failed to resolve report:', err);
+      setError(err?.message || 'The moderation action failed.');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -60,11 +72,14 @@ export default function ModerationPage() {
             </Badge>
           </div>
           <p className="text-xs text-zinc-400 mt-1">
-            Real-time incident reports submitted via Discord /report command with attached message excerpts.
+            Review saved reports, inspect attached evidence, and record moderator decisions.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-[#18191e] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-zinc-200">
+            <option value="pending">Pending</option><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option><option value="all">All reports</option>
+          </select>
           <Button
             size="sm"
             variant="secondary"
@@ -77,11 +92,12 @@ export default function ModerationPage() {
         </div>
       </div>
 
+      {error && <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">{error}</div>}
       {reports.length === 0 ? (
         <EmptyState
           icon={ShieldCheck}
-          title="All Clear — 0 Pending Reports"
-          description="No active safety violations reported right now. When users run /report in Discord, incidents with chat excerpts appear here in real time."
+          title={statusFilter === "pending" ? "All Clear — 0 Pending Reports" : "No Reports Found"}
+          description={statusFilter === "pending" ? "No reports are awaiting moderator review." : "No reports match this status filter."}
         />
       ) : (
         <div className="space-y-4">
@@ -102,9 +118,13 @@ export default function ModerationPage() {
                 </div>
               </div>
 
-              <div className="text-xs text-zinc-200 leading-relaxed font-sans">
-                {r.description}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-zinc-400 font-mono">
+                <div>Reporter: <span className="text-zinc-200">{r.reporterId || 'Unavailable'}</span></div>
+                <div>Reported user: <span className="text-zinc-200">{r.reportedId || 'Unavailable'}</span></div>
+                <div>Room: <span className="text-zinc-200">{r.roomId || 'Unavailable'}</span></div>
+                <div>Submitted: <span className="text-zinc-200">{r.createdAt ? new Date(r.createdAt).toLocaleString() : 'Unknown'}</span></div>
               </div>
+              <div className="text-xs text-zinc-200 leading-relaxed font-sans whitespace-pre-wrap">{r.description || 'No description provided.'}</div>
 
               {/* Chat Excerpt Evidence */}
               {r.chatExcerpt && r.chatExcerpt.length > 0 && (
@@ -118,7 +138,7 @@ export default function ModerationPage() {
                         <span className="font-mono text-[10px] text-zinc-500 shrink-0">
                           {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : `#${i + 1}`}
                         </span>
-                        <span className="text-zinc-200 font-sans">{msg.content}</span>
+                        <span className="text-zinc-200 font-sans"><span className="text-zinc-500">{msg.senderPseudonym || 'Anonymous'}: </span>{msg.content}</span>
                       </div>
                     ))}
                   </div>
@@ -138,23 +158,26 @@ export default function ModerationPage() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => handleResolve(r.id, 'dismiss')}
+                    onClick={() => handleResolve(r.id, 'none')}
+                    disabled={actionLoading === r.id || r.status !== 'pending'}
                   >
-                    Dismiss
+                    Mark Reviewed
                   </Button>
                   <Button
                     size="sm"
                     variant="amber"
-                    onClick={() => handleResolve(r.id, 'warning')}
+                    onClick={() => handleResolve(r.id, 'warned')}
+                    disabled={actionLoading === r.id}
                   >
-                    Issue Warning
+                    Record Warning
                   </Button>
                   <Button
                     size="sm"
                     variant="danger"
-                    onClick={() => handleResolve(r.id, 'ban')}
+                    onClick={() => handleResolve(r.id, 'perma_ban')}
+                    disabled={actionLoading === r.id}
                   >
-                    Ban User
+                    Permanently Ban
                   </Button>
                 </div>
               </div>
