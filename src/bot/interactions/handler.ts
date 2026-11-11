@@ -15,6 +15,7 @@ import {
   SeparatorBuilder,
   MessageFlags,
   AttachmentBuilder,
+  EmbedBuilder,
   Message,
   PermissionFlagsBits
 } from 'discord.js';
@@ -1089,12 +1090,24 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       const roomId = parts[2];
       const category = parts.slice(3).join('_') as ReportItem['category'];
 
-      await reporterService.submitReport(
+      const reportResult = await reporterService.submitReport(
         user.id,
         category,
         `Report submitted via Discord DM interface (${category})`,
         roomId
       );
+
+      if (!reportResult.success || !reportResult.reportId) {
+        await safeEditReply(btn, {
+          content: reportResult.message || 'The report could not be saved. Please try again.',
+        });
+        return;
+      }
+
+      // Reports are submitted in DMs, so they have no reliable originating
+      // guild. Route them to the first explicitly configured private mod-log
+      // in the trusted global staff communities (same policy as verification).
+      const reportDelivered = await postStaffReportAlert(btn.client, reportResult.reportId);
 
       // If room was active, notify partner politely
       const room = roomId ? await db.getRoomById(roomId) : null;
@@ -1125,7 +1138,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         }
       }
 
-      const successContainer = embedService.createReportSuccessContainer();
+      const successContainer = embedService.createReportSuccessContainer(reportDelivered, reportResult.message);
       await safeEditReply(btn, { components: [successContainer] });
       return;
     }
@@ -1682,6 +1695,90 @@ async function handleResetSetup(btn: ButtonInteraction): Promise<void> {
   await db.clearGuildChannels(btn.guildId);
   const container = embedService.createChannelResetSuccessContainer(btn.guild.name);
   await safeEditReply(btn, { components: [container] });
+}
+
+/**
+ * Deliver a saved safety report to the configured private moderation channel
+ * in the trusted global staff communities. Reports originate in DMs, so a
+ * per-user source guild cannot be inferred safely.
+ */
+export async function postStaffReportAlert(client: any, reportId: string): Promise<boolean> {
+  const report = await db.getReportById(reportId).catch((error) => {
+    console.error('[Reports] Could not reload saved report for staff delivery:', error?.message || error);
+    return null;
+  });
+  if (!report) return false;
+
+  const excerpt = (report.chatExcerpt || [])
+    .slice(-6)
+    .map((message) => {
+      const persona = String(message.senderPseudonym || 'Anonymous').slice(0, 60);
+      const content = String(message.content || '').replace(/\s+/g, ' ').slice(0, 180);
+      return `**${persona}:** ${content || '[empty message]'}`;
+    })
+    .join('\n')
+    .slice(0, 1000) || 'No chat excerpt was available.';
+
+  const embed = new EmbedBuilder()
+    .setColor(COLORS.DANGER)
+    .setTitle('🚨 New Destiny Safety Report')
+    .setDescription(
+      `A new report was submitted through Destiny's private DM reporting flow.\n\n` +
+      `**Category:** ${report.category}\n` +
+      `**Description:** ${String(report.description || 'No description provided.').slice(0, 1500)}\n` +
+      `**Chat evidence:**\n${excerpt}`
+    )
+    .addFields(
+      { name: 'Report ID', value: `\`${report.id}\``, inline: true },
+      { name: 'Status', value: report.status || 'pending', inline: true },
+      { name: 'Room', value: report.roomId ? `\`${report.roomId}\`` : 'Unavailable', inline: true },
+    )
+    .setTimestamp(report.createdAt ? new Date(report.createdAt) : new Date());
+
+  for (const guildId of ECLAIRS_GUILD_IDS) {
+    const guild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) continue;
+
+    const settings = await db.getGuildSettings(guild.id, true).catch((error) => {
+      console.warn(`[Reports] Could not load moderation-channel settings for trusted guild ${guild.id}:`, error?.message || error);
+      return null;
+    });
+    if (!settings?.modLogChannelId) continue;
+
+    const channel: any = guild.channels.cache.get(settings.modLogChannelId) ||
+      await guild.channels.fetch(settings.modLogChannelId).catch(() => null);
+    if (!channel || !channel.isTextBased?.() || typeof channel.send !== 'function' || typeof channel.permissionsFor !== 'function') {
+      console.warn(`[Reports] Configured moderation channel is unavailable in trusted guild ${guild.id}.`);
+      continue;
+    }
+
+    const botMember = guild.members.me || await guild.members.fetchMe().catch(() => null);
+    const botPermissions = botMember ? channel.permissionsFor(botMember) : null;
+    const everyoneCanView = channel.permissionsFor(guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel);
+    const canSend = Boolean(
+      botPermissions?.has(PermissionFlagsBits.ViewChannel) &&
+      botPermissions?.has(PermissionFlagsBits.SendMessages) &&
+      botPermissions?.has(PermissionFlagsBits.EmbedLinks)
+    );
+
+    // Reports include private conversation evidence. Never post them into a
+    // public channel, even if the bot otherwise has permission to send there.
+    if (everyoneCanView !== false || !canSend) {
+      console.warn(`[Reports] Refusing report delivery in guild ${guild.id}: moderation channel must be private and allow View Channel, Send Messages, and Embed Links for Destiny.`);
+      continue;
+    }
+
+    try {
+      await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+      console.log(`[Reports] Delivered report ${report.id} to the configured private moderation channel in guild ${guild.id}.`);
+      return true;
+    } catch (error: any) {
+      console.error(`[Reports] Failed to deliver report ${report.id} in guild ${guild.id}:`, error?.message || error);
+    }
+  }
+
+  console.warn(`[Reports] Report ${report.id} was saved, but no configured private moderation channel accepted the notification.`);
+  return false;
 }
 
 /**

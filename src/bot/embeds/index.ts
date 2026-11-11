@@ -666,7 +666,7 @@ export class EmbedService {
   /**
    * Report Submitted & Auto-Blocked Confirmation Container
    */
-  createReportSuccessContainer(): ContainerBuilder {
+  createReportSuccessContainer(delivered = true, safetyMessage?: string): ContainerBuilder {
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
@@ -681,14 +681,15 @@ export class EmbedService {
     );
 
     return new ContainerBuilder()
-      .setAccentColor(COLORS.SUCCESS)
+      .setAccentColor(delivered ? COLORS.SUCCESS : COLORS.GOLD)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ✅ Report Submitted & User Blocked\n\n` +
-          `Thank you for keeping Destiny safe. Your report and chat evidence have been delivered to our moderation desk.\n\n` +
-          `• 🔒 **Auto-Block Active:** You two will **never** be paired in matchmaking again.\n` +
-          `• 📉 **Reputation Penalized:** The reported user's trust score has been reduced.\n` +
-          `• 🛡️ **Your Identity:** Your Discord tag, ID, and profile were never revealed to them.\n\n` +
+          `# ${delivered ? '✅ Report Submitted' : '⚠️ Report Saved — Staff Alert Pending'}\n\n` +
+          (delivered
+            ? `Thank you for keeping Destiny safe. Your report was saved and forwarded to the configured private moderation channel.\n\n`
+            : `Thank you for keeping Destiny safe. Your report was saved to the moderation dashboard, but Discord could not deliver the staff-channel alert. Please notify a server administrator to configure a private moderation channel.\n\n`) +
+          `• 🔒 **Safety action:** ${safetyMessage || 'The report was accepted for moderation.'}\n` +
+          `• 🛡️ **Your Identity:** Your Discord tag, ID, and profile are not included in the staff-channel alert.\n\n` +
           `*Whenever you're ready, click below to find a new anonymous partner!*`
         )
       )

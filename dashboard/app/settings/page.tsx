@@ -119,7 +119,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <div className="text-xs font-medium text-zinc-200">Connected Discord Servers & Dedicated Channels</div>
-              <div className="text-[11px] text-zinc-400">Lock Destiny interactions, verification alerts, and mod-logs to a single channel per server</div>
+              <div className="text-[11px] text-zinc-400">Configure the server channel. DM-submitted reports route to the first configured private mod-log in Destiny's trusted staff servers; keep that channel hidden from @everyone.</div>
             </div>
           </div>
           <Button size="sm" variant="secondary" onClick={fetchGuilds} disabled={guildsLoading}>
