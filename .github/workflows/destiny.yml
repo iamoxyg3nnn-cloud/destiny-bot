@@ -183,6 +183,13 @@ jobs:
         id: redis_check
         run: pnpm run redis:check
 
+      - name: Validate admin console credentials
+        env:
+          API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+          DASHBOARD_ADMIN_PASSWORD: ${{ secrets.DASHBOARD_ADMIN_PASSWORD }}
+          DASHBOARD_SESSION_SECRET: ${{ secrets.DASHBOARD_SESSION_SECRET }}
+        run: bash ./scripts/start-admin-tunnel.sh --check-config
+
       - name: Run Destiny Bot Session & Publish Admin Console
         env:
           NODE_ENV: production

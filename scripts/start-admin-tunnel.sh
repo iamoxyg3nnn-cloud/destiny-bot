@@ -20,6 +20,7 @@ API_PORT=4000
 TUNNEL_URL_FILE="${TUNNEL_URL_FILE:-$ROOT/logs/tunnel.url}"
 CLOUDFLARED_VERSION="${CLOUDFLARED_VERSION:-2026.10.7}"
 REUSE_API=0
+CHECK_CONFIG=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -27,6 +28,7 @@ while [ $# -gt 0 ]; do
     --api-port) API_PORT="$2"; shift 2 ;;
     --url-file) TUNNEL_URL_FILE="$2"; shift 2 ;;
     --reuse-api) REUSE_API=1; shift ;;
+    --check-config) CHECK_CONFIG=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -51,12 +53,37 @@ load_env() {
 load_env "$ROOT/.env"
 load_env "$ROOT/dashboard/.env.local"
 
-for required in DASHBOARD_ADMIN_PASSWORD DASHBOARD_SESSION_SECRET API_SECRET_KEY; do
-  if [ -z "${!required:-}" ]; then
-    echo "::error::$required is not set." >&2
-    exit 1
+validate_secret() {
+  local name="$1" minimum="$2" value="${!1:-}" normalized
+  if [ -z "$value" ]; then
+    echo "::error::$name is missing. Add it as a GitHub Actions repository secret." >&2
+    return 1
   fi
-done
+  if [ "${#value}" -lt "$minimum" ]; then
+    echo "::error::$name is too short. It must contain at least $minimum characters; update the GitHub Actions secret." >&2
+    return 1
+  fi
+
+  normalized="${value,,}"
+  case "$normalized" in
+    admin|password|change_me|change-me|changeme|replace_with|replace-with|your_password|your_admin_password|your_secret|your_session_secret|destiny_dashboard_secret_key_32bytes!)
+      echo "::error::$name is a known placeholder. Replace it with a unique secret." >&2
+      return 1
+      ;;
+  esac
+}
+
+validate_secret DASHBOARD_ADMIN_PASSWORD 12
+validate_secret DASHBOARD_SESSION_SECRET 32
+if [ -z "${API_SECRET_KEY:-}" ]; then
+  echo "::error::API_SECRET_KEY is missing. Add it as a GitHub Actions repository secret." >&2
+  exit 1
+fi
+
+if [ "$CHECK_CONFIG" -eq 1 ]; then
+  echo "✓ Dashboard credentials are valid (secret values hidden)."
+  exit 0
+fi
 
 CLOUDFLARED_BIN="$(command -v cloudflared || true)"
 if [ -z "$CLOUDFLARED_BIN" ]; then
