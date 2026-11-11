@@ -130,14 +130,19 @@ export class MessageRelayService {
         new AttachmentBuilder(attachment.url, { name: attachment.name || 'attachment' })
       );
 
-      // Use a normal Discord message instead of Components V2: normal messages
-      // render GIF/link previews, and Discord parses custom emoji markup in content.
-      const header = `**${senderAvatar} ${senderPseudonym}**`;
-      const content = sanitized.sanitizedText
-        ? `${header}\n\n${sanitized.sanitizedText}`
-        : `${header}\n\n*[Sent media]*`;
+      // Deliver every anonymous chat message as a branded Discord embed.
+      // Keep the pseudonym (never the real Discord identity) as the visible author.
+      // Embed descriptions support the sanitized text and native Discord emoji markup;
+      // attachments remain real files so images, GIFs, audio and documents still work.
+      const relayEmbed = new EmbedBuilder()
+        .setColor(COLORS.DESTINY_PURPLE)
+        .setAuthor({ name: `${senderAvatar} ${senderPseudonym}` })
+        .setDescription((sanitized.sanitizedText || '*Sent media*').slice(0, 4096))
+        .setFooter({ text: 'Destiny • Anonymous chat' })
+        .setTimestamp(message.createdAt);
+
       await recipientUser.send({
-        content: content.slice(0, 2000),
+        embeds: [relayEmbed],
         files,
         allowedMentions: { parse: [] },
       });
