@@ -686,10 +686,10 @@ export class EmbedService {
         new TextDisplayBuilder().setContent(
           `# ${delivered ? '✅ Report Submitted' : '⚠️ Report Saved — Staff Alert Pending'}\n\n` +
           (delivered
-            ? `Thank you for keeping Destiny safe. Your report was saved and forwarded to the configured private moderation channel.\n\n`
-            : `Thank you for keeping Destiny safe. Your report was saved to the moderation dashboard, but Discord could not deliver the staff-channel alert. Please notify a server administrator to configure a private moderation channel.\n\n`) +
+            ? `Thank you for keeping Destiny safe. Your report was saved and a privacy-safe alert was sent to the configured moderation channel. Full details remain in the protected moderation dashboard.\n\n`
+            : `Thank you for keeping Destiny safe. Your report was saved to the moderation dashboard, but Discord could not deliver the staff-channel alert. Please ask a server administrator to configure a moderation channel in one of Destiny's trusted staff servers.\n\n`) +
           `• 🔒 **Safety action:** ${safetyMessage || 'The report was accepted for moderation.'}\n` +
-          `• 🛡️ **Your Identity:** Your Discord tag, ID, and profile are not included in the staff-channel alert.\n\n` +
+          `• 🛡️ **Your Identity:** Your Discord tag, ID, profile, and chat excerpts are not included in the channel alert.\n\n` +
           `*Whenever you're ready, click below to find a new anonymous partner!*`
         )
       )

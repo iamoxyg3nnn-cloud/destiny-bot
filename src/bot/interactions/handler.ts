@@ -15,7 +15,6 @@ import {
   SeparatorBuilder,
   MessageFlags,
   AttachmentBuilder,
-  EmbedBuilder,
   Message,
   PermissionFlagsBits
 } from 'discord.js';
@@ -1709,31 +1708,21 @@ export async function postStaffReportAlert(client: any, reportId: string): Promi
   });
   if (!report) return false;
 
-  const excerpt = (report.chatExcerpt || [])
-    .slice(-6)
-    .map((message) => {
-      const persona = String(message.senderPseudonym || 'Anonymous').slice(0, 60);
-      const content = String(message.content || '').replace(/\s+/g, ' ').slice(0, 180);
-      return `**${persona}:** ${content || '[empty message]'}`;
-    })
-    .join('\n')
-    .slice(0, 1000) || 'No chat excerpt was available.';
-
-  const embed = new EmbedBuilder()
-    .setColor(COLORS.DANGER)
-    .setTitle('🚨 New Destiny Safety Report')
-    .setDescription(
-      `A new report was submitted through Destiny's private DM reporting flow.\n\n` +
-      `**Category:** ${report.category}\n` +
-      `**Description:** ${String(report.description || 'No description provided.').slice(0, 1500)}\n` +
-      `**Chat evidence:**\n${excerpt}`
-    )
-    .addFields(
-      { name: 'Report ID', value: `\`${report.id}\``, inline: true },
-      { name: 'Status', value: report.status || 'pending', inline: true },
-      { name: 'Room', value: report.roomId ? `\`${report.roomId}\`` : 'Unavailable', inline: true },
-    )
-    .setTimestamp(report.createdAt ? new Date(report.createdAt) : new Date());
+  // Reports are submitted in DMs, so there is no reliable source guild.
+  // Use only the configured mod-log in Destiny's trusted global staff servers.
+  // The configured channel may also be a public portal channel, so this alert
+  // intentionally contains no identities, descriptions, or chat excerpts.
+  const alert = new ContainerBuilder()
+    .setAccentColor(COLORS.DANGER)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🚨 New Destiny Safety Report\n\n` +
+        `A new report is waiting for moderator review.\n\n` +
+        `• **Report ID:** \`${report.id}\`\n` +
+        `• **Status:** ${report.status || 'pending'}\n\n` +
+        `Open the protected Destiny moderation dashboard to review the report details and chat evidence. This channel alert intentionally excludes user identities and conversation content.`
+      )
+    );
 
   for (const guildId of ECLAIRS_GUILD_IDS) {
     const guild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
@@ -1754,30 +1743,29 @@ export async function postStaffReportAlert(client: any, reportId: string): Promi
 
     const botMember = guild.members.me || await guild.members.fetchMe().catch(() => null);
     const botPermissions = botMember ? channel.permissionsFor(botMember) : null;
-    const everyoneCanView = channel.permissionsFor(guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel);
     const canSend = Boolean(
       botPermissions?.has(PermissionFlagsBits.ViewChannel) &&
-      botPermissions?.has(PermissionFlagsBits.SendMessages) &&
-      botPermissions?.has(PermissionFlagsBits.EmbedLinks)
+      botPermissions?.has(PermissionFlagsBits.SendMessages)
     );
-
-    // Reports include private conversation evidence. Never post them into a
-    // public channel, even if the bot otherwise has permission to send there.
-    if (everyoneCanView !== false || !canSend) {
-      console.warn(`[Reports] Refusing report delivery in guild ${guild.id}: moderation channel must be private and allow View Channel, Send Messages, and Embed Links for Destiny.`);
+    if (!canSend) {
+      console.warn(`[Reports] Destiny lacks View Channel or Send Messages in the configured moderation channel for guild ${guild.id}.`);
       continue;
     }
 
     try {
-      await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
-      console.log(`[Reports] Delivered report ${report.id} to the configured private moderation channel in guild ${guild.id}.`);
+      await channel.send({
+        components: [alert],
+        flags: [MessageFlags.IsComponentsV2],
+        allowedMentions: { parse: [] },
+      });
+      console.log(`[Reports] Delivered privacy-safe report alert ${report.id} to the configured moderation channel in guild ${guild.id}.`);
       return true;
     } catch (error: any) {
-      console.error(`[Reports] Failed to deliver report ${report.id} in guild ${guild.id}:`, error?.message || error);
+      console.error(`[Reports] Failed to deliver report alert ${report.id} in guild ${guild.id}:`, error?.message || error);
     }
   }
 
-  console.warn(`[Reports] Report ${report.id} was saved, but no configured private moderation channel accepted the notification.`);
+  console.warn(`[Reports] Report ${report.id} was saved, but no configured trusted moderation channel accepted the notification.`);
   return false;
 }
 
