@@ -33,12 +33,10 @@ export async function middleware(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Keep this relative: Cloudflare/other reverse proxies may expose the
-    // origin to Next.js as localhost, and an absolute redirect could leak it.
-    return new NextResponse(null, {
-      status: 307,
-      headers: { Location: '/login' },
-    });
+    // NextResponse.redirect requires an absolute URL. Resolve the login path
+    // against this request rather than passing "/login" as a URL by itself;
+    // the latter throws ERR_INVALID_URL in the Edge middleware runtime.
+    return NextResponse.redirect(new URL('/login', req.url), 307);
   }
 
   // SameSite cookies do not prevent requests from hostile sibling subdomains.
