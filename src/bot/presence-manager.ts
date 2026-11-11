@@ -241,11 +241,9 @@ export function pickRandomStatusIndex(client: Client): number {
 interface PresenceCounts {
   members: number;
   servers: number;
-  activeRooms: number;
-  queued: number;
 }
 
-let cachedCounts: PresenceCounts = { members: 0, servers: 0, activeRooms: 0, queued: 0 };
+let cachedCounts: PresenceCounts = { members: 0, servers: 0 };
 let lastCountsAt = 0;
 
 /**
@@ -261,54 +259,15 @@ async function getCounts(client: Client): Promise<PresenceCounts> {
   }
 
   let members = cachedCounts.members;
-  let activeRooms = cachedCounts.activeRooms;
-  let queued = cachedCounts.queued;
-
   try {
-    const [memberCount, rooms] = await Promise.all([
-      db.getUserCount(),
-      db.getActiveRooms().catch(() => []),
-    ]);
-    members = memberCount;
-    activeRooms = rooms.length;
-
-    // Queue depth comes from the matchmaking engine, imported lazily so the
-    // core service does not have to import the bot layer (which would create
-    // a cycle: matchmaking -> presence -> matchmaking).
-    const { matchmakingManager } = await import('../core/matchmaking/manager.js');
-    const tickets = await matchmakingManager.getQueueTickets().catch(() => []);
-    queued = tickets.length;
+    members = await db.getUserCount();
   } catch (err: any) {
-    console.debug('[Presence] Could not refresh counts:', err?.message || err);
+    console.debug('[Presence] Could not refresh member count:', err?.message || err);
   }
 
-  cachedCounts = { members, servers: client.guilds.cache.size, activeRooms, queued };
+  cachedCounts = { members, servers: client.guilds.cache.size };
   lastCountsAt = now;
-
   return { ...cachedCounts };
-}
-
-/**
- * Builds the live status shown while people are actually chatting.
- */
-async function buildLiveStatus(client: Client): Promise<{ name: string } | null> {
-  const counts = await getCounts(client);
-
-  // Someone is talking right now — surface it.
-  if (counts.activeRooms > 0) {
-    return {
-      name: `💬 ${counts.activeRooms} Anonymous Conversation${counts.activeRooms === 1 ? '' : 's'} Live`,
-    };
-  }
-
-  // People are waiting to be matched.
-  if (counts.queued > 0) {
-    return {
-      name: `✨ Finding You a Match • ${counts.queued} in Queue`,
-    };
-  }
-
-  return null;
 }
 
 /**
@@ -319,15 +278,8 @@ export async function updatePresence(client: Client): Promise<void> {
 
   const id = clientKey(client);
 
-  // Prefer a live, contextual status when there is activity to report.
-  const live = await buildLiveStatus(client).catch(() => null);
-  if (live) {
-    // Free the idle status so other shards may use it.
-    currentStatusIndices.set(id, null);
-    setStreamingPresence(client, live.name);
-    return;
-  }
-
+  // Always keep the curated rotation running. Queue depth and active rooms
+  // must never pin the bot to a single matchmaking message.
   const chosenIndex = pickRandomStatusIndex(client);
   const counts = await getCounts(client);
 
