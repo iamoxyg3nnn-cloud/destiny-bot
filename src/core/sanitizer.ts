@@ -61,7 +61,8 @@ export class ContentSanitizer {
     current = current.replace(/@[\u200B-\u200D\uFEFF]*(everyone|here)/gi, '@\u200b $1');
     if (current !== beforePings) violations.push('MASS_PING_MASKED');
 
-    current = current.replace(/<(a?):([a-zA-Z0-9_]+):(\d+)>/g, ':$2:');
+    // Do not rewrite <:name:id> or <a:name:id>: Discord needs this exact
+    // syntax to render server custom emoji and animated custom emoji.
 
     const beforeToken = current;
     current = current.replace(new RegExp(DISCORD_TOKEN_REGEX.source, 'g'), '\x60[Secret Token Scrubbed]\x60');
