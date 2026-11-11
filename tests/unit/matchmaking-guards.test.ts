@@ -62,6 +62,46 @@ describe('Matchmaking edge-case guards', () => {
     expect(result.score).toBe(67);
   });
 
+  it('treats Hinglish speakers as compatible with Hindi or English speakers', async () => {
+    const blocks = new Map<string, ReadonlySet<string>>([
+      ['user-a', new Set<string>()],
+      ['user-b', new Set<string>()],
+    ]);
+    const result = await matchmakingEngine.evaluateMatch(
+      ticket({ languages: ['Hinglish'] }),
+      ticket({
+        userId: 'user-b',
+        destinyId: 'DEST-B',
+        discordUserId: 'discord-b',
+        gender: 'male',
+        languages: ['English', 'Hindi'],
+      }),
+      blocks
+    );
+    expect(result.isEligible).toBe(true);
+    expect(result.reasons).toContain('MUTUAL_COMPATIBILITY_CONFIRMED');
+  });
+
+  it('does not treat Hinglish as compatible with unrelated languages', async () => {
+    const blocks = new Map<string, ReadonlySet<string>>([
+      ['user-a', new Set<string>()],
+      ['user-b', new Set<string>()],
+    ]);
+    const result = await matchmakingEngine.evaluateMatch(
+      ticket({ languages: ['Hinglish'] }),
+      ticket({
+        userId: 'user-b',
+        destinyId: 'DEST-B',
+        discordUserId: 'discord-b',
+        gender: 'male',
+        languages: ['Spanish'],
+      }),
+      blocks
+    );
+    expect(result.isEligible).toBe(false);
+    expect(result.reasons).toContain('NO_COMMON_LANGUAGE');
+  });
+
   it('matches users regardless of legacy gender preferences', async () => {
     const result = await matchmakingEngine.evaluateMatch(
       ticket({ gender: 'female', preferredGender: ['male'] }),

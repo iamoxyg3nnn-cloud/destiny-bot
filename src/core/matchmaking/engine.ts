@@ -25,11 +25,21 @@ function normalizeTicket(ticket: MatchTicket): NormalizedTicket {
   const cached = normalizedTickets.get(ticket);
   if (cached) return cached;
 
+  // "Hinglish" means the user can communicate in both Hindi and English.
+  // Expand this common mixed-language label into its constituent languages
+  // so it can match profiles that list either language separately.
+  const languageAliases: Record<string, string[]> = {
+    hinglish: ['hindi', 'english'],
+    'hindi-english': ['hindi', 'english'],
+    'english-hindi': ['english', 'hindi'],
+  };
   const languages = new Set(
     (Array.isArray(ticket.languages) ? ticket.languages : [])
       .filter((value): value is string => typeof value === 'string')
-      .map((value) => value.trim().toLowerCase())
-      .filter(Boolean)
+      .flatMap((value) => {
+        const normalized = value.trim().toLowerCase();
+        return languageAliases[normalized] ?? (normalized ? [normalized] : []);
+      })
   );
   const interests = new Set(
     (Array.isArray(ticket.interests) ? ticket.interests : [])
