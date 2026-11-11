@@ -3,23 +3,12 @@
 # Destiny Admin Console — Cloudflare quick tunnel (Linux / GitHub Actions)
 # =====================================================================
 #
-# Starts the admin API (loopback only), the Next.js dashboard, and a
-# `cloudflared` quick tunnel that publishes ONLY the dashboard.
-#
-# The tunnel URL is ephemeral and changes on every run. It is written to
-#   $TUNNEL_URL_FILE  (default: logs/tunnel.url)
-# and echoed to stdout so the workflow can publish it as a job summary.
+# Starts the admin API, the Next.js dashboard, and a Cloudflare quick
+# tunnel. The URL is ephemeral and is written to logs/tunnel.url.
 #
 # Usage:
 #   scripts/start-admin-tunnel.sh [--port 3000] [--api-port 4000]
 #                                 [--reuse-api] [--url-file <file>]
-#
-# --reuse-api : do not start an admin API; reuse the one already listening
-#               on --api-port (used when this runs alongside `pnpm start`,
-#               which serves the admin API itself).
-#
-# Requires DASHBOARD_ADMIN_PASSWORD, DASHBOARD_SESSION_SECRET and
-# API_SECRET_KEY in the environment (or the project-root .env).
 
 set -euo pipefail
 
@@ -43,18 +32,13 @@ while [ $# -gt 0 ]; do
 done
 
 mkdir -p "$(dirname "$TUNNEL_URL_FILE")" "$ROOT/logs"
-# Never allow a URL from a previous runner/session to be reused.
 rm -f "$TUNNEL_URL_FILE"
 
-# ---------------------------------------------------------------------------
-# Load the project-root .env (authoritative). Existing env vars win.
-# ---------------------------------------------------------------------------
 load_env() {
   local file="$1"
   [ -f "$file" ] || return 0
   while IFS='=' read -r key value; do
     case "$key" in ''|'#'*) continue ;; esac
-    # Strip surrounding quotes and trailing CR.
     value="${value%$'\r'}"
     value="${value%\"}"; value="${value#\"}"
     value="${value%\'}"; value="${value#\'}"
@@ -67,22 +51,13 @@ load_env() {
 load_env "$ROOT/.env"
 load_env "$ROOT/dashboard/.env.local"
 
-if [ -z "${DASHBOARD_ADMIN_PASSWORD:-}" ]; then
-  echo "::error::DASHBOARD_ADMIN_PASSWORD is not set." >&2
-  exit 1
-fi
-if [ -z "${DASHBOARD_SESSION_SECRET:-}" ]; then
-  echo "::error::DASHBOARD_SESSION_SECRET is not set." >&2
-  exit 1
-fi
-if [ -z "${API_SECRET_KEY:-}" ]; then
-  echo "::error::API_SECRET_KEY is not set." >&2
-  exit 1
-fi
+for required in DASHBOARD_ADMIN_PASSWORD DASHBOARD_SESSION_SECRET API_SECRET_KEY; do
+  if [ -z "${!required:-}" ]; then
+    echo "::error::$required is not set." >&2
+    exit 1
+  fi
+done
 
-# ---------------------------------------------------------------------------
-# cloudflared
-# ---------------------------------------------------------------------------
 CLOUDFLARED_BIN="$(command -v cloudflared || true)"
 if [ -z "$CLOUDFLARED_BIN" ]; then
   echo "▸ installing cloudflared ${CLOUDFLARED_VERSION}"
@@ -94,9 +69,6 @@ if [ -z "$CLOUDFLARED_BIN" ]; then
 fi
 echo "▸ cloudflared: $("$CLOUDFLARED_BIN" --version 2>&1 | head -n1)"
 
-# ---------------------------------------------------------------------------
-# Dashboard build
-# ---------------------------------------------------------------------------
 if [ ! -d "$ROOT/dashboard/node_modules" ]; then
   echo "▸ installing dashboard dependencies"
   pnpm --dir dashboard install --frozen-lockfile --prod=false
@@ -105,9 +77,6 @@ fi
 echo "▸ building dashboard"
 pnpm --dir dashboard build
 
-# ---------------------------------------------------------------------------
-# Start the admin API (loopback only) and the dashboard
-# ---------------------------------------------------------------------------
 API_PID=""
 if [ "$REUSE_API" -eq 1 ]; then
   echo "▸ reusing the admin API already listening on 127.0.0.1:${API_PORT}"
@@ -130,53 +99,119 @@ echo "▸ starting dashboard on 127.0.0.1:${DASH_PORT}"
 ) >"$ROOT/logs/dashboard.log" 2>&1 &
 DASH_PID=$!
 
+TUNNEL_PID=""
 cleanup() {
   echo "▸ tearing down"
   [ -n "$API_PID" ] && kill "$API_PID" 2>/dev/null || true
-  kill "$DASH_PID" 2>/dev/null || true
-  pkill -f "cloudflared tunnel" 2>/dev/null || true
+  [ -n "$DASH_PID" ] && kill "$DASH_PID" 2>/dev/null || true
+  [ -n "$TUNNEL_PID" ] && kill "$TUNNEL_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-# Wait for both services to answer.
-# NOTE: /api/health requires the x-api-key header, so we must send it —
-# a bare `curl -f` would treat the 401 as "not ready".
+# Check the actual HTTP status. curl without --fail treats HTTP 500 as a
+# successful transfer, which previously allowed broken pages to pass readiness.
 wait_for_http() {
-  local url="$1" name="$2" attempts="${3:-90}"
+  local url="$1" name="$2" attempts="${3:-90}" code=""
   for _ in $(seq 1 "$attempts"); do
-    if curl -s -o /dev/null -H "x-api-key: ${API_SECRET_KEY}" "$url" 2>/dev/null; then
-      echo "✓ $name is up"
-      return 0
-    fi
+    code="$(curl -sS -o /dev/null -w '%{http_code}' \
+      -H "x-api-key: ${API_SECRET_KEY}" --connect-timeout 3 --max-time 8 \
+      "$url" 2>/dev/null || true)"
+    case "$code" in
+      2??|3??)
+        echo "✓ $name is up (HTTP $code)"
+        return 0
+        ;;
+    esac
     sleep 1
   done
-  echo "::error::$name did not become ready at $url" >&2
+  echo "::error::$name did not become ready at $url (last HTTP: ${code:-no response})" >&2
+  return 1
+}
+
+# The dashboard root is protected. With no browser session cookie it MUST
+# redirect to /login; a 500 here is the exact failure reported by the user.
+check_root_route() {
+  local base="$1" name="$2" headers code location
+  headers="$(mktemp)"
+  code="$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' \
+    --connect-timeout 5 --max-time 12 "${base%/}/" 2>/dev/null || true)"
+  location="$(awk 'tolower($1) == "location:" { sub(/^[^:]*:[[:space:]]*/, ""); gsub("\r", ""); print }' "$headers" | tail -n1)"
+  rm -f "$headers"
+
+  if { [ "$code" = "307" ] || [ "$code" = "308" ]; } && [ "$location" = "/login" ]; then
+    echo "✓ $name root route redirects to /login (HTTP $code)"
+    return 0
+  fi
+
+  echo "::error::$name root route failed: expected HTTP 307/308 Location: /login; got HTTP ${code:-no response}, Location: ${location:-<none>}" >&2
   return 1
 }
 
 if [ "$REUSE_API" -eq 1 ]; then
-  # The API is started by `pnpm start`, which boots the whole bot stack first.
-  # Give it a generous window to come up.
-  wait_for_http "http://127.0.0.1:${API_PORT}/api/health" "admin API" 180 || {
-    echo "::warning::Reused admin API never became ready — the dashboard will proxy to it anyway." >&2
-  }
+  wait_for_http "http://127.0.0.1:${API_PORT}/api/health" "admin API" 180 || \
+    echo "::warning::Reused admin API never became ready." >&2
 else
   wait_for_http "http://127.0.0.1:${API_PORT}/api/health" "admin API" || {
     echo "--- logs/api.log ---" >&2
-    tail -40 "$ROOT/logs/api.log" >&2 2>/dev/null || true
+    tail -80 "$ROOT/logs/api.log" >&2 2>/dev/null || true
     exit 1
   }
 fi
 
-wait_for_http "http://127.0.0.1:${DASH_PORT}/login" "dashboard" || {
+wait_for_http "http://127.0.0.1:${DASH_PORT}/login" "dashboard login" || {
   echo "--- logs/dashboard.log ---" >&2
-  tail -40 "$ROOT/logs/dashboard.log" >&2 2>/dev/null || true
+  tail -100 "$ROOT/logs/dashboard.log" >&2 2>/dev/null || true
   exit 1
 }
 
-# ---------------------------------------------------------------------------
-# Open the quick tunnel
-# ---------------------------------------------------------------------------
+check_root_route "http://127.0.0.1:${DASH_PORT}" "local dashboard" || {
+  echo "--- logs/dashboard.log ---" >&2
+  tail -150 "$ROOT/logs/dashboard.log" >&2 2>/dev/null || true
+  exit 1
+}
+
+# Exercise the real authenticated root page too. This catches failures that
+# an unauthenticated redirect check cannot see (for example, session handling
+# or a runtime exception while rendering the overview page).
+check_authenticated_root() {
+  local base="$1" name="$2" body_file login_headers session_cookie login_code root_code
+  body_file="$(mktemp)"
+  login_headers="$(mktemp)"
+  node -e 'process.stdout.write(JSON.stringify({password: process.env.DASHBOARD_ADMIN_PASSWORD}))' > "$body_file"
+  chmod 600 "$body_file" "$login_headers"
+
+  login_code="$(curl -sS -D "$login_headers" -o /dev/null -w '%{http_code}' \
+    -H 'Content-Type: application/json' --data-binary "@$body_file" \
+    --connect-timeout 5 --max-time 12 "${base%/}/api/auth/login" 2>/dev/null || true)"
+  session_cookie="$(awk 'tolower($1) == "set-cookie:" { split($2, parts, ";"); print parts[1] }' "$login_headers" | tail -n1)"
+  rm -f "$body_file" "$login_headers"
+
+  if [ "$login_code" != "200" ] || [ -z "$session_cookie" ]; then
+    echo "::error::$name admin login handshake failed (HTTP ${login_code:-no response}; session cookie missing or invalid)" >&2
+    return 1
+  fi
+
+  # Send the cookie explicitly so this local HTTP probe can exercise a cookie
+  # configured Secure for the real HTTPS Cloudflare endpoint.
+  root_code="$(curl -sS -o /dev/null -w '%{http_code}' \
+    -H "Cookie: $session_cookie" --connect-timeout 5 --max-time 20 \
+    "${base%/}/" 2>/dev/null || true)"
+
+  if [ "$root_code" = "200" ]; then
+    echo "✓ $name authenticated root page renders (HTTP 200)"
+    return 0
+  fi
+
+  echo "::error::$name authenticated root page failed (HTTP ${root_code:-no response})" >&2
+  return 1
+}
+
+check_authenticated_root "http://127.0.0.1:${DASH_PORT}" "local dashboard" || {
+  echo "--- logs/dashboard.log ---" >&2
+  tail -200 "$ROOT/logs/dashboard.log" >&2 2>/dev/null || true
+  exit 1
+}
+
 echo "▸ opening Cloudflare quick tunnel"
 TUNNEL_LOG="$ROOT/logs/tunnel.log"
 "$CLOUDFLARED_BIN" tunnel --url "http://127.0.0.1:${DASH_PORT}" --no-autoupdate \
@@ -192,59 +227,66 @@ done
 
 if [ -z "$TUNNEL_URL" ]; then
   echo "::error::Cloudflare tunnel did not publish a URL" >&2
-  tail -30 "$TUNNEL_LOG" >&2 || true
+  tail -50 "$TUNNEL_LOG" >&2 || true
   exit 1
 fi
 
-# cloudflared can print the hostname before public DNS and the edge route are
-# ready. Do not expose it until the public dashboard is reachable.
-echo "▸ verifying public tunnel DNS and dashboard response"
+echo "▸ verifying public tunnel DNS and dashboard routes"
 PUBLIC_READY=0
 for attempt in $(seq 1 120); do
   if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
     echo "::error::cloudflared exited before the public URL became ready" >&2
-    tail -40 "$TUNNEL_LOG" >&2 || true
+    tail -60 "$TUNNEL_LOG" >&2 || true
     exit 1
   fi
-
   HTTP_CODE="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
     --connect-timeout 5 --max-time 12 "$TUNNEL_URL/login" 2>/dev/null || true)"
   case "$HTTP_CODE" in
     2??|3??)
       PUBLIC_READY=1
-      echo "✓ public admin page is reachable (HTTP ${HTTP_CODE})"
+      echo "✓ public login page is reachable (HTTP $HTTP_CODE)"
       break
       ;;
   esac
-
   if [ "$((attempt % 10))" -eq 0 ]; then
-    echo "  still waiting for public DNS/edge readiness (${attempt}/120)"
+    echo "  waiting for public DNS/edge readiness (${attempt}/120)"
   fi
   sleep 2
 done
 
 if [ "$PUBLIC_READY" -ne 1 ]; then
-  echo "::error::Cloudflare published $TUNNEL_URL but the public admin page never became reachable" >&2
-  echo "Check DNS resolution, Cloudflare edge connectivity, and dashboard logs." >&2
-  tail -50 "$TUNNEL_LOG" >&2 || true
-  tail -30 "$ROOT/logs/dashboard.log" >&2 || true
+  echo "::error::Cloudflare published $TUNNEL_URL but /login never became reachable" >&2
+  tail -60 "$TUNNEL_LOG" >&2 || true
+  tail -100 "$ROOT/logs/dashboard.log" >&2 || true
   exit 1
 fi
 
+check_root_route "$TUNNEL_URL" "public dashboard" || {
+  echo "--- logs/dashboard.log ---" >&2
+  tail -150 "$ROOT/logs/dashboard.log" >&2 2>/dev/null || true
+  echo "--- logs/tunnel.log ---" >&2
+  tail -80 "$TUNNEL_LOG" >&2 2>/dev/null || true
+  exit 1
+}
+
+check_authenticated_root "$TUNNEL_URL" "public dashboard" || {
+  echo "--- logs/dashboard.log ---" >&2
+  tail -200 "$ROOT/logs/dashboard.log" >&2 2>/dev/null || true
+  echo "--- logs/tunnel.log ---" >&2
+  tail -80 "$TUNNEL_LOG" >&2 2>/dev/null || true
+  exit 1
+}
+
 printf '%s\n' "$TUNNEL_URL" > "$TUNNEL_URL_FILE"
 echo "TUNNEL_URL=$TUNNEL_URL"
-
 {
   echo "### 🌌 Destiny Admin Console"
   echo ""
-  echo "- **URL:** \`${TUNNEL_URL}\`"
-  echo "- **Password:** the value of \`DASHBOARD_ADMIN_PASSWORD\`"
+  echo "- **URL:** `${TUNNEL_URL}`"
+  echo "- **Password:** the value of `DASHBOARD_ADMIN_PASSWORD`"
   echo "- **Expires:** when this job ends"
-  echo ""
-  echo "> The tunnel is public. The console is protected by the admin password."
+  echo "- **Route checks:** /login reachable; / redirects to /login"
 } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 echo "▸ admin console is live at $TUNNEL_URL"
-
-# Keep the tunnel alive until the job is cancelled.
 wait "$TUNNEL_PID"

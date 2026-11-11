@@ -4,41 +4,45 @@ import { SESSION_COOKIE, verifySessionToken } from './lib/auth';
 /**
  * Gate every admin route behind a valid session cookie.
  *
- * The admin API exposes destructive operations (banning users, adjusting the
- * coin economy, terminating rooms) and private anonymous chat messages, so
- * the whole console must be authenticated — including the /api proxy which
- * forwards to the backend service.
+ * The admin API exposes destructive operations and private data, so the
+ * whole console must be authenticated — including the /api proxy.
  */
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Public endpoints: the login page itself and the auth handshake.
+  // Public endpoints: login page and auth handshake.
   if (pathname === '/login' || pathname === '/api/auth/login' || pathname === '/api/auth/logout') {
     return NextResponse.next();
   }
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
-  const authenticated = await verifySessionToken(token);
+  let authenticated = false;
+
+  // A malformed/stale cookie or a WebCrypto/runtime failure must never turn
+  // an unauthenticated page request into an HTTP 500. Fail closed and send
+  // the visitor back to the login page instead.
+  try {
+    authenticated = await verifySessionToken(token);
+  } catch (error) {
+    console.error('[Dashboard Auth] Session verification failed:', error);
+    authenticated = false;
+  }
 
   if (!authenticated) {
-    // API calls get a 401 so the client can react; pages get redirected.
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Use a relative Location header. Proxies/tunnels may expose the app to
-    // Next.js as localhost even when the browser is visiting a public hostname.
-    // A relative redirect is resolved by the browser against the URL it requested,
-    // so it cannot send the visitor to the runner's loopback address.
+    // Keep this relative: Cloudflare/other reverse proxies may expose the
+    // origin to Next.js as localhost, and an absolute redirect could leak it.
     return new NextResponse(null, {
       status: 307,
       headers: { Location: '/login' },
     });
   }
 
-  // SameSite cookies alone do not prevent requests from hostile sibling
-  // subdomains (they are same-site). Require an exact same-origin Origin for
-  // every state-changing dashboard API request.
+  // SameSite cookies do not prevent requests from hostile sibling subdomains.
+  // Require an exact same-origin Origin for every state-changing API request.
   const mutatingMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method.toUpperCase());
   if (pathname.startsWith('/api/') && mutatingMethod) {
     const origin = req.headers.get('origin');
