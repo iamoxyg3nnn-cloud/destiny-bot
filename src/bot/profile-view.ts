@@ -1,3 +1,4 @@
+import { destinyEmojiText, destinyEmojiComponent } from './emoji-manager.js';
 import {
   ActionRowBuilder,
   AttachmentBuilder,
@@ -86,22 +87,22 @@ export function createProfileActionRow(): ActionRowBuilder<ButtonBuilder> {
     new ButtonBuilder()
       .setCustomId('destiny_btn_profile')
       .setLabel('Edit Profile')
-      .setEmoji('✏️')
+      .setEmoji(destinyEmojiComponent('✏️'))
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId('destiny_btn_wardrobe')
       .setLabel('Wardrobe')
-      .setEmoji('👔')
+      .setEmoji(destinyEmojiComponent('👔'))
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('destiny_btn_start')
       .setLabel('Find Match')
-      .setEmoji('✨')
+      .setEmoji(destinyEmojiComponent('✨'))
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId('destiny_btn_wallet')
       .setLabel('Destiny Vault')
-      .setEmoji('🪙')
+      .setEmoji(destinyEmojiComponent('🪙'))
       .setStyle(ButtonStyle.Secondary)
   );
 }

@@ -19,6 +19,7 @@ import { messageCommandHandler } from './messages/handler.js';
 import { messageRelayService } from './relay/index.js';
 import { slashCommands } from './commands/definitions.js';
 import { matchmakingWorker } from '../workers/matchmaking.worker.js';
+import { initializeDestinyEmojis } from './emoji-manager.js';
 
 let guildSnapshotTimer: NodeJS.Timeout | null = null;
 
@@ -79,6 +80,7 @@ export class DestinyBot {
         }
         const isPrimaryShard = !readyClient.shard || readyClient.shard.ids.includes(0);
         if (isPrimaryShard) {
+          await initializeDestinyEmojis(readyClient);
           await this.syncSlashCommands();
           matchmakingWorker.start();
         }

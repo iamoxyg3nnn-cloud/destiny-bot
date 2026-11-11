@@ -1,3 +1,4 @@
+import { destinyEmojiText, destinyEmojiComponent } from '../emoji-manager.js';
 import { 
   EmbedBuilder, 
   ActionRowBuilder, 
@@ -130,27 +131,27 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(destinyEmojiComponent('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_profile')
         .setLabel(isProfileComplete ? 'Edit Profile' : 'Setup Profile')
-        .setEmoji('👤')
+        .setEmoji(destinyEmojiComponent('👤'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_verify')
         .setLabel(user?.genderVerified ? 'Verified' : 'Get Verified')
-        .setEmoji('🛡️')
+        .setEmoji(destinyEmojiComponent('🛡️'))
         .setStyle(user?.genderVerified ? ButtonStyle.Success : ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_wallet')
         .setLabel('Coins & Daily')
-        .setEmoji('🪙')
+        .setEmoji(destinyEmojiComponent('🪙'))
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_icebreaker')
         .setLabel('Icebreaker')
-        .setEmoji('💬')
+        .setEmoji(destinyEmojiComponent('💬'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -161,7 +162,7 @@ export class EmbedService {
         new ButtonBuilder()
           .setCustomId('destiny_btn_leave')
           .setLabel('Leave Active Chat')
-          .setEmoji('🚪')
+          .setEmoji(destinyEmojiComponent('🚪'))
           .setStyle(ButtonStyle.Danger)
       );
       container.addActionRowComponents(roomRow);
@@ -178,7 +179,7 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_profile')
         .setLabel('Setup Profile')
-        .setEmoji('👤')
+        .setEmoji(destinyEmojiComponent('👤'))
         .setStyle(ButtonStyle.Primary)
     );
 
@@ -208,12 +209,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match Now')
-        .setEmoji('✨')
+        .setEmoji(destinyEmojiComponent('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_wallet')
         .setLabel('Coins & Daily')
-        .setEmoji('🪙')
+        .setEmoji(destinyEmojiComponent('🪙'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -272,12 +273,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_card_static')
         .setLabel('Preview Profile Card')
-        .setEmoji('📸')
+        .setEmoji(destinyEmojiComponent('📸'))
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_shop')
         .setLabel('Shop Cosmetics')
-        .setEmoji('🛍️')
+        .setEmoji(destinyEmojiComponent('🛍️'))
         .setStyle(ButtonStyle.Primary)
     );
 
@@ -308,12 +309,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_wardrobe')
         .setLabel('Back to Wardrobe')
-        .setEmoji('👔')
+        .setEmoji(destinyEmojiComponent('👔'))
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_wallet')
         .setLabel('Destiny Vault')
-        .setEmoji('🪙')
+        .setEmoji(destinyEmojiComponent('🪙'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -342,17 +343,17 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('match_pref_female')
         .setLabel('Talk with Girls')
-        .setEmoji('👧')
+        .setEmoji(destinyEmojiComponent('👧'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('match_pref_male')
         .setLabel('Talk with Boys')
-        .setEmoji('👦')
+        .setEmoji(destinyEmojiComponent('👦'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('match_pref_any')
         .setLabel('Anyone / Open to All')
-        .setEmoji('✨')
+        .setEmoji(destinyEmojiComponent('✨'))
         .setStyle(ButtonStyle.Success)
     );
 
@@ -360,7 +361,7 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Cancel')
-        .setEmoji('❌')
+        .setEmoji(destinyEmojiComponent('❌'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -389,7 +390,7 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_queue')
         .setLabel('Cancel Search')
-        .setEmoji('❌')
+        .setEmoji(destinyEmojiComponent('❌'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -417,7 +418,7 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_queue')
         .setLabel('Cancel Search')
-        .setEmoji('❌')
+        .setEmoji(destinyEmojiComponent('❌'))
         .setStyle(ButtonStyle.Danger)
     );
 
@@ -442,7 +443,7 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_leave')
         .setLabel('Leave Current Room')
-        .setEmoji('🚪')
+        .setEmoji(destinyEmojiComponent('🚪'))
         .setStyle(ButtonStyle.Danger)
     );
 
@@ -467,12 +468,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_claim_daily')
         .setLabel('Claim Daily (+50 DC)')
-        .setEmoji('🔥')
+        .setEmoji(destinyEmojiComponent('🔥'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_icebreaker')
         .setLabel('Conversation Prompt')
-        .setEmoji('💬')
+        .setEmoji(destinyEmojiComponent('💬'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -515,12 +516,12 @@ export class EmbedService {
             new ButtonBuilder()
               .setCustomId('destiny_btn_start')
               .setLabel('Start Match')
-              .setEmoji('✨')
+              .setEmoji(destinyEmojiComponent('✨'))
               .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
               .setCustomId('destiny_btn_icebreaker')
               .setLabel('Conversation Prompt')
-              .setEmoji('💬')
+              .setEmoji(destinyEmojiComponent('💬'))
               .setStyle(ButtonStyle.Secondary)
           )
         );
@@ -540,12 +541,12 @@ export class EmbedService {
             new ButtonBuilder()
               .setCustomId('destiny_btn_start')
               .setLabel('Find a Match')
-              .setEmoji('✨')
+              .setEmoji(destinyEmojiComponent('✨'))
               .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
               .setCustomId('destiny_btn_icebreaker')
               .setLabel('Conversation Prompt')
-              .setEmoji('💬')
+              .setEmoji(destinyEmojiComponent('💬'))
               .setStyle(ButtonStyle.Secondary)
           )
         );
@@ -562,7 +563,7 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_icebreaker')
         .setLabel('Another Prompt')
-        .setEmoji('💬')
+        .setEmoji(destinyEmojiComponent('💬'))
         .setStyle(ButtonStyle.Primary)
     );
 
@@ -571,12 +572,12 @@ export class EmbedService {
         new ButtonBuilder()
           .setCustomId('btn_reveal_consent')
           .setLabel('Request Reveal')
-          .setEmoji('🔒')
+          .setEmoji(destinyEmojiComponent('🔒'))
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId('destiny_btn_leave')
           .setLabel('Leave Chat')
-          .setEmoji('🚪')
+          .setEmoji(destinyEmojiComponent('🚪'))
           .setStyle(ButtonStyle.Danger)
       );
     } else {
@@ -584,7 +585,7 @@ export class EmbedService {
         new ButtonBuilder()
           .setCustomId('destiny_btn_start')
           .setLabel('Find a Match')
-          .setEmoji('✨')
+          .setEmoji(destinyEmojiComponent('✨'))
           .setStyle(ButtonStyle.Success)
       );
     }
@@ -622,17 +623,17 @@ export class EmbedService {
         .setCustomId('btn_reveal_consent')
         .setLabel('Request Mutual Reveal')
         .setStyle(ButtonStyle.Primary)
-        .setEmoji('📜'),
+        .setEmoji(destinyEmojiComponent('📜')),
       new ButtonBuilder()
         .setCustomId('destiny_btn_leave')
         .setLabel('End Chat')
         .setStyle(ButtonStyle.Danger)
-        .setEmoji('🚪'),
+        .setEmoji(destinyEmojiComponent('🚪')),
       new ButtonBuilder()
         .setCustomId(`btn_report_room_${room.id}`)
         .setLabel('Report')
         .setStyle(ButtonStyle.Secondary)
-        .setEmoji('🚨')
+        .setEmoji(destinyEmojiComponent('🚨'))
     );
 
     return new ContainerBuilder()
@@ -661,17 +662,17 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId(`act_report_${roomId}_harassment`)
         .setLabel('Harassment / Abuse')
-        .setEmoji('🚫')
+        .setEmoji(destinyEmojiComponent('🚫'))
         .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
         .setCustomId(`act_report_${roomId}_inappropriate_content`)
         .setLabel('Inappropriate / NSFW')
-        .setEmoji('🔞')
+        .setEmoji(destinyEmojiComponent('🔞'))
         .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
         .setCustomId(`act_report_${roomId}_identity_leak`)
         .setLabel('Doxxing / Leak')
-        .setEmoji('🔒')
+        .setEmoji(destinyEmojiComponent('🔒'))
         .setStyle(ButtonStyle.Danger)
     );
 
@@ -679,17 +680,17 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId(`act_report_${roomId}_spam`)
         .setLabel('Spam / Scams')
-        .setEmoji('📢')
+        .setEmoji(destinyEmojiComponent('📢'))
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`act_report_${roomId}_underage`)
         .setLabel('Underage Account')
-        .setEmoji('👶')
+        .setEmoji(destinyEmojiComponent('👶'))
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('act_report_cancel')
         .setLabel('Cancel')
-        .setEmoji('❌')
+        .setEmoji(destinyEmojiComponent('❌'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -718,12 +719,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Find New Match')
-        .setEmoji('✨')
+        .setEmoji(destinyEmojiComponent('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(destinyEmojiComponent('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -751,17 +752,17 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_verify_voicenote_info')
         .setLabel('Send Voice Note')
-        .setEmoji('🎙️')
+        .setEmoji(destinyEmojiComponent('🎙️'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_verify_sync_role')
         .setLabel('Sync Server Role (Instant)')
-        .setEmoji('🔄')
+        .setEmoji(destinyEmojiComponent('🔄'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(destinyEmojiComponent('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -799,12 +800,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_verify_sync_role')
         .setLabel('Sync Server Role Instead')
-        .setEmoji('🔄')
+        .setEmoji(destinyEmojiComponent('🔄'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Cancel')
-        .setEmoji('❌')
+        .setEmoji(destinyEmojiComponent('❌'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -833,12 +834,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(destinyEmojiComponent('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(destinyEmojiComponent('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -867,18 +868,18 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(destinyEmojiComponent('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(destinyEmojiComponent('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
     const embed = new EmbedBuilder()
       .setColor(COLORS.SUCCESS)
-      .setTitle('🎙️ Voice Verification Received!')
+      .setTitle(destinyEmojiText('🎙️ Voice Verification Received!'))
       .setDescription(
         `We have successfully received your verification voice note!\n\n` +
         `• 🆔 **Destiny ID:** \`${user.destinyId}\`\n` +
@@ -900,12 +901,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId(`btn_admin_verify_approve_${user.id}`)
         .setLabel(`Approve (${user.gender})`)
-        .setEmoji('✅')
+        .setEmoji(destinyEmojiComponent('✅'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`btn_admin_verify_reject_${user.id}`)
         .setLabel('Reject')
-        .setEmoji('❌')
+        .setEmoji(destinyEmojiComponent('❌'))
         .setStyle(ButtonStyle.Danger)
     );
 
@@ -935,18 +936,18 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId(`btn_admin_verify_approve_${user.id}`)
         .setLabel(`Approve (${user.gender})`)
-        .setEmoji('✅')
+        .setEmoji(destinyEmojiComponent('✅'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`btn_admin_verify_reject_${user.id}`)
         .setLabel('Reject')
-        .setEmoji('❌')
+        .setEmoji(destinyEmojiComponent('❌'))
         .setStyle(ButtonStyle.Danger)
     );
 
     const embed = new EmbedBuilder()
       .setColor(COLORS.GOLD)
-      .setTitle('🎙️ New Voice Verification Request')
+      .setTitle(destinyEmojiText('🎙️ New Voice Verification Request'))
       .setDescription(
         `A user has submitted a voice verification recording for staff review.\n\n` +
         `• 👤 **User:** <@${user.discordUserId}> (\`${user.discordUserId}\`)\n` +
@@ -967,7 +968,7 @@ export class EmbedService {
   createStaffVerificationDecisionEmbed(targetUser: UserProfile | null, decisionText: string, approved: boolean): EmbedBuilder {
     return new EmbedBuilder()
       .setColor(approved ? COLORS.SUCCESS : COLORS.DANGER)
-      .setTitle('🎙️ Verification Review Processed')
+      .setTitle(destinyEmojiText('🎙️ Verification Review Processed'))
       .setDescription(
         `• 👤 **User:** <@${targetUser?.discordUserId || 'User'}>\n` +
         `• 🆔 **Destiny ID:** \`${targetUser?.destinyId || 'N/A'}\`\n` +
@@ -985,12 +986,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(destinyEmojiComponent('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(destinyEmojiComponent('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -1018,12 +1019,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_verify_voicenote_info')
         .setLabel('Send Voice Note Instead')
-        .setEmoji('🎙️')
+        .setEmoji(destinyEmojiComponent('🎙️'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(destinyEmojiComponent('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -1054,24 +1055,24 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_set_current')
         .setLabel(isCurrentSet ? 'Channel Set Here' : 'Set This Channel as Bot Channel')
-        .setEmoji(isCurrentSet ? '✅' : '📌')
+        .setEmoji(isCurrentSet ? destinyEmojiComponent('✅') : destinyEmojiComponent('📌'))
         .setStyle(isCurrentSet ? ButtonStyle.Success : ButtonStyle.Primary)
         .setDisabled(Boolean(isCurrentSet)),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_lobby_card')
         .setLabel('Post Public Lobby')
-        .setEmoji('🪐')
+        .setEmoji(destinyEmojiComponent('🪐'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_verify_hub')
         .setLabel('Post Verification Hub')
-        .setEmoji('🎙️')
+        .setEmoji(destinyEmojiComponent('🎙️'))
         .setStyle(ButtonStyle.Secondary)
     );
 
     const channelSelect = new ChannelSelectMenuBuilder()
       .setCustomId('destiny_select_admin_channel')
-      .setPlaceholder('📂 Or select another channel from this server...')
+      .setPlaceholder(destinyEmojiText('📂 Or select another channel from this server...'))
       .setChannelTypes(ChannelType.GuildText)
       .setMinValues(1)
       .setMaxValues(1);
@@ -1082,12 +1083,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_refresh')
         .setLabel('Refresh Status')
-        .setEmoji('🔄')
+        .setEmoji(destinyEmojiComponent('🔄'))
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_reset')
         .setLabel('Reset Channel Lock')
-        .setEmoji('🗑️')
+        .setEmoji(destinyEmojiComponent('🗑️'))
         .setStyle(ButtonStyle.Danger)
         .setDisabled(!activeChannel)
     );
@@ -1122,22 +1123,22 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(destinyEmojiComponent('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_profile')
         .setLabel('My Profile')
-        .setEmoji('👤')
+        .setEmoji(destinyEmojiComponent('👤'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_verify_prompt')
         .setLabel('Get Verified')
-        .setEmoji('🎙️')
+        .setEmoji(destinyEmojiComponent('🎙️'))
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_wallet_daily')
         .setLabel('Daily Coins')
-        .setEmoji('🪙')
+        .setEmoji(destinyEmojiComponent('🪙'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -1166,17 +1167,17 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_lobby_card')
         .setLabel('Post Public Lobby')
-        .setEmoji('🪐')
+        .setEmoji(destinyEmojiComponent('🪐'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_verify_hub')
         .setLabel('Post Verification Hub')
-        .setEmoji('🎙️')
+        .setEmoji(destinyEmojiComponent('🎙️'))
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_refresh')
         .setLabel('Setup Menu')
-        .setEmoji('⚙️')
+        .setEmoji(destinyEmojiComponent('⚙️'))
         .setStyle(ButtonStyle.Primary)
     );
 
@@ -1204,12 +1205,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_set_current')
         .setLabel('Set Current Channel')
-        .setEmoji('📌')
+        .setEmoji(destinyEmojiComponent('📌'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_refresh')
         .setLabel('Setup Menu')
-        .setEmoji('⚙️')
+        .setEmoji(destinyEmojiComponent('⚙️'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -1249,12 +1250,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(destinyEmojiComponent('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(destinyEmojiComponent('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -1282,12 +1283,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(destinyEmojiComponent('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(destinyEmojiComponent('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -1314,12 +1315,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(destinyEmojiComponent('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(destinyEmojiComponent('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -1347,12 +1348,12 @@ export class EmbedService {
         .setLabel('Join discord.gg/eclairs')
         .setStyle(ButtonStyle.Link)
         .setURL('https://discord.gg/eclairs')
-        .setEmoji('🪐'),
+        .setEmoji(destinyEmojiComponent('🪐')),
       new ButtonBuilder()
         .setCustomId('destiny_btn_check_reputation')
         .setLabel('I Have Joined (Restore Reputation)')
         .setStyle(ButtonStyle.Success)
-        .setEmoji('🔄')
+        .setEmoji(destinyEmojiComponent('🔄'))
     );
 
     return new ContainerBuilder()
@@ -1378,12 +1379,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(destinyEmojiComponent('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(destinyEmojiComponent('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -1426,7 +1427,7 @@ export class EmbedService {
         .setLabel('Open Direct Message')
         .setStyle(ButtonStyle.Link)
         .setURL(`https://discord.com/users/${botId || '1568212916304617557'}`)
-        .setEmoji('💬')
+        .setEmoji(destinyEmojiComponent('💬'))
     );
 
     return new ContainerBuilder()
@@ -1452,12 +1453,12 @@ export class EmbedService {
         .setCustomId('btn_reveal_accept')
         .setLabel('Accept & Reveal')
         .setStyle(ButtonStyle.Success)
-        .setEmoji('✨'),
+        .setEmoji(destinyEmojiComponent('✨')),
       new ButtonBuilder()
         .setCustomId('btn_reveal_decline')
         .setLabel('Keep Anonymous')
         .setStyle(ButtonStyle.Secondary)
-        .setEmoji('🔒')
+        .setEmoji(destinyEmojiComponent('🔒'))
     );
 
     return new ContainerBuilder()
@@ -1529,7 +1530,7 @@ export class EmbedService {
         .setCustomId('destiny_btn_leave')
         .setLabel('End Chat')
         .setStyle(ButtonStyle.Danger)
-        .setEmoji('🚪')
+        .setEmoji(destinyEmojiComponent('🚪'))
     );
 
     return new ContainerBuilder()
@@ -1559,7 +1560,7 @@ export class EmbedService {
         .setCustomId('destiny_btn_leave')
         .setLabel('End Chat')
         .setStyle(ButtonStyle.Danger)
-        .setEmoji('🚪')
+        .setEmoji(destinyEmojiComponent('🚪'))
     );
 
     return new ContainerBuilder()
@@ -1633,13 +1634,13 @@ export class EmbedService {
       .setCustomId('btn_reveal_consent')
       .setLabel('Request Mutual Reveal')
       .setStyle(ButtonStyle.Primary)
-      .setEmoji('📜');
+      .setEmoji(destinyEmojiComponent('📜'));
 
     const leaveBtn = new ButtonBuilder()
       .setCustomId('destiny_btn_leave')
       .setLabel('End Chat')
       .setStyle(ButtonStyle.Danger)
-      .setEmoji('🚪');
+      .setEmoji(destinyEmojiComponent('🚪'));
 
     return new ActionRowBuilder<ButtonBuilder>().addComponents(consentBtn, leaveBtn);
   }
