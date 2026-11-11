@@ -183,25 +183,30 @@ export class MatchmakingEngine {
   }
 
   /**
-   * Select the highest-scoring compatible candidate without allocating a
-   * Promise/result array for every queue member. Equal scores keep FIFO order.
+   * Choose uniformly at random from all mutually eligible candidates.
+   * Reservoir sampling keeps selection fair without sorting or biasing toward
+   * queue order, while retaining only one candidate in memory.
    */
-  async findBestMatch(
+  async findRandomMatch(
     ticket: MatchTicket,
     candidates: MatchTicket[],
     preloadedBlockLists?: ReadonlyMap<string, ReadonlySet<string>>
   ): Promise<{ partner: MatchTicket; matchResult: MatchCandidateResult } | null> {
     const blockLists = preloadedBlockLists ?? await this.preloadBlockLists([ticket, ...candidates]);
-    let best: { partner: MatchTicket; matchResult: MatchCandidateResult } | null = null;
+    let selected: { partner: MatchTicket; matchResult: MatchCandidateResult } | null = null;
+    let eligibleCount = 0;
 
     for (const candidate of candidates) {
       if (candidate.userId === ticket.userId || candidate.discordUserId === ticket.discordUserId) continue;
       const result = this.evaluateWithBlockLists(ticket, candidate, blockLists);
-      if (result.isEligible && (!best || result.score > best.matchResult.score)) {
-        best = { partner: candidate, matchResult: result };
+      if (!result.isEligible) continue;
+
+      eligibleCount += 1;
+      if (Math.random() < 1 / eligibleCount) {
+        selected = { partner: candidate, matchResult: result };
       }
     }
-    return best;
+    return selected;
   }
 }
 

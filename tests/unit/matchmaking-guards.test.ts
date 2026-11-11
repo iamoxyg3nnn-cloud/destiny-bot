@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { matchmakingEngine } from '../../src/core/matchmaking/engine.js';
 import { MatchTicket } from '../../src/core/types.js';
 import { isProfileComplete } from '../../src/bot/profile-view.js';
@@ -166,7 +166,7 @@ describe('Matchmaking edge-case guards', () => {
     expect(result.score).toBe(67);
   });
 
-  it('keeps FIFO order when candidates have equal compatibility scores', async () => {
+  it('selects randomly among all eligible partners instead of always choosing the first', async () => {
     const first = ticket({ interests: ['music'] });
     const second = ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b', interests: ['sports'] });
     const third = ticket({ userId: 'user-c', destinyId: 'DEST-C', discordUserId: 'discord-c', interests: ['travel'] });
@@ -175,8 +175,15 @@ describe('Matchmaking edge-case guards', () => {
       ['user-b', new Set<string>()],
       ['user-c', new Set<string>()],
     ]);
-    const match = await matchmakingEngine.findBestMatch(first, [second, third], blocks);
-    expect(match?.partner.userId).toBe('user-b');
+    const random = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0.99)
+      .mockReturnValueOnce(0.1);
+    try {
+      const match = await matchmakingEngine.findRandomMatch(first, [second, third], blocks);
+      expect(match?.partner.userId).toBe('user-c');
+    } finally {
+      random.mockRestore();
+    }
   });
 
   it('rejects mutually incompatible age ranges', async () => {

@@ -692,11 +692,18 @@ export class MatchmakingManager {
 
       let matchesCreated = 0;
       const blockLists = await matchmakingEngine.preloadBlockLists(tickets);
+      // Randomize who gets considered first in this cycle as well as each
+      // user's eligible partner selection; no one is permanently favored by
+      // Redis set iteration order or FIFO queue position.
       const unmatched = [...tickets];
+      for (let i = unmatched.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [unmatched[i], unmatched[j]] = [unmatched[j], unmatched[i]];
+      }
 
       while (unmatched.length > 1) {
         const ticketA = unmatched.shift()!;
-        const match = await matchmakingEngine.findBestMatch(ticketA, unmatched, blockLists);
+        const match = await matchmakingEngine.findRandomMatch(ticketA, unmatched, blockLists);
         if (match) {
           const ticketB = match.partner;
           const partnerIndex = unmatched.findIndex((ticket) => ticket.userId === ticketB.userId);
