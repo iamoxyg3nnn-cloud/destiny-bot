@@ -44,9 +44,8 @@
 ### 🌌 Step 5 — Dynamic Rotating Presence
 - **Rotating Twitch Streaming activity** (`ActivityType.Streaming`) with curated Destiny messages. The default Twitch destination is a third-party channel (`ninja`); configure `DESTINY_STREAM_URL` to use another supported Twitch or YouTube channel.
 - **102 curated statuses** with live `{members}` and `{servers}` counts computed in real time.
-- **Live contextual status**: switches to "*N Anonymous Conversations Live*" or
-  "*Finding You a Match • N in Queue*" whenever there is real activity, and falls
-  back to the idle rotation otherwise.
+- **Uninterrupted rotation**: matchmaking queue depth and active conversations
+  never override or pause the curated status rotation.
 - **Shard-aware**: presence rotation runs in the bot shard process, while queue processing uses a renewable distributed Redis lock.
 - **20-second rotation**, staggered per shard so gateway presence updates stay
   spread out; counts are cached for 30s so the rotation never hammers the database.
