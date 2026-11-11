@@ -26,9 +26,35 @@ export async function middleware(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const loginUrl = req.nextUrl.clone();
-    loginUrl.pathname = '/login';
-    loginUrl.search = '';
+    // Behind Cloudflare Tunnel, Next.js may build req.nextUrl using its
+    // loopback origin (127.0.0.1:3000). Build redirects from the incoming
+    // public host instead, otherwise browsers are sent to their own localhost.
+    const forwardedHost = req.headers.get('x-forwarded-host');
+    const requestHost = forwardedHost || req.headers.get('host');
+    const forwardedProto = req.headers.get('x-forwarded-proto');
+    const cfVisitor = req.headers.get('cf-visitor');
+    let visitorProto = '';
+    if (cfVisitor) {
+      try {
+        visitorProto = JSON.parse(cfVisitor)?.scheme || '';
+      } catch {
+        // Ignore malformed optional Cloudflare metadata.
+      }
+    }
+    const protocol = (forwardedProto || visitorProto || req.nextUrl.protocol.replace(':', '')).split(',')[0].trim();
+    const safeProtocol = protocol === 'https' ? 'https' : 'http';
+
+    let loginUrl: URL;
+    try {
+      if (!requestHost || /[\\s/\\\\]/.test(requestHost)) throw new Error('Invalid forwarded host');
+      loginUrl = new URL('/login', `${safeProtocol}://${requestHost}`);
+    } catch {
+      // Fail closed to the request URL rather than constructing a malformed
+      // redirect from untrusted proxy headers.
+      loginUrl = req.nextUrl.clone();
+      loginUrl.pathname = '/login';
+      loginUrl.search = '';
+    }
     return NextResponse.redirect(loginUrl);
   }
 
@@ -44,7 +70,7 @@ export async function middleware(req: NextRequest) {
 
     try {
       const parsedOrigin = new URL(origin);
-      const requestHost = req.headers.get('host');
+      const requestHost = req.headers.get('x-forwarded-host') || req.headers.get('host');
       if (!requestHost || parsedOrigin.host.toLowerCase() !== requestHost.toLowerCase() ||
           (process.env.NODE_ENV === 'production' && parsedOrigin.protocol !== 'https:')) {
         return NextResponse.json({ error: 'Forbidden: cross-origin request.' }, { status: 403 });
