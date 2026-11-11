@@ -82,23 +82,30 @@ jobs:
       PGDATABASE: destiny_test
     steps:
       - uses: actions/checkout@v4
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-      - name: Create Supabase roles
-        run: |
-          psql -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN;"
-          psql -v ON_ERROR_STOP=1 -c "CREATE ROLE authenticated NOLOGIN;"
-          psql -v ON_ERROR_STOP=1 -c "CREATE ROLE service_role NOLOGIN BYPASSRLS;"
-      - name: Apply every migration in order
+      - name: Create Supabase roles and apply migrations
         run: |
           set -euo pipefail
-          for pass in 1 2; do
-            echo "Migration pass ${pass}"
-            for migration in supabase/migrations/*.sql; do
-              echo "Applying ${migration}"
-              psql -v ON_ERROR_STOP=1 -f "${migration}"
-            done
-          done
+          # Use the same pinned PostgreSQL client image as the service. This
+          # avoids apt mirror/DNS dependencies on the hosted runner.
+          docker run --rm --network host \
+            -e PGPASSWORD="${PGPASSWORD}" \
+            -e PGHOST=127.0.0.1 \
+            -e PGPORT=5432 \
+            -e PGUSER=postgres \
+            -e PGDATABASE=destiny_test \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace postgres:16-alpine sh -ec '
+              psql -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN;"
+              psql -v ON_ERROR_STOP=1 -c "CREATE ROLE authenticated NOLOGIN;"
+              psql -v ON_ERROR_STOP=1 -c "CREATE ROLE service_role NOLOGIN BYPASSRLS;"
+              for pass in 1 2; do
+                echo "Migration pass ${pass}"
+                for migration in supabase/migrations/*.sql; do
+                  echo "Applying ${migration}"
+                  psql -v ON_ERROR_STOP=1 -f "${migration}"
+                done
+              done
+            '
 
   docker:
     name: Docker image builds
