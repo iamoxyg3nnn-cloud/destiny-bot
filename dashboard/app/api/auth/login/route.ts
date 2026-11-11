@@ -3,6 +3,7 @@ import {
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
   createSessionToken,
+  isAdminPasswordConfigured,
   verifyAdminPassword,
 } from '../../../../lib/auth';
 
@@ -39,6 +40,15 @@ function consumeLoginAttempt(key: string): { allowed: boolean; retryAfter: numbe
 }
 
 export async function POST(req: NextRequest) {
+  // Report a broken deployment as a configuration error, not as a wrong
+  // password. This is safe to expose: it never reveals the configured value.
+  if (!isAdminPasswordConfigured()) {
+    return NextResponse.json(
+      { error: 'Admin password is not configured. Set a non-placeholder password of at least 12 characters.' },
+      { status: 503 }
+    );
+  }
+
   const clientKey = getClientKey(req);
   const rate = consumeLoginAttempt(clientKey);
   if (!rate.allowed) {
@@ -61,7 +71,7 @@ export async function POST(req: NextRequest) {
   const token = await createSessionToken(SESSION_TTL_SECONDS);
   if (!token) {
     return NextResponse.json(
-      { error: 'Admin access is not configured on this deployment.' },
+      { error: 'Admin session signing is not configured. Set DASHBOARD_SESSION_SECRET to a non-placeholder secret of at least 32 characters.' },
       { status: 503 }
     );
   }

@@ -52,7 +52,7 @@ truth for the bot, the API and the dashboard:
 
 ```bash
 # .env
-DASHBOARD_ADMIN_PASSWORD=Admin
+DASHBOARD_ADMIN_PASSWORD=<strong-password-of-at-least-12-characters>
 DASHBOARD_SESSION_SECRET=<32 random bytes>
 API_SECRET_KEY=<32 random bytes>
 ```

@@ -2,14 +2,34 @@
  * Dashboard session helpers.
  *
  * These run in BOTH the Node.js runtime (route handlers) and the Edge runtime
- * (middleware), so we deliberately use only Web Crypto (`globalThis.crypto`)
- * which is available in Node 18+ and in the Edge runtime alike.
+ * and deliberately use only Web Crypto, available in Node 18+ and Edge.
  */
 
 export const SESSION_COOKIE = 'destiny_admin_session';
 export const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
 
 const encoder = new TextEncoder();
+
+// Reject known examples/placeholders, not broad prefixes. A legitimate strong
+// passphrase beginning with "admin" must not be rejected for that prefix.
+const UNSAFE_DEFAULT_SECRETS = new Set([
+  'admin',
+  'password',
+  'change_me',
+  'change-me',
+  'changeme',
+  'replace_with',
+  'replace-with',
+  'your_password',
+  'your_admin_password',
+  'your_secret',
+  'your_session_secret',
+  'destiny_dashboard_secret_key_32bytes!',
+]);
+
+function isUnsafeDefault(value: string): boolean {
+  return UNSAFE_DEFAULT_SECRETS.has(value.trim().toLowerCase());
+}
 
 function base64url(bytes: Uint8Array): string {
   let binary = '';
@@ -41,7 +61,7 @@ async function hmacSha256(data: string, secret: string): Promise<string> {
 
 function sessionSecret(): string {
   const secret = process.env.DASHBOARD_SESSION_SECRET || process.env.NEXTAUTH_SECRET || '';
-  if (secret.length < 32 || /^(change_me|replace_with|your_)/i.test(secret) || secret === 'destiny_dashboard_secret_key_32bytes!') return '';
+  if (secret.length < 32 || isUnsafeDefault(secret)) return '';
   return secret;
 }
 
@@ -71,7 +91,7 @@ export interface SessionPayload {
 
 /**
  * Creates a signed, tamper-evident session token.
- * Format: <base64url(payload)>.<base64url(hmac)>
+ * Format: base64url(payload).base64url(hmac)
  */
 export async function createSessionToken(ttlSeconds: number = SESSION_TTL_SECONDS): Promise<string | null> {
   const secret = sessionSecret();
@@ -114,12 +134,22 @@ export async function verifySessionToken(token: string | undefined | null): Prom
 }
 
 /**
+ * Reports whether a usable admin password is configured. This lets the login
+ * endpoint distinguish deployment misconfiguration (503) from a wrong
+ * password (401) without exposing any secret material.
+ */
+export function isAdminPasswordConfigured(): boolean {
+  const expected = process.env.DASHBOARD_ADMIN_PASSWORD || '';
+  return expected.length >= 12 && !isUnsafeDefault(expected);
+}
+
+/**
  * Checks the supplied admin password against the configured one.
- * Returns false when no password is configured so we never fail open.
+ * Returns false when no acceptable password is configured so we never fail open.
  */
 export async function verifyAdminPassword(candidate: unknown): Promise<boolean> {
   const expected = process.env.DASHBOARD_ADMIN_PASSWORD || '';
-  if (expected.length < 12 || /^(admin|password|change_me|replace_with|your_)/i.test(expected)) return false;
+  if (!isAdminPasswordConfigured()) return false;
   if (typeof candidate !== 'string' || !candidate || candidate.length > 1024) return false;
   return safeEqual(candidate, expected);
 }

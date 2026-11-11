@@ -193,23 +193,36 @@ check_root_route "http://127.0.0.1:${DASH_PORT}" "local dashboard" || {
 }
 
 # Exercise the real authenticated root page too. This catches failures that
-# an unauthenticated redirect check cannot see (for example, session handling
-# or a runtime exception while rendering the overview page).
+# an unauthenticated redirect check cannot see (for example, a rejected admin
+# secret, a missing session-signing key, or a runtime exception on the page).
+# The response's public error string is safe to log; never log the password or
+# the request body.
 check_authenticated_root() {
-  local base="$1" name="$2" body_file login_headers session_cookie login_code root_code
+  local base="$1" name="$2" body_file login_headers login_body session_cookie login_code login_error root_code
   body_file="$(mktemp)"
   login_headers="$(mktemp)"
+  login_body="$(mktemp)"
   node -e 'process.stdout.write(JSON.stringify({password: process.env.DASHBOARD_ADMIN_PASSWORD}))' > "$body_file"
-  chmod 600 "$body_file" "$login_headers"
+  chmod 600 "$body_file" "$login_headers" "$login_body"
 
-  login_code="$(curl -sS -D "$login_headers" -o /dev/null -w '%{http_code}' \
+  login_code="$(curl -sS -D "$login_headers" -o "$login_body" -w '%{http_code}' \
     -H 'Content-Type: application/json' --data-binary "@$body_file" \
     --connect-timeout 5 --max-time 12 "${base%/}/api/auth/login" 2>/dev/null || true)"
   session_cookie="$(awk 'tolower($1) == "set-cookie:" { split($2, parts, ";"); print parts[1] }' "$login_headers" | tail -n1)"
-  rm -f "$body_file" "$login_headers"
+  login_error="$(node -e '
+    const fs = require("node:fs");
+    try {
+      const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      const message = typeof value.error === "string" ? value.error : "";
+      process.stdout.write(message.replace(/[\\r\\n]+/g, " ").slice(0, 240));
+    } catch {
+      process.stdout.write("");
+    }
+  ' "$login_body" 2>/dev/null || true)"
+  rm -f "$body_file" "$login_headers" "$login_body"
 
   if [ "$login_code" != "200" ] || [ -z "$session_cookie" ]; then
-    echo "::error::$name admin login handshake failed (HTTP ${login_code:-no response}; session cookie missing or invalid)" >&2
+    echo "::error::$name admin login handshake failed (HTTP ${login_code:-no response}; ${login_error:-server did not return a safe error message}; session cookie missing or invalid)" >&2
     return 1
   fi
 

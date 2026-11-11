@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createSessionToken,
+  isAdminPasswordConfigured,
   safeEqual,
   verifyAdminPassword,
   verifySessionToken,
@@ -17,7 +18,22 @@ describe('Dashboard authentication helpers', () => {
 
   it('fails closed when no admin password is configured', async () => {
     vi.stubEnv('DASHBOARD_ADMIN_PASSWORD', '');
+    expect(isAdminPasswordConfigured()).toBe(false);
     expect(await verifyAdminPassword('anything')).toBe(false);
+  });
+
+  it('rejects known placeholder admin passwords', async () => {
+    vi.stubEnv('DASHBOARD_ADMIN_PASSWORD', 'replace_with');
+    expect(isAdminPasswordConfigured()).toBe(false);
+    expect(await verifyAdminPassword('replace_with')).toBe(false);
+  });
+
+  it('accepts a strong password beginning with a formerly blocked prefix', async () => {
+    const password = 'administrator-with-a-long-unique-passphrase';
+    vi.stubEnv('DASHBOARD_ADMIN_PASSWORD', password);
+    expect(isAdminPasswordConfigured()).toBe(true);
+    expect(await verifyAdminPassword(password)).toBe(true);
+    expect(await verifyAdminPassword('administrator-with-a-different-passphrase')).toBe(false);
   });
 
   it('verifies admin passwords without accepting oversized input', async () => {
@@ -34,6 +50,13 @@ describe('Dashboard authentication helpers', () => {
     const [payload, signature] = token!.split('.');
     const changedSignature = (signature[0] === 'A' ? 'B' : 'A') + signature.slice(1);
     expect(await verifySessionToken(`${payload}.${changedSignature}`)).toBe(false);
+  });
+
+  it('accepts a strong session secret with a formerly blocked prefix', async () => {
+    vi.stubEnv('DASHBOARD_SESSION_SECRET', 'your_own-generated-session-secret-with-enough-randomness');
+    const token = await createSessionToken(60);
+    expect(token).toBeTruthy();
+    expect(await verifySessionToken(token)).toBe(true);
   });
 
   it('rejects malformed tokens and invalid session lifetimes', async () => {
