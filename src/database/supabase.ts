@@ -913,7 +913,7 @@ export class DatabaseService {
         if (entry.expires <= Date.now()) this.blockListCache.delete(key);
       }
     }
-    this.blockListCache.set(userId, { ids: blockedIds, expires: Date.now() + 30_000 });
+    this.blockListCache.set(userId, { ids: blockedIds, expires: Date.now() + 5_000 });
     return new Set(blockedIds);
   }
 

@@ -85,6 +85,60 @@ describe('Matchmaking edge-case guards', () => {
     expect(result.reasons).toContain('USER_BLOCKED');
   });
 
+
+  it('fails closed when a preloaded block-list snapshot is incomplete', async () => {
+    const blocks = new Map<string, ReadonlySet<string>>([
+      ['user-a', new Set<string>()],
+    ]);
+    const result = await matchmakingEngine.evaluateMatch(
+      ticket(),
+      ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b' }),
+      blocks
+    );
+    expect(result.isEligible).toBe(false);
+    expect(result.reasons).toContain('BLOCK_LIST_UNAVAILABLE');
+  });
+
+  it('rejects malformed mutual age preferences instead of silently widening them', async () => {
+    const result = await matchmakingEngine.evaluateMatch(
+      ticket({ minAgePref: 35, maxAgePref: 20 }),
+      ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b' }),
+      new Map([
+        ['user-a', new Set<string>()],
+        ['user-b', new Set<string>()],
+      ])
+    );
+    expect(result.isEligible).toBe(false);
+    expect(result.reasons).toContain('INVALID_PROFILE');
+  });
+
+  it('normalizes duplicate and case-varied interests before scoring', async () => {
+    const result = await matchmakingEngine.evaluateMatch(
+      ticket({ interests: ['Music', 'music', ' Gaming '] }),
+      ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b', interests: ['MUSIC', 'Travel'] }),
+      new Map([
+        ['user-a', new Set<string>()],
+        ['user-b', new Set<string>()],
+      ])
+    );
+    expect(result.isEligible).toBe(true);
+    expect(result.sharedInterests).toEqual(['music']);
+    expect(result.score).toBe(67);
+  });
+
+  it('keeps FIFO order when candidates have equal compatibility scores', async () => {
+    const first = ticket({ interests: ['music'] });
+    const second = ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b', interests: ['sports'] });
+    const third = ticket({ userId: 'user-c', destinyId: 'DEST-C', discordUserId: 'discord-c', interests: ['travel'] });
+    const blocks = new Map<string, ReadonlySet<string>>([
+      ['user-a', new Set<string>()],
+      ['user-b', new Set<string>()],
+      ['user-c', new Set<string>()],
+    ]);
+    const match = await matchmakingEngine.findBestMatch(first, [second, third], blocks);
+    expect(match?.partner.userId).toBe('user-b');
+  });
+
   it('rejects mutually incompatible age ranges', async () => {
     const result = await matchmakingEngine.evaluateMatch(
       ticket({ minAgePref: 30, maxAgePref: 40 }),

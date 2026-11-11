@@ -158,13 +158,25 @@ export class MatchmakingManager {
     };
 
     // 3. Atomically add to queue & persist to disk
-    await lockManager.withLock(`lock:ticket:${user.id}`, async () => {
+    const queued = await lockManager.withLock(`lock:ticket:${user.id}`, async () => {
+      const latestProfile = await db.getUserById(user.id, true);
+      if (!latestProfile) return false;
+      if (latestProfile.activeRoomId) {
+        const latestRoom = await db.getRoomById(latestProfile.activeRoomId);
+        if (latestRoom?.status === 'active') return false;
+        const cleared = await db.clearActiveRoom(user.id, latestProfile.activeRoomId);
+        if (!cleared) return false;
+      }
       await redis.set(`ticket:${user.id}`, JSON.stringify(ticket), 900); // 15 min TTL
       await redis.sAdd('matchmaking:queue', user.id);
       this.inMemoryQueue.set(user.id, ticket);
       this.savePersistentQueue();
+      return true;
     });
 
+    if (!queued) {
+      return { success: false, message: 'You are already in an active room. Use `leave` to exit first.' };
+    }
     return { success: true, message: 'Successfully joined the anonymous matchmaking queue.', ticket };
   }
 
@@ -315,6 +327,99 @@ export class MatchmakingManager {
     return validTickets;
   }
 
+  private async createMatchRoomRecord(ticketA: MatchTicket, ticketB: MatchTicket): Promise<RoomSession> {
+    const roomCode = anonymizer.generateRoomCode();
+    const personaA = anonymizer.generatePersona(ticketA.userId, roomCode);
+    const personaB = anonymizer.generatePersona(ticketB.userId, roomCode);
+    const room = await db.createRoom({
+      roomCode,
+      user1Id: ticketA.userId,
+      user2Id: ticketB.userId,
+      user1DiscordId: ticketA.discordUserId,
+      user2DiscordId: ticketB.discordUserId,
+      user1Pseudonym: personaA.pseudonym,
+      user2Pseudonym: personaB.pseudonym,
+      user1Avatar: personaA.avatarEmoji,
+      user2Avatar: personaB.avatarEmoji,
+      status: 'active',
+      startedAt: new Date().toISOString(),
+      connectionXp: 10,
+      connectionLevel: 'Strangers',
+      revealStatusUser1: { consented: false, revealedFields: [] },
+      revealStatusUser2: { consented: false, revealedFields: [] },
+    });
+    room.user1DiscordId = ticketA.discordUserId;
+    room.user2DiscordId = ticketB.discordUserId;
+    room.user1Avatar = personaA.avatarEmoji;
+    room.user2Avatar = personaB.avatarEmoji;
+    return room;
+  }
+
+  /**
+   * Reserve a pair against concurrent leave/rejoin requests. Locks are always
+   * acquired in sorted user-id order to avoid deadlocks. The Redis values are
+   * compared with the cycle snapshot before either ticket is consumed.
+   */
+  private async reserveTicketsAndCreateRoom(
+    ticketA: MatchTicket,
+    ticketB: MatchTicket
+  ): Promise<RoomSession | null> {
+    const ordered = [ticketA, ticketB].sort((a, b) => a.userId.localeCompare(b.userId));
+    return lockManager.withLock(`lock:ticket:${ordered[0].userId}`, async () =>
+      lockManager.withLock(`lock:ticket:${ordered[1].userId}`, async () => {
+        const [rawA, rawB] = await Promise.all([
+          redis.get(`ticket:${ticketA.userId}`),
+          redis.get(`ticket:${ticketB.userId}`),
+        ]);
+        const matchesSnapshot = (raw: string | null, expected: MatchTicket) => {
+          if (!raw) return false;
+          try {
+            const current = JSON.parse(raw) as MatchTicket;
+            return isValidMatchTicket(current) &&
+              current.userId === expected.userId &&
+              current.discordUserId === expected.discordUserId &&
+              current.queuedAt === expected.queuedAt;
+          } catch {
+            return false;
+          }
+        };
+        if (!matchesSnapshot(rawA, ticketA) || !matchesSnapshot(rawB, ticketB)) return null;
+
+        const removedA = await redis.delIfValue(`ticket:${ticketA.userId}`, rawA!);
+        if (!removedA) return null;
+        const removedB = await redis.delIfValue(`ticket:${ticketB.userId}`, rawB!);
+        if (!removedB) {
+          await redis.set(`ticket:${ticketA.userId}`, rawA!, 900);
+          await redis.sAdd('matchmaking:queue', ticketA.userId);
+          return null;
+        }
+
+        try {
+          await Promise.all([
+            redis.sRem('matchmaking:queue', ticketA.userId),
+            redis.sRem('matchmaking:queue', ticketB.userId),
+          ]);
+        } catch (error) {
+          // Restore both tickets if queue-set cleanup fails partway through.
+          await Promise.allSettled([
+            redis.set(`ticket:${ticketA.userId}`, rawA!, 900),
+            redis.set(`ticket:${ticketB.userId}`, rawB!, 900),
+            redis.sAdd('matchmaking:queue', ticketA.userId),
+            redis.sAdd('matchmaking:queue', ticketB.userId),
+          ]);
+          throw error;
+        }
+
+        this.inMemoryQueue.delete(ticketA.userId);
+        this.inMemoryQueue.delete(ticketB.userId);
+        this.savePersistentQueue();
+        // Create the database room before releasing ticket locks. This closes
+        // the gap where a concurrent /match could re-enqueue an active user.
+        return await this.createMatchRoomRecord(ticketA, ticketB);
+      })
+    );
+  }
+
   /**
    * Process matchmaking iteration atomically
    */
@@ -328,7 +433,7 @@ export class MatchmakingManager {
       const tickets = await this.getQueueTickets();
       if (tickets.length < 2) return { matchesCreated: 0 };
 
-      console.log(`[Matchmaking Cycle] Evaluating ${tickets.length} queue tickets:`, tickets.map(t => t.destinyId));
+      console.log(`[Matchmaking Cycle] Evaluating ${tickets.length} queue tickets.`);
 
       let matchesCreated = 0;
       const blockLists = await matchmakingEngine.preloadBlockLists(tickets);
@@ -340,18 +445,26 @@ export class MatchmakingManager {
         if (match) {
           const ticketB = match.partner;
           const partnerIndex = unmatched.findIndex((ticket) => ticket.userId === ticketB.userId);
-          if (partnerIndex >= 0) unmatched.splice(partnerIndex, 1);
+          if (partnerIndex < 0) continue;
+          unmatched.splice(partnerIndex, 1);
 
-          console.log(`[Matchmaking Cycle] Match confirmed between ${ticketA.destinyId} and ${ticketB.destinyId}! Creating room...`);
-
-          // Remove both from queue
-          await this.leaveQueue(ticketA.userId);
-          await this.leaveQueue(ticketB.userId);
-
-          // Create Room. If persistence fails before a room exists, put both
-          // users back into the shared queue rather than silently losing them.
+          console.log('[Matchmaking Cycle] Compatible pair found; reserving queue tickets.');
           try {
-            const createdRoom = await this.createMatchRoom(ticketA, ticketB, match.matchResult.sharedInterests);
+            const reservedRoom = await this.reserveTicketsAndCreateRoom(ticketA, ticketB);
+            if (!reservedRoom) {
+              // One user left, rejoined, or had their ticket refreshed after the
+              // queue snapshot. Keep the other candidate available for matching.
+              unmatched.splice(partnerIndex, 0, ticketB);
+              continue;
+            }
+            // The DB room is committed under both ticket locks. Release them
+            // before Redis caching and Discord DM delivery.
+            const createdRoom = await this.createMatchRoom(
+              ticketA,
+              ticketB,
+              match.matchResult.sharedInterests,
+              reservedRoom
+            );
             if (createdRoom.status === 'active') matchesCreated++;
           } catch (error) {
             console.error('[Matchmaking] Room creation failed; restoring queue tickets:', error);
@@ -377,35 +490,10 @@ export class MatchmakingManager {
   async createMatchRoom(
     ticketA: MatchTicket,
     ticketB: MatchTicket,
-    sharedInterests: string[] = []
+    sharedInterests: string[] = [],
+    precreatedRoom?: RoomSession
   ): Promise<RoomSession> {
-    const roomCode = anonymizer.generateRoomCode();
-    const personaA = anonymizer.generatePersona(ticketA.userId, roomCode);
-    const personaB = anonymizer.generatePersona(ticketB.userId, roomCode);
-
-    const room = await db.createRoom({
-      roomCode,
-      user1Id: ticketA.userId,
-      user2Id: ticketB.userId,
-      user1DiscordId: ticketA.discordUserId,
-      user2DiscordId: ticketB.discordUserId,
-      user1Pseudonym: personaA.pseudonym,
-      user2Pseudonym: personaB.pseudonym,
-      user1Avatar: personaA.avatarEmoji,
-      user2Avatar: personaB.avatarEmoji,
-      status: 'active',
-      startedAt: new Date().toISOString(),
-      connectionXp: 10, // Initial match XP bonus
-      connectionLevel: 'Strangers',
-      revealStatusUser1: { consented: false, revealedFields: [] },
-      revealStatusUser2: { consented: false, revealedFields: [] },
-    });
-
-    // Ensure Discord IDs and Avatars are populated on room session
-    room.user1DiscordId = ticketA.discordUserId;
-    room.user2DiscordId = ticketB.discordUserId;
-    room.user1Avatar = personaA.avatarEmoji;
-    room.user2Avatar = personaB.avatarEmoji;
+    const room = precreatedRoom ?? await this.createMatchRoomRecord(ticketA, ticketB);
 
     // Cache active room session in Redis. If any cache write fails, roll back
     // the newly-created database room so participants are not stranded.
@@ -424,84 +512,76 @@ export class MatchmakingManager {
       throw cacheError;
     }
 
-    // Notify both users in Discord DMs
-    try {
-      const client = getDiscordClient();
-      if (client && client.isReady()) {
-        const iceBreaker = this.getRandomIceBreaker();
+    // Notify both users concurrently. A room is only considered delivered
+    // when both DMs succeed; partial delivery is rolled back and the reachable
+    // participant is returned to the queue.
+    const client = getDiscordClient();
+    if (!client || !client.isReady()) {
+      if (config.NODE_ENV !== 'production') {
+        // Unit/integration environments intentionally do not log in to Discord.
+        console.warn('[Matchmaking] Discord is unavailable outside production; skipping DM delivery.');
+        refreshBotPresence();
+        return room;
+      }
+      await db.endRoom(room.id, 'timeout');
+      room.status = 'ended';
+      room.endedAt = new Date().toISOString();
+      room.endReason = 'timeout';
+      throw new Error('Discord client became unavailable before match notifications.');
+    }
 
-        const [userA, userB] = await Promise.all([
-          client.users.fetch(ticketA.discordUserId).catch(() => null),
-          client.users.fetch(ticketB.discordUserId).catch(() => null),
-        ]);
+    const [userAResult, userBResult] = await Promise.allSettled([
+      client.users.fetch(ticketA.discordUserId),
+      client.users.fetch(ticketB.discordUserId),
+    ]);
+    const userA = userAResult.status === 'fulfilled' ? userAResult.value : null;
+    const userB = userBResult.status === 'fulfilled' ? userBResult.value : null;
+    const iceBreaker = this.getRandomIceBreaker();
 
-        let sentA = false;
-        let sentB = false;
+    const [deliveryA, deliveryB] = await Promise.allSettled([
+      userA
+        ? userA.send({
+            components: [embedService.createMatchFoundContainer(room, true, iceBreaker, sharedInterests)],
+            flags: [MessageFlags.IsComponentsV2],
+          })
+        : Promise.reject(new Error('Could not fetch Discord user A')),
+      userB
+        ? userB.send({
+            components: [embedService.createMatchFoundContainer(room, false, iceBreaker, sharedInterests)],
+            flags: [MessageFlags.IsComponentsV2],
+          })
+        : Promise.reject(new Error('Could not fetch Discord user B')),
+    ]);
+    const sentA = deliveryA.status === 'fulfilled';
+    const sentB = deliveryB.status === 'fulfilled';
 
-        if (userA) {
-          const containerA = embedService.createMatchFoundContainer(room, true, iceBreaker, sharedInterests);
-          await userA.send({ components: [containerA], flags: [MessageFlags.IsComponentsV2] })
-            .then(() => { sentA = true; })
-            .catch((err) => {
-              console.error(`[Matchmaking] DM delivery failed to User A (${ticketA.discordUserId}):`, err?.message || err);
-            });
-        }
+    if (!sentA || !sentB) {
+      await db.endRoom(room.id, 'user_left');
+      room.status = 'ended';
+      room.endedAt = new Date().toISOString();
+      room.endReason = 'user_left';
 
-        if (userB) {
-          const containerB = embedService.createMatchFoundContainer(room, false, iceBreaker, sharedInterests);
-          await userB.send({ components: [containerB], flags: [MessageFlags.IsComponentsV2] })
-            .then(() => { sentB = true; })
-            .catch((err) => {
-              console.error(`[Matchmaking] DM delivery failed to User B (${ticketB.discordUserId}):`, err?.message || err);
-            });
-        }
+      const reachableUser = sentA ? userA : sentB ? userB : null;
+      if (reachableUser) {
+        const notice = new ContainerBuilder()
+          .setAccentColor(COLORS.GOLD)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              '# ⚠️ Partner Unreachable\n\nYour match partner could not be reached through Discord DMs. We have returned you to the top of the queue.'
+            )
+          );
+        await reachableUser.send({ components: [notice], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+      }
 
-        if (!sentA && !sentB) {
-          await db.endRoom(room.id, 'user_left');
-          room.status = 'ended';
-          room.endedAt = new Date().toISOString();
-          room.endReason = 'user_left';
-          for (const ticket of [ticketA, ticketB]) {
-            const profile = await db.getUserById(ticket.userId, true).catch(() => null);
-            if (profile) await this.joinQueue(profile, ticket.guildId).catch(() => {});
-          }
-        }
-
-        // Closed DM Guard: if one partner could not be reached, safely rollback and requeue the reachable user
-        if (!sentA && sentB && userB) {
-          await db.endRoom(room.id, 'user_left');
-          room.status = 'ended';
-          room.endedAt = new Date().toISOString();
-          room.endReason = 'user_left';
-          const notice = new ContainerBuilder()
-            .setAccentColor(COLORS.GOLD)
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                '# ⚠️ Partner Unreachable\n\nYour match partner currently has Direct Messages closed. We have placed you back at the top of the queue!'
-              )
-            );
-          await userB.send({ components: [notice], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
-          const u2Profile = await db.getUserById(ticketB.userId);
-          if (u2Profile) await this.joinQueue(u2Profile, ticketB.guildId);
-        } else if (sentA && !sentB && userA) {
-          await db.endRoom(room.id, 'user_left');
-          room.status = 'ended';
-          room.endedAt = new Date().toISOString();
-          room.endReason = 'user_left';
-          const notice = new ContainerBuilder()
-            .setAccentColor(COLORS.GOLD)
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                '# ⚠️ Partner Unreachable\n\nYour match partner currently has Direct Messages closed. We have placed you back at the top of the queue!'
-              )
-            );
-          await userA.send({ components: [notice], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
-          const u1Profile = await db.getUserById(ticketA.userId);
-          if (u1Profile) await this.joinQueue(u1Profile, ticketA.guildId);
+      const ticketsToRestore = sentA ? [ticketA] : sentB ? [ticketB] : [ticketA, ticketB];
+      for (const ticket of ticketsToRestore) {
+        const profile = await db.getUserById(ticket.userId, true).catch(() => null);
+        if (profile) {
+          await this.joinQueue(profile, ticket.guildId).catch((requeueError) => {
+            console.error('[Matchmaking] Could not requeue reachable participant:', requeueError);
+          });
         }
       }
-    } catch (err: any) {
-      console.warn('[Matchmaking] Discord DM notification skipped:', err?.message);
     }
 
     // A new conversation is live — reflect it in the rotating presence.
