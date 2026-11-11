@@ -96,7 +96,7 @@ export class MatchmakingManager {
   /**
    * Enqueue a user into the matchmaking queue
    */
-  async joinQueue(user: UserProfile, guildId?: string, overridePref?: string[]): Promise<{ success: boolean; message: string; ticket?: MatchTicket }> {
+  async joinQueue(user: UserProfile, guildId?: string): Promise<{ success: boolean; message: string; ticket?: MatchTicket }> {
     // 1. Safety checks
     if (user.isBanned) {
       return { success: false, message: 'Your account is currently restricted from matchmaking.' };
@@ -131,16 +131,6 @@ export class MatchmakingManager {
       }
     }
 
-    const preferredSource = Array.isArray(overridePref) && overridePref.length > 0
-      ? overridePref
-      : (Array.isArray(user.preferredGender) ? user.preferredGender : ['any']);
-    const preferredGender = [...new Set(
-      preferredSource
-        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-        .map((value) => value.trim().toLowerCase())
-    )].slice(0, 8);
-    if (preferredGender.length === 0) preferredGender.push('any');
-
     const languages = (Array.isArray(user.languages) ? user.languages : [])
       .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
       .map((value) => value.trim().slice(0, 16))
@@ -158,7 +148,7 @@ export class MatchmakingManager {
       discordUserId: user.discordUserId,
       age: user.age,
       gender: user.gender,
-      preferredGender,
+      preferredGender: ['any'],
       minAgePref,
       maxAgePref,
       languages,
@@ -315,7 +305,7 @@ export class MatchmakingManager {
       const tickets = await this.getQueueTickets();
       if (tickets.length < 2) return { matchesCreated: 0 };
 
-      console.log(`[Matchmaking Cycle] Evaluating ${tickets.length} queue tickets:`, tickets.map(t => `${t.destinyId} (${t.gender}->${t.preferredGender.join(',')})`));
+      console.log(`[Matchmaking Cycle] Evaluating ${tickets.length} queue tickets:`, tickets.map(t => t.destinyId));
 
       let matchesCreated = 0;
       const matchedUserIds = new Set<string>();
@@ -350,7 +340,7 @@ export class MatchmakingManager {
             for (const ticket of [ticketA, ticketB]) {
               const profile = await db.getUserById(ticket.userId, true).catch(() => null);
               if (profile) {
-                await this.joinQueue(profile, ticket.guildId, ticket.preferredGender).catch((requeueError) => {
+                await this.joinQueue(profile, ticket.guildId).catch((requeueError) => {
                   console.error('[Matchmaking] Could not restore queue ticket:', requeueError);
                 });
               }
@@ -455,7 +445,7 @@ export class MatchmakingManager {
           room.endReason = 'user_left';
           for (const ticket of [ticketA, ticketB]) {
             const profile = await db.getUserById(ticket.userId, true).catch(() => null);
-            if (profile) await this.joinQueue(profile, ticket.guildId, ticket.preferredGender).catch(() => {});
+            if (profile) await this.joinQueue(profile, ticket.guildId).catch(() => {});
           }
         }
 
@@ -474,7 +464,7 @@ export class MatchmakingManager {
             );
           await userB.send({ components: [notice], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
           const u2Profile = await db.getUserById(ticketB.userId);
-          if (u2Profile) await this.joinQueue(u2Profile, ticketB.guildId, ticketB.preferredGender);
+          if (u2Profile) await this.joinQueue(u2Profile, ticketB.guildId);
         } else if (sentA && !sentB && userA) {
           await db.endRoom(room.id, 'user_left');
           room.status = 'ended';
@@ -489,7 +479,7 @@ export class MatchmakingManager {
             );
           await userA.send({ components: [notice], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
           const u1Profile = await db.getUserById(ticketA.userId);
-          if (u1Profile) await this.joinQueue(u1Profile, ticketA.guildId, ticketA.preferredGender);
+          if (u1Profile) await this.joinQueue(u1Profile, ticketA.guildId);
         }
       }
     } catch (err: any) {

@@ -575,7 +575,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       return;
     }
 
-    // --- Cancel Mood / Match Preference Selection ---
+    // --- Return to Main Menu ---
     if (customId === 'destiny_btn_cancel_mood') {
       const ok = await safeDeferReply(btn);
       if (!ok) return;
@@ -585,72 +585,6 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       );
       const container = embedService.createMainMenuContainer(discordUser.displayName || discordUser.username, user, isProfileComplete);
       await safeEditReply(btn, { components: [container] });
-      return;
-    }
-
-    // --- Dynamic Match Preference Buttons (Mood Selection) ---
-    if (customId === 'match_pref_female' || customId === 'match_pref_male' || customId === 'match_pref_any') {
-      const ok = await safeDeferReply(btn);
-      if (!ok) return;
-
-      const user = await db.getUserByDiscordId(discordUser.id, true);
-      const isProfileComplete = Boolean(
-        user && user.age >= 18 && user.gender && user.gender !== 'prefer_not_to_say' && user.gender.trim().length > 0
-      );
-
-      if (!user || !isProfileComplete) {
-        const container = embedService.createProfileRequiredContainer();
-        await safeEditReply(btn, { components: [container] });
-        return;
-      }
-
-      if (user.isBanned) {
-        const container = embedService.createAccountRestrictedContainer(user.banReason);
-        await safeEditReply(btn, { components: [container] });
-        return;
-      }
-
-      let activeRoomId = user.activeRoomId;
-      if (!activeRoomId) {
-        activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
-      }
-      if (activeRoomId) {
-        const room = await db.getRoomById(activeRoomId);
-        if (room && room.status === 'active') {
-          const container = embedService.createActiveRoomPromptContainer(room.roomCode);
-          await safeEditReply(btn, { components: [container] });
-          return;
-        } else {
-          const cleared = await db.clearActiveRoom(user.id, activeRoomId);
-          if (!cleared) return;
-          user.activeRoomId = null;
-        }
-      }
-
-      const prefChoice = customId === 'match_pref_female'
-        ? ['female']
-        : customId === 'match_pref_male'
-          ? ['male']
-          : ['any'];
-
-      // Persist chosen mood preference to user profile
-      const updatedUser = await db.createOrUpdateUser({
-        discordUserId: discordUser.id,
-        preferredGender: prefChoice,
-      });
-
-      // Join or update queue with this preference
-      const queueRes = await matchmakingManager.joinQueue(updatedUser, undefined, prefChoice);
-      if (!queueRes.success) {
-        await safeEditReply(btn, { content: `⚠️ ${queueRes.message}` });
-        return;
-      }
-
-      // Instantly trigger match evaluation loop (<5ms)
-      matchmakingManager.processMatchCycle().catch(() => {});
-
-      const searchingContainer = embedService.createSearchingContainer(updatedUser);
-      await safeEditReply(btn, { components: [searchingContainer] });
       return;
     }
 
@@ -1311,8 +1245,14 @@ async function handleStartMatchButton(btn: ButtonInteraction): Promise<void> {
     return;
   }
 
-  // Ask user with buttons who they want to talk to today
-  const container = embedService.createMatchPreferenceContainer(user);
+  const queueRes = await matchmakingManager.joinQueue(user, btn.guildId || undefined);
+  if (!queueRes.success) {
+    await safeEditReply(btn, { content: `⚠️ ${queueRes.message}` });
+    return;
+  }
+
+  matchmakingManager.processMatchCycle().catch(() => {});
+  const container = embedService.createSearchingContainer(user);
   await safeEditReply(btn, { components: [container] });
 }
 

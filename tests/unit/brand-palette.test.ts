@@ -84,7 +84,7 @@ describe('Destiny Brand Colour Palette', () => {
       embedService.createMatchFoundContainer(mockRoom, true, 'Favourite movie?'),
       embedService.createReportMenuContainer('room_palette', 'Starlit'),
       embedService.createReportSuccessContainer(),
-      embedService.createMatchPreferenceContainer(mockUser),
+      embedService.createSearchingContainer(mockUser),
       embedService.createLowReputationRestrictedContainer(),
       embedService.createReputationRestoredContainer(),
       embedService.createRelayMessageContainer('Starlit', '🌌', 'Hello!'),

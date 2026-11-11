@@ -335,53 +335,6 @@ export class EmbedService {
   }
 
   /**
-   * Match Preference Container — asks user who they want to talk to today based on their mood
-   */
-  createMatchPreferenceContainer(user: UserProfile): ContainerBuilder {
-    const prefRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('match_pref_female')
-        .setLabel('Talk with Girls')
-        .setEmoji('👧')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('match_pref_male')
-        .setLabel('Talk with Boys')
-        .setEmoji('👦')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('match_pref_any')
-        .setLabel('Anyone / Open to All')
-        .setEmoji('✨')
-        .setStyle(ButtonStyle.Success)
-    );
-
-    const cancelRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_cancel_mood')
-        .setLabel('Cancel')
-        .setEmoji('❌')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    return new ContainerBuilder()
-      .setAccentColor(COLORS.DESTINY_PURPLE)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `# 💫 Who would you like to talk with?\n\n` +
-          `Choose your match preference based on your current mood!\n` +
-          `You can choose someone new whenever you start a chat.\n\n` +
-          `• 🆔 **Your Destiny ID:** \`${user.destinyId}\`\n` +
-          `• ⚧ **Your Gender:** \`${user.gender}\`\n` +
-          `• 🎯 **Your Interests:** ${user.interests.length > 0 ? user.interests.join(', ') : '*Open*'}\n\n` +
-          `*Tap an option below to enter matchmaking:*`
-        )
-      )
-      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-      .addActionRowComponents(prefRow, cancelRow);
-  }
-
-  /**
    * Searching Queue Container with Cancel button inside
    */
   createSearchingContainer(user: UserProfile): ContainerBuilder {
@@ -400,7 +353,7 @@ export class EmbedService {
           `# 🔍 Searching for an Anonymous Match...\n\n` +
           `You have entered the anonymous matchmaking queue!\n\n` +
           `• 🆔 **Destiny ID:** \`${user.destinyId}\`\n` +
-          `• ⚧ **Preference:** ${user.preferredGender?.join(', ') || 'Any'}\n` +
+          `• **Match Pool:** Everyone\n` +
           `• 🎯 **Interests:** ${user.interests.length > 0 ? user.interests.join(', ') : 'Open'}\n\n` +
           `*Please keep your DMs open. The moment an anonymous partner is paired, you will receive your connection card here!*`
         )

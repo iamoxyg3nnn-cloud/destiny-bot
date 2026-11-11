@@ -53,6 +53,15 @@ describe('Matchmaking edge-case guards', () => {
     expect(result.score).toBe(67);
   });
 
+  it('matches users regardless of legacy gender preferences', async () => {
+    const result = await matchmakingEngine.evaluateMatch(
+      ticket({ gender: 'female', preferredGender: ['male'] }),
+      ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b', gender: 'male', preferredGender: ['female'] })
+    );
+    expect(result.isEligible).toBe(true);
+    expect(result.reasons).toContain('MUTUAL_COMPATIBILITY_CONFIRMED');
+  });
+
   it('rejects mutually incompatible age ranges', async () => {
     const result = await matchmakingEngine.evaluateMatch(
       ticket({ minAgePref: 30, maxAgePref: 40 }),

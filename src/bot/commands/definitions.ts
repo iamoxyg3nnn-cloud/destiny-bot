@@ -34,18 +34,6 @@ export const slashCommands = [
     .setDescription('Join the anonymous matchmaking queue to meet someone new')
     .addStringOption((opt) =>
       opt
-        .setName('gender_preference')
-        .setDescription('Preferred partner gender')
-        .setRequired(false)
-        .addChoices(
-          { name: 'Any Gender', value: 'any' },
-          { name: 'Male', value: 'male' },
-          { name: 'Female', value: 'female' },
-          { name: 'Non-Binary', value: 'non_binary' }
-        )
-    )
-    .addStringOption((opt) =>
-      opt
         .setName('interests')
         .setDescription('Comma-separated interests (e.g. gaming, anime, music, coding)')
         .setRequired(false)
@@ -109,18 +97,6 @@ export const slashCommands = [
         .setDescription('Comma-separated languages you speak')
         .setRequired(false)
         .setMaxLength(50)
-    )
-    .addStringOption((opt) =>
-      opt
-        .setName('looking_for')
-        .setDescription('Who you would like to be matched with')
-        .setRequired(false)
-        .addChoices(
-          { name: 'Anyone', value: 'any' },
-          { name: 'Male', value: 'male' },
-          { name: 'Female', value: 'female' },
-          { name: 'Non-Binary', value: 'non_binary' }
-        )
     ),
 
   // 5. /coins
@@ -299,15 +275,13 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       return;
     }
 
-    const genderPref = interaction.options.getString('gender_preference');
     const interestsStr = interaction.options.getString('interests');
 
-    const updates: Partial<UserProfile> & { discordUserId: string } = { discordUserId: discordUser.id };
-    if (genderPref) updates.preferredGender = [genderPref];
-    if (interestsStr) updates.interests = parseList(interestsStr);
-
-    if (genderPref || interestsStr) {
-      user = await db.createOrUpdateUser(updates);
+    if (interestsStr) {
+      user = await db.createOrUpdateUser({
+        discordUserId: discordUser.id,
+        interests: parseList(interestsStr),
+      });
     }
 
     const result = await matchmakingManager.joinQueue(user, interaction.guildId || undefined);
@@ -323,7 +297,6 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       .setDescription(
         `You are now in the Destiny matchmaking queue!\n` +
         `• **Age Criteria**: 18+\n` +
-        `• **Gender Preference**: \`${(user.preferredGender || ['any']).join(', ')}\`\n` +
         `• **Interests**: ${user.interests.length > 0 ? user.interests.map((i) => `\`${i}\``).join(' ') : '*Any*'}\n\n` +
         `⏳ We will deliver a private DM the moment a compatible partner arrives!`
       )
@@ -645,9 +618,7 @@ async function handleProfileCommand(interaction: ChatInputCommandInteraction): P
   const optionIntent = interaction.options.getString('intent');
   const optionInterests = interaction.options.getString('interests');
   const optionLanguages = interaction.options.getString('languages');
-  const optionLookingFor = interaction.options.getString('looking_for');
-
-  const hasOptions = [optionAge, optionGender, optionBio, optionIntent, optionInterests, optionLanguages, optionLookingFor]
+  const hasOptions = [optionAge, optionGender, optionBio, optionIntent, optionInterests, optionLanguages]
     .some((value) => value !== null && value !== undefined);
 
   // New / incomplete users get the setup modal instantly, no extra button click needed.
@@ -692,7 +663,6 @@ async function handleProfileCommand(interaction: ChatInputCommandInteraction): P
       if (optionLanguages !== null && optionLanguages.trim().length > 0) {
         updates.languages = parseList(optionLanguages, 6);
       }
-      if (optionLookingFor) updates.preferredGender = [optionLookingFor];
 
       user = await db.createOrUpdateUser(updates);
     }

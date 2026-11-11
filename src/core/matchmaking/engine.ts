@@ -46,53 +46,7 @@ export class MatchmakingEngine {
       return { score: 0, isEligible: false, sharedInterests: [], reasons: ['AGE_INCOMPATIBLE'] };
     }
 
-    // 4. Mutual Gender Preference
-    const checkWantsGender = (ticket: MatchTicket, candidate: MatchTicket): boolean => {
-      const prefs = (Array.isArray(ticket.preferredGender) ? ticket.preferredGender : []).filter((p) => typeof p === 'string').map((p) => p.trim().toLowerCase());
-      const candidateGender = (candidate.gender || '').trim().toLowerCase();
-      const myGender = (ticket.gender || '').trim().toLowerCase();
-
-      // Wildcard / Any (or unset)
-      if (prefs.length === 0 || prefs.includes('any') || prefs.includes('all') || prefs.includes('either') || prefs.includes('both')) {
-        return true;
-      }
-
-      // Direct match
-      if (prefs.includes(candidateGender)) {
-        return true;
-      }
-
-      // Explicit 'other' means the Other profile category, not every different gender.
-      if (prefs.includes('other') && candidateGender === 'other') return true;
-
-      // Legacy opposite/alter preferences are resolved relative to the requester's profile.
-      if (prefs.includes('alter') || prefs.includes('opposite')) {
-        if (myGender === 'male' && candidateGender === 'female') return true;
-        if (myGender === 'female' && candidateGender === 'male') return true;
-        if (myGender !== candidateGender) return true;
-      }
-
-      // Synonyms for female
-      const femaleSynonyms = ['f', 'female', 'woman', 'women', 'girl'];
-      if (candidateGender === 'female' && prefs.some((p) => femaleSynonyms.includes(p))) {
-        return true;
-      }
-
-      // Synonyms for male
-      const maleSynonyms = ['m', 'male', 'man', 'men', 'boy', 'guy'];
-      if (candidateGender === 'male' && prefs.some((p) => maleSynonyms.includes(p))) {
-        return true;
-      }
-
-      return false;
-    };
-
-    const aWantsBGender = checkWantsGender(ticketA, ticketB);
-    const bWantsAGender = checkWantsGender(ticketB, ticketA);
-
-    if (!aWantsBGender || !bWantsAGender) {
-      return { score: 0, isEligible: false, sharedInterests: [], reasons: ['GENDER_PREFERENCE_MISMATCH'] };
-    }
+    // 4. Gender is profile metadata only; every eligible user can match with anyone.
 
     // 5. Language compatibility (at least one shared language if both configured)
     const langsA = (Array.isArray(ticketA.languages) ? ticketA.languages : []).filter((l) => typeof l === 'string').map((l) => l.toLowerCase().trim());

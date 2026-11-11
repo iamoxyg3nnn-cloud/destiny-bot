@@ -630,9 +630,14 @@ export class MessageCommandHandler {
       return true;
     }
 
-    // Prompt user with buttons to choose match preference / mood!
-    const container = embedService.createMatchPreferenceContainer(user);
-    await safeV2Reply(message, container);
+    const queueRes = await matchmakingManager.joinQueue(user, message.guildId || undefined);
+    if (!queueRes.success) {
+      await message.reply({ content: `⚠️ ${queueRes.message}` }).catch(() => {});
+      return true;
+    }
+
+    matchmakingManager.processMatchCycle().catch(() => {});
+    await safeV2Reply(message, embedService.createSearchingContainer(user));
     return true;
   }
 

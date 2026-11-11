@@ -198,21 +198,16 @@ describe('Discord Components V2 ContainerBuilder Tests', () => {
     expect(ids).toContain('destiny_btn_cancel_mood');
   });
 
-  it('should generate Match Preference container with Mood buttons nested inside', () => {
-    const container = embedService.createMatchPreferenceContainer(mockUser);
+  it('should generate a direct-to-queue searching container without gender choices', () => {
+    const container = embedService.createSearchingContainer(mockUser);
     const json: any = container.toJSON();
 
     expect(json.type).toBe(17);
     const actionRows = json.components.filter((c: any) => c.type === 1);
-    expect(actionRows.length).toBe(2);
-
-    const row1Buttons = actionRows[0].components.map((b: any) => b.custom_id);
-    expect(row1Buttons).toContain('match_pref_female');
-    expect(row1Buttons).toContain('match_pref_male');
-    expect(row1Buttons).toContain('match_pref_any');
-
-    const row2Buttons = actionRows[1].components.map((b: any) => b.custom_id);
-    expect(row2Buttons).toContain('destiny_btn_cancel_mood');
+    expect(actionRows.length).toBe(1);
+    const ids = actionRows[0].components.map((b: any) => b.custom_id);
+    expect(ids).toContain('destiny_btn_cancel_queue');
+    expect(JSON.stringify(json)).not.toMatch(/match_pref_(male|female|any)|Talk with (Girls|Boys)/);
   });
 
   it('should generate Low Reputation Restricted container with eclairs link and check button', () => {
