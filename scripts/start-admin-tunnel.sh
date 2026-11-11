@@ -67,7 +67,7 @@ if [ -z "$CLOUDFLARED_BIN" ]; then
   curl -fsSL "$URL" -o "$CLOUDFLARED_BIN"
   chmod +x "$CLOUDFLARED_BIN"
 fi
-echo "▸ cloudflared: $("$CLOUDFLARED_BIN" --version 2>&1 | head -n1)"
+echo "▸ cloudflared: $(" $CLOUDFLARED_BIN" --version 2>&1 | head -n1)"
 
 if [ ! -d "$ROOT/dashboard/node_modules" ]; then
   echo "▸ installing dashboard dependencies"
@@ -128,22 +128,44 @@ wait_for_http() {
   return 1
 }
 
-# The dashboard root is protected. With no browser session cookie it MUST
-# redirect to /login; a 500 here is the exact failure reported by the user.
+# The root page is protected and must redirect to /login. Next.js emits an
+# absolute Location for middleware redirects; accept it only when it resolves
+# to /login on this same origin. Localhost and 127.0.0.1 are equivalent for
+# the local probe when their protocol and port match.
 check_root_route() {
-  local base="$1" name="$2" headers code location
+  local base="$1" name="$2" headers code location valid_location
   headers="$(mktemp)"
   code="$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' \
     --connect-timeout 5 --max-time 12 "${base%/}/" 2>/dev/null || true)"
   location="$(awk 'tolower($1) == "location:" { sub(/^[^:]*:[[:space:]]*/, ""); gsub("\r", ""); print }' "$headers" | tail -n1)"
   rm -f "$headers"
 
-  if { [ "$code" = "307" ] || [ "$code" = "308" ]; } && [ "$location" = "/login" ]; then
+  valid_location=""
+  if [ -n "$location" ]; then
+    valid_location="$(node -e '
+      const [baseValue, location] = process.argv.slice(1);
+      try {
+        const base = new URL(baseValue);
+        const target = new URL(location, base);
+        const loopback = (host) => host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+        const sameOrigin = target.origin === base.origin ||
+          (target.protocol === base.protocol && target.port === base.port &&
+           loopback(base.hostname) && loopback(target.hostname));
+        if (!sameOrigin || target.pathname !== "/login" || target.search || target.hash ||
+            target.username || target.password) process.exit(1);
+        process.stdout.write(target.href);
+      } catch {
+        process.exit(1);
+      }
+    ' "${base%/}/" "$location" 2>/dev/null || true)"
+  fi
+
+  if { [ "$code" = "307" ] || [ "$code" = "308" ]; } && [ -n "$valid_location" ]; then
     echo "✓ $name root route redirects to /login (HTTP $code)"
     return 0
   fi
 
-  echo "::error::$name root route failed: expected HTTP 307/308 Location: /login; got HTTP ${code:-no response}, Location: ${location:-<none>}" >&2
+  echo "::error::$name root route failed: expected HTTP 307/308 redirect to same-origin /login; got HTTP ${code:-no response}, Location: ${location:-<none>}" >&2
   return 1
 }
 
