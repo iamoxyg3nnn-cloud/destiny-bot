@@ -1,4 +1,3 @@
-import { destinyEmojiText, destinyEmojiComponent } from '../emoji-manager.js';
 import { 
   SlashCommandBuilder, 
   ChatInputCommandInteraction, 
@@ -320,7 +319,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
     const embed = new EmbedBuilder()
       .setColor(COLORS.DESTINY_PURPLE)
-      .setTitle(destinyEmojiText('🔍 Searching for your anonymous match...'))
+      .setTitle('🔍 Searching for your anonymous match...')
       .setDescription(
         `You are now in the Destiny matchmaking queue!\n` +
         `• **Age Criteria**: 18+\n` +
@@ -357,7 +356,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
               embeds: [
                 new EmbedBuilder()
                   .setColor(COLORS.DARK)
-                  .setTitle(destinyEmojiText('🚪 Chat Session Ended'))
+                  .setTitle('🚪 Chat Session Ended')
                   .setDescription('Your anonymous partner has left the chat session. Your real identity remained hidden.'),
               ],
             }))
@@ -365,14 +364,14 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         }
       }
 
-      await respond({ content: destinyEmojiText('🚪 You have cleanly ended the anonymous chat session. Your real identity remained hidden.') });
+      await respond({ content: '🚪 You have cleanly ended the anonymous chat session. Your real identity remained hidden.' });
       return;
     }
 
     const wasQueued = await matchmakingManager.isQueued(user.id);
     if (wasQueued) {
       await matchmakingManager.leaveQueue(user.id);
-      await respond({ content: destinyEmojiText('✅ You have been removed from the matchmaking queue.') });
+      await respond({ content: '✅ You have been removed from the matchmaking queue.' });
       return;
     }
 
@@ -385,7 +384,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     const balance = await walletService.getBalance(user.id);
     const embed = new EmbedBuilder()
       .setColor(COLORS.GOLD)
-      .setTitle(destinyEmojiText('🪙 Destiny Coins (DC) Vault'))
+      .setTitle('🪙 Destiny Coins (DC) Vault')
       .setDescription(`Your current available balance: **${balance.toLocaleString()} DC**`)
       .addFields(
         { name: '💡 Earn More', value: 'Use `/daily` for streak rewards and keep conversations going to unlock bonuses!', inline: false },
@@ -401,7 +400,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     const result = await streakService.claimDaily(user.id);
     const embed = new EmbedBuilder()
       .setColor(result.success ? COLORS.SUCCESS : COLORS.GOLD)
-      .setTitle(result.success ? destinyEmojiText('🔥 Daily Reward Claimed!') : '⏳ Daily Cooldown Active')
+      .setTitle(result.success ? '🔥 Daily Reward Claimed!' : '⏳ Daily Cooldown Active')
       .setDescription(result.message)
       .addFields(
         { name: 'Current Balance', value: `**${result.newBalance.toLocaleString()} DC**`, inline: true },
@@ -415,7 +414,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
   // 6. REVEAL
   if (commandName === 'reveal') {
     if (!user.activeRoomId) {
-      await respond({ content: destinyEmojiText('❌ You must be in an active chat room to request a profile reveal.'), ephemeral: true });
+      await respond({ content: '❌ You must be in an active chat room to request a profile reveal.', ephemeral: true });
       return;
     }
 
@@ -435,7 +434,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
 
     await respond({
-      content: destinyEmojiText('🔒 **Mutual Profile Reveal**: Select the fields you are willing to exchange. A field is **only** revealed if BOTH of you select it!'),
+      content: '🔒 **Mutual Profile Reveal**: Select the fields you are willing to exchange. A field is **only** revealed if BOTH of you select it!',
       components: [row],
       ephemeral: true,
     });
@@ -468,7 +467,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     }
 
     if (!targetUserId) {
-      await respond({ content: destinyEmojiText('❌ Could not find a user to block. Provide a Destiny ID or use during a room session.'), ephemeral: true });
+      await respond({ content: '❌ Could not find a user to block. Provide a Destiny ID or use during a room session.', ephemeral: true });
       return;
     }
 
@@ -501,7 +500,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
     const embed = new EmbedBuilder()
       .setColor(COLORS.PRIMARY)
-      .setTitle(destinyEmojiText('⚙️ Destiny Notification & Privacy Settings'))
+      .setTitle('⚙️ Destiny Notification & Privacy Settings')
       .setDescription(
         `• **7:30 PM IST Daily Reminder**: ${reminder !== null ? (reminder ? '✅ Enabled' : '❌ Disabled') : '✅ Enabled'}\n` +
         `• **Configured Timezone**: \`${tz || 'Asia/Kolkata'}\`\n` +
@@ -566,7 +565,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     if (sub === 'portal') {
       const channel = interaction.options.getChannel('channel', true) as any;
       if (!channel.isTextBased()) {
-        await respond({ content: destinyEmojiText('⚠️ The designated portal channel must be a text channel.'), ephemeral: true });
+        await respond({ content: '⚠️ The designated portal channel must be a text channel.', ephemeral: true });
         return;
       }
 
@@ -619,7 +618,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         .addFields(
           { name: 'Matchmaking Portal Channel', value: settings?.matchChannelId ? `<#${settings.matchChannelId}>` : '`Not configured` (use `/setup portal`)', inline: false },
           { name: 'Staff Mod-Log Channel', value: settings?.modLogChannelId ? `<#${settings.modLogChannelId}>` : '`Not configured` (use `/setup modlog`)', inline: false },
-          { name: 'Cross-Server Matchmaking', value: settings?.crossServerEnabled !== false ? destinyEmojiText('✅ Enabled') : destinyEmojiText('❌ Disabled'), inline: true },
+          { name: 'Cross-Server Matchmaking', value: settings?.crossServerEnabled !== false ? '✅ Enabled' : '❌ Disabled', inline: true },
           { name: 'Minimum Age Requirement', value: `${settings?.minAgeLimit || 18}+`, inline: true }
         )
         .setFooter({ text: 'Destiny Administration Wizard' });
@@ -701,7 +700,7 @@ async function handleProfileCommand(interaction: ChatInputCommandInteraction): P
     if (!isProfileComplete(user)) {
       await interaction.editReply({
         content:
-          destinyEmojiText('⚠️ Your profile is still incomplete. Age (18+) and gender are required before you can match.\n') +
+          '⚠️ Your profile is still incomplete. Age (18+) and gender are required before you can match.\n' +
           'Use `/profile` again to finish setup — it only takes a few seconds.',
       }).catch(() => {});
       return;
@@ -717,7 +716,7 @@ async function handleProfileCommand(interaction: ChatInputCommandInteraction): P
   } catch (err: any) {
     console.error('[Bot] handleProfileCommand error:', err?.message || err);
     await interaction.editReply({
-      content: destinyEmojiText('⚠️ Something went wrong while loading your profile. Please try again.'),
+      content: '⚠️ Something went wrong while loading your profile. Please try again.',
     }).catch(() => {});
   }
 }

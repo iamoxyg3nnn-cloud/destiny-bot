@@ -1,4 +1,3 @@
-import { destinyEmojiText, destinyEmojiComponent } from './emoji-manager.js';
 import { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder } from 'discord.js';
 import { embedService, COLORS } from './embeds/index.js';
 import { ProfileField, RoomSession, UserProfile } from '../core/types.js';

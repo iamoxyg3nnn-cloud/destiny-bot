@@ -1,4 +1,3 @@
-import { destinyEmojiText, destinyEmojiComponent } from '../emoji-manager.js';
 import { 
   Interaction, 
   ButtonInteraction, 
@@ -200,12 +199,12 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         });
 
         await (interaction as any).reply({
-          content: destinyEmojiText('🔒 **Destiny operates 100% privately in DMs.** I have delivered your Destiny console directly to your Direct Messages!'),
+          content: '🔒 **Destiny operates 100% privately in DMs.** I have delivered your Destiny console directly to your Direct Messages!',
           flags: [MessageFlags.Ephemeral]
         });
       } catch {
         await (interaction as any).reply({
-          content: destinyEmojiText('⚠️ Please enable **Allow direct messages from server members** in your Discord Privacy Settings so Destiny can chat with you privately.'),
+          content: '⚠️ Please enable **Allow direct messages from server members** in your Discord Privacy Settings so Destiny can chat with you privately.',
           flags: [MessageFlags.Ephemeral]
         });
       }
@@ -242,7 +241,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       const roomId = customId.replace('reveal_fields_', '');
       const user = await db.getUserByDiscordId(discordUser.id);
       if (!user) {
-        await safeEditReply(select, { content: destinyEmojiText('❌ User profile not found.') });
+        await safeEditReply(select, { content: '❌ User profile not found.' });
         return;
       }
 
@@ -312,7 +311,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
 
       const user = await db.getUserByDiscordId(discordUser.id);
       if (!user) {
-        await safeEditReply(select, { content: destinyEmojiText('❌ User profile not found.') });
+        await safeEditReply(select, { content: '❌ User profile not found.' });
         return;
       }
 
@@ -339,7 +338,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
 
       const user = await db.getUserByDiscordId(discordUser.id);
       if (!user) {
-        await safeEditReply(select, { content: destinyEmojiText('❌ User profile not found.') });
+        await safeEditReply(select, { content: '❌ User profile not found.' });
         return;
       }
 
@@ -402,13 +401,13 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         const { attachment } = await buildProfileCard(user, discordUser, btn.member);
 
         await btn.editReply({
-          content: destinyEmojiText('📸 **Your Destiny profile card** — tap **Edit Profile** to make changes.'),
+          content: '📸 **Your Destiny profile card** — tap **Edit Profile** to make changes.',
           files: [attachment],
           components: [createProfileActionRow()],
         });
       } catch (err: any) {
         console.error('[Bot] Profile card render error:', err?.message || err);
-        await safeEditReply(btn, { content: destinyEmojiText('⚠️ Could not render your card right now. Please try again.') });
+        await safeEditReply(btn, { content: '⚠️ Could not render your card right now. Please try again.' });
       }
       return;
     }
@@ -559,7 +558,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         .setAccentColor(COLORS.PRIMARY)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            destinyEmojiText('# ✅ Queue Cancelled\n\nYou have safely left the matchmaking queue.')
+            '# ✅ Queue Cancelled\n\nYou have safely left the matchmaking queue.'
           )
         )
         .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -847,7 +846,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
             .setAccentColor(COLORS.DARK)
             .addTextDisplayComponents(
               new TextDisplayBuilder().setContent(
-                destinyEmojiText('# 🚪 Session Left\n\nYou have safely left the anonymous chat session.')
+                '# 🚪 Session Left\n\nYou have safely left the anonymous chat session.'
               )
             )
             .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -903,13 +902,13 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       }
 
       if (!user || !activeRoomId) {
-        await safeEditReply(btn, { content: destinyEmojiText('❌ You are not in an active room.') });
+        await safeEditReply(btn, { content: '❌ You are not in an active room.' });
         return;
       }
 
       const room = await db.getRoomById(activeRoomId);
       if (!room || room.status !== 'active') {
-        await safeEditReply(btn, { content: destinyEmojiText('❌ Your chat room is no longer active.') });
+        await safeEditReply(btn, { content: '❌ Your chat room is no longer active.' });
         return;
       }
 
@@ -977,13 +976,13 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       }
 
       if (!user || !activeRoomId) {
-        await safeEditReply(btn, { content: destinyEmojiText('❌ You are not in an active room.') });
+        await safeEditReply(btn, { content: '❌ You are not in an active room.' });
         return;
       }
 
       const room = await db.getRoomById(activeRoomId);
       if (!room || room.status !== 'active') {
-        await safeEditReply(btn, { content: destinyEmojiText('❌ Your chat room is no longer active.') });
+        await safeEditReply(btn, { content: '❌ Your chat room is no longer active.' });
         return;
       }
 
@@ -1062,7 +1061,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
 
       const user = await db.getUserByDiscordId(discordUser.id, true);
       if (!user) {
-        await safeEditReply(btn, { content: destinyEmojiText('❌ Profile not found.') });
+        await safeEditReply(btn, { content: '❌ Profile not found.' });
         return;
       }
 
@@ -1130,7 +1129,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
 
       const user = await db.getUserByDiscordId(discordUser.id, true);
       if (!user) {
-        await safeEditReply(btn, { content: destinyEmojiText('❌ Profile not found.') });
+        await safeEditReply(btn, { content: '❌ Profile not found.' });
         return;
       }
 
@@ -1159,7 +1158,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
               .setAccentColor(COLORS.DARK)
               .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                  destinyEmojiText('# 🚪 Chat Session Ended\n\nThis anonymous room session has been terminated.\nClick **Start Match** to connect with someone new!')
+                  '# 🚪 Chat Session Ended\n\nThis anonymous room session has been terminated.\nClick **Start Match** to connect with someone new!'
                 )
               )
               .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -1401,7 +1400,7 @@ async function handleVerifyModalSubmit(interaction: ModalSubmitInteraction): Pro
 
   const user = await db.getUserByDiscordId(interaction.user.id, true);
   if (!user) {
-    await safeEditReply(interaction, { content: destinyEmojiText('❌ Profile not found.') });
+    await safeEditReply(interaction, { content: '❌ Profile not found.' });
     return;
   }
 
@@ -1502,7 +1501,7 @@ async function handleAdminVerifyAction(btn: ButtonInteraction, approve: boolean,
                   member?.roles?.cache?.some((r: any) => /mod|admin|staff|owner/i.test(r.name));
 
   if (!isStaff && btn.user.id !== '971251685773152326') {
-    await safeEditReply(btn, { content: destinyEmojiText('⛔ Only Destiny administrators and staff can review verifications.') });
+    await safeEditReply(btn, { content: '⛔ Only Destiny administrators and staff can review verifications.' });
     return;
   }
 
@@ -1577,7 +1576,7 @@ async function handleSetCurrentAdminChannel(btn: ButtonInteraction): Promise<voi
     const errorContainer = new ContainerBuilder()
       .setAccentColor(COLORS.DANGER)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(destinyEmojiText('⚠️ Only server administrators with **Manage Server** or **Administrator** permissions can configure Destiny.'))
+        new TextDisplayBuilder().setContent('⚠️ Only server administrators with **Manage Server** or **Administrator** permissions can configure Destiny.')
       );
     await safeEditReply(btn, { components: [errorContainer] });
     return;
@@ -1598,7 +1597,7 @@ async function handleSelectAdminChannel(select: ChannelSelectMenuInteraction): P
     const errorContainer = new ContainerBuilder()
       .setAccentColor(COLORS.DANGER)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(destinyEmojiText('⚠️ Only server administrators with **Manage Server** or **Administrator** permissions can configure Destiny.'))
+        new TextDisplayBuilder().setContent('⚠️ Only server administrators with **Manage Server** or **Administrator** permissions can configure Destiny.')
       );
     await safeEditReply(select, { components: [errorContainer] });
     return;
@@ -1622,7 +1621,7 @@ async function handlePostLobbyCard(btn: ButtonInteraction): Promise<void> {
     const errorContainer = new ContainerBuilder()
       .setAccentColor(COLORS.DANGER)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(destinyEmojiText('⚠️ Only server administrators can post public lobby cards.'))
+        new TextDisplayBuilder().setContent('⚠️ Only server administrators can post public lobby cards.')
       );
     await safeEditReply(btn, { components: [errorContainer] });
     return;
@@ -1637,7 +1636,7 @@ async function handlePostLobbyCard(btn: ButtonInteraction): Promise<void> {
   const notice = new ContainerBuilder()
     .setAccentColor(COLORS.SUCCESS)
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(destinyEmojiText('✅ **Public Matchmaking Lobby posted successfully in this channel!**'))
+      new TextDisplayBuilder().setContent('✅ **Public Matchmaking Lobby posted successfully in this channel!**')
     );
   await safeEditReply(btn, { components: [notice] });
 }
@@ -1652,7 +1651,7 @@ async function handlePostVerifyHub(btn: ButtonInteraction): Promise<void> {
     const errorContainer = new ContainerBuilder()
       .setAccentColor(COLORS.DANGER)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(destinyEmojiText('⚠️ Only server administrators can post verification hubs.'))
+        new TextDisplayBuilder().setContent('⚠️ Only server administrators can post verification hubs.')
       );
     await safeEditReply(btn, { components: [errorContainer] });
     return;
@@ -1667,7 +1666,7 @@ async function handlePostVerifyHub(btn: ButtonInteraction): Promise<void> {
   const notice = new ContainerBuilder()
     .setAccentColor(COLORS.SUCCESS)
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(destinyEmojiText('✅ **Gender Verification Hub posted successfully in this channel!**'))
+      new TextDisplayBuilder().setContent('✅ **Gender Verification Hub posted successfully in this channel!**')
     );
   await safeEditReply(btn, { components: [notice] });
 }
@@ -1693,7 +1692,7 @@ async function handleResetSetup(btn: ButtonInteraction): Promise<void> {
     const errorContainer = new ContainerBuilder()
       .setAccentColor(COLORS.DANGER)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(destinyEmojiText('⚠️ Only server administrators can reset channel settings.'))
+        new TextDisplayBuilder().setContent('⚠️ Only server administrators can reset channel settings.')
       );
     await safeEditReply(btn, { components: [errorContainer] });
     return;

@@ -1,4 +1,3 @@
-import { destinyEmojiText, destinyEmojiComponent } from '../emoji-manager.js';
 import { 
   Client, 
   Message, 
@@ -123,7 +122,7 @@ export class MessageCommandHandler {
                 .setAccentColor(COLORS.DARK)
                 .addTextDisplayComponents(
                   new TextDisplayBuilder().setContent(
-                    destinyEmojiText('# 🚪 Chat Session Ended\n\nYour anonymous partner has left the chat session.\nClick below to find a new match or report if inappropriate behavior occurred.')
+                    '# 🚪 Chat Session Ended\n\nYour anonymous partner has left the chat session.\nClick below to find a new match or report if inappropriate behavior occurred.'
                   )
                 )
                 .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -132,12 +131,12 @@ export class MessageCommandHandler {
                     new ButtonBuilder()
                       .setCustomId('destiny_btn_start')
                       .setLabel('Find New Match')
-                      .setEmoji(destinyEmojiComponent('✨'))
+                      .setEmoji('✨')
                       .setStyle(ButtonStyle.Success),
                     new ButtonBuilder()
                       .setCustomId(`btn_report_room_${activeRoom.id}`)
                       .setLabel('Report User')
-                      .setEmoji(destinyEmojiComponent('🚨'))
+                      .setEmoji('🚨')
                       .setStyle(ButtonStyle.Danger)
                   )
                 );
@@ -149,7 +148,7 @@ export class MessageCommandHandler {
             .setAccentColor(COLORS.DARK)
             .addTextDisplayComponents(
               new TextDisplayBuilder().setContent(
-                destinyEmojiText('# 🚪 Session Left\n\nYou have safely left the anonymous chat session.')
+                '# 🚪 Session Left\n\nYou have safely left the anonymous chat session.'
               )
             )
             .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -158,12 +157,12 @@ export class MessageCommandHandler {
                 new ButtonBuilder()
                   .setCustomId('destiny_btn_start')
                   .setLabel('Find New Match')
-                  .setEmoji(destinyEmojiComponent('✨'))
+                  .setEmoji('✨')
                   .setStyle(ButtonStyle.Success),
                 new ButtonBuilder()
                   .setCustomId(`btn_report_room_${activeRoom.id}`)
                   .setLabel('Report User')
-                  .setEmoji(destinyEmojiComponent('🚨'))
+                  .setEmoji('🚨')
                   .setStyle(ButtonStyle.Danger)
               )
             );
@@ -396,7 +395,7 @@ export class MessageCommandHandler {
             new ButtonBuilder()
               .setCustomId('destiny_btn_start')
               .setLabel('Start Match')
-              .setEmoji(destinyEmojiComponent('✨'))
+              .setEmoji('✨')
               .setStyle(ButtonStyle.Success)
           )
         );
@@ -452,7 +451,7 @@ export class MessageCommandHandler {
         const warningContainer = new ContainerBuilder()
           .setAccentColor(COLORS.DANGER)
           .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(destinyEmojiText('⚠️ Only server administrators with **Manage Server** or **Administrator** permissions can configure Destiny.'))
+            new TextDisplayBuilder().setContent('⚠️ Only server administrators with **Manage Server** or **Administrator** permissions can configure Destiny.')
           );
         const reply = await message.reply({
           components: [warningContainer],
