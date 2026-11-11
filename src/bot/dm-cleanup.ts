@@ -1,22 +1,69 @@
 import { Message, MessageCreateOptions, User } from 'discord.js';
+import { lockManager } from '../redis/locks.js';
 import { redis } from '../redis/client.js';
 
 const PANEL_KEY_PREFIX = 'dm:active-panel:';
-const PANEL_TTL_SECONDS = 60 * 60 * 24 * 14;
+const PANEL_LOCK_PREFIX = 'lock:dm-active-panel:';
+const PANEL_LOCK_TTL_MS = 30_000;
 const panelQueues = new Map<string, Promise<void>>();
+// Best-effort process-local journal for panels sent while Redis is unavailable.
+const pendingPanelIds = new Map<string, Set<string>>();
+
+function isMessageId(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{17,20}$/.test(value);
+}
+
+/** Parse the current JSON-array format and the legacy single-ID format. */
+export function parsePanelIds(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (Array.isArray(parsed)) return [...new Set(parsed.filter(isMessageId))];
+  } catch {
+    // Migrate the previous single raw message-ID format.
+  }
+  return isMessageId(value) ? [value] : [];
+}
+
+function uniqueIds(ids: string[]): string[] {
+  return [...new Set(ids.filter(isMessageId))];
+}
+
+function rememberPending(userId: string, ids: string[]): void {
+  if (!ids.length) return;
+  const pending = pendingPanelIds.get(userId) ?? new Set<string>();
+  for (const id of ids) pending.add(id);
+  pendingPanelIds.set(userId, pending);
+}
+
+function takePending(userId: string): string[] {
+  return [...(pendingPanelIds.get(userId) ?? [])];
+}
+
+function isAlreadyGone(error: any): boolean {
+  const code = Number(error?.code ?? error?.rawError?.code);
+  // Unknown Message (10008) and Unknown Channel (10003) are already-clean states.
+  return code === 10008 || code === 10003;
+}
+
+async function sendWithoutCleanup(user: User, payload: MessageCreateOptions): Promise<Message> {
+  const channel = await user.createDM();
+  const sent = await channel.send(payload);
+  rememberPending(user.id, [sent.id]);
+  return sent;
+}
 
 /**
  * Send a replaceable Destiny UI panel in a user's DM.
  *
- * Only the last message sent through this helper is eligible for cleanup.
- * Ordinary anonymous chat relays and user messages are never scanned or deleted.
+ * A Redis distributed lock coordinates shards/processes; the local queue avoids
+ * unnecessary lock contention within one process. Only explicitly tracked message
+ * IDs are considered for deletion. Ordinary relay messages are never scanned.
  */
 export async function sendCleanDmPanel(
   user: User,
   payload: MessageCreateOptions
 ): Promise<Message> {
-  // Serialize sends for the same user within this process so two fast interactions
-  // cannot both read the same old ID and leave two newly-created panels behind.
   const previousTask = panelQueues.get(user.id);
   let release!: () => void;
   const currentTask = new Promise<void>((resolve) => { release = resolve; });
@@ -24,41 +71,96 @@ export async function sendCleanDmPanel(
   await previousTask?.catch(() => {});
 
   try {
-    const channel = await user.createDM();
-    const key = `${PANEL_KEY_PREFIX}${user.id}`;
-
-    let previousMessageId: string | null = null;
+    let enteredLock = false;
     try {
-      previousMessageId = await redis.get(key);
+      return await lockManager.withLock(
+        `${PANEL_LOCK_PREFIX}${user.id}`,
+        async () => {
+          enteredLock = true;
+          const channel = await user.createDM();
+          const key = `${PANEL_KEY_PREFIX}${user.id}`;
+
+          let stored: string | null;
+          try {
+            stored = await redis.get(key);
+          } catch (error: any) {
+            console.warn('[DM cleanup] Could not read panel references; preserving Redis state:', error?.message || error);
+            const sent = await channel.send(payload);
+            rememberPending(user.id, [sent.id]);
+            return sent;
+          }
+
+          const previousIds = uniqueIds([
+            ...parsePanelIds(stored),
+            ...takePending(user.id),
+          ]);
+
+          // Send first so a failed send never destroys the current panel.
+          const sent = await channel.send(payload);
+          const allTrackedIds = uniqueIds([...previousIds, sent.id]);
+
+          // Write-ahead record: do not delete any previous panel unless Redis has
+          // durably recorded the new ID alongside every old ID.
+          try {
+            const saved = await redis.set(key, JSON.stringify(allTrackedIds));
+            if (!saved) throw new Error('Redis did not confirm saving panel references.');
+            pendingPanelIds.delete(user.id);
+          } catch (error: any) {
+            rememberPending(user.id, [sent.id]);
+            console.warn('[DM cleanup] Could not persist panel before cleanup; leaving old panels intact:', error?.message || error);
+            return sent;
+          }
+
+          const failedIds: string[] = [];
+          const botId = user.client.user?.id;
+
+          for (const messageId of previousIds) {
+            if (messageId === sent.id) continue;
+
+            try {
+              const previous = await channel.messages.fetch(messageId);
+              // Never delete another author's message. If bot identity is not yet
+              // available, retain the ID so a later attempt can safely retry it.
+              if (!botId) {
+                failedIds.push(messageId);
+                continue;
+              }
+              if (previous.author.id !== botId) continue;
+
+              // Delete even if edited and no longer has embeds/components: the ID
+              // came from this helper's trusted tracking list.
+              await previous.delete();
+            } catch (error: any) {
+              if (!isAlreadyGone(error)) {
+                failedIds.push(messageId);
+                console.warn('[DM cleanup] Could not delete tracked panel; will retry:', messageId, error?.message || error);
+              }
+            }
+          }
+
+          // Retain only failed deletions plus the newest visible panel. No TTL or
+          // arbitrary cap: failed references must not silently become untracked.
+          const remainingIds = uniqueIds([...failedIds, sent.id]);
+          try {
+            const saved = await redis.set(key, JSON.stringify(remainingIds));
+            if (!saved) throw new Error('Redis did not confirm saving pruned panel references.');
+          } catch (error: any) {
+            // The write-ahead value remains safe: it contains every old ID and the
+            // new panel, so later calls can prune already-deleted IDs (10008).
+            console.warn('[DM cleanup] Could not save pruned panel references; retaining write-ahead state:', error?.message || error);
+          }
+
+          return sent;
+        },
+        PANEL_LOCK_TTL_MS
+      );
     } catch (error: any) {
-      console.warn('[DM cleanup] Could not read previous panel reference:', error?.message || error);
+      // If the callback started, never send a duplicate panel. Otherwise Redis lock
+      // acquisition failed: preserve UX, skip cleanup, and journal the new ID locally.
+      if (enteredLock) throw error;
+      console.warn('[DM cleanup] Distributed lock unavailable; sending without cleanup:', error?.message || error);
+      return await sendWithoutCleanup(user, payload);
     }
-
-    // Send first so a failed new panel never destroys the user's current panel.
-    const sent = await channel.send(payload);
-
-    if (previousMessageId && previousMessageId !== sent.id) {
-      try {
-        const previous = await channel.messages.fetch(previousMessageId);
-        // Guard against stale/corrupt references: only delete our own rich UI panel.
-        const isBotMessage = Boolean(user.client.user && previous.author.id === user.client.user.id);
-        const isRichPanel = previous.embeds.length > 0 || previous.components.length > 0;
-        if (isBotMessage && isRichPanel) await previous.delete();
-      } catch (error: any) {
-        // Unknown Message (10008) is expected when users or Discord already removed it.
-        if (error?.code !== 10008) {
-          console.warn('[DM cleanup] Could not delete previous panel:', error?.message || error);
-        }
-      }
-    }
-
-    try {
-      await redis.set(key, sent.id, PANEL_TTL_SECONDS);
-    } catch (error: any) {
-      console.warn('[DM cleanup] Could not save current panel reference:', error?.message || error);
-    }
-
-    return sent;
   } finally {
     release();
     if (panelQueues.get(user.id) === currentTask) panelQueues.delete(user.id);
