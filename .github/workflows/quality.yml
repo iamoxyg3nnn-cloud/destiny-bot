@@ -28,6 +28,8 @@ jobs:
           cache: pnpm
       - name: Install root dependencies
         run: pnpm install --frozen-lockfile --prod=false
+      - name: Validate admin tunnel shell script
+        run: bash -n scripts/start-admin-tunnel.sh
       - name: TypeScript build
         run: pnpm run build
       - name: Unit and integration tests
