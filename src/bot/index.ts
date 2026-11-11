@@ -129,7 +129,7 @@ export class DestinyBot {
         if (isPrimaryShard) {
           await removeLegacyEmojiGgAssets(readyClient);
           await this.syncSlashCommands();
-          matchmakingWorker.start();
+          await matchmakingWorker.start();
         }
         initPresence(readyClient);
       } catch (error) {

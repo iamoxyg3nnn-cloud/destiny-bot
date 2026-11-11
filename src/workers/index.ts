@@ -19,7 +19,9 @@ export async function startAllWorkers(options: { includeMatchmaking?: boolean } 
   console.log('⚡ Launching Destiny Worker Ecosystem...');
   try {
     if (options.includeMatchmaking !== false && process.env.DISABLE_MATCHMAKING_WORKER !== 'true') {
-      matchmakingWorker.start();
+      // This returns immediately when the Discord client is not ready. The
+      // primary shard starts it again from its ClientReady handler.
+      await matchmakingWorker.start();
     }
     notificationWorker.start();
     cleanupWorker.start();
