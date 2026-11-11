@@ -1,4 +1,5 @@
 import { Client, Message, MessageFlags, AttachmentBuilder, EmbedBuilder } from 'discord.js';
+import { sendCleanDmPanel } from '../dm-cleanup.js';
 import { db } from '../../database/supabase.js';
 import { redis } from '../../redis/client.js';
 import { sanitizer } from '../../core/sanitizer.js';
@@ -203,8 +204,8 @@ export class MessageRelayService {
           )
           .setFooter({ text: 'Keep chatting to unlock higher tiers & deeper reveals!' });
 
-        await message.author.send({ embeds: [levelUpEmbed] }).catch(() => {});
-        await client.users.fetch(recipientDiscordId).then((u) => u.send({ embeds: [levelUpEmbed] })).catch(() => {});
+        await sendCleanDmPanel(message.author, { embeds: [levelUpEmbed] }).catch(() => {});
+        await client.users.fetch(recipientDiscordId).then((u) => sendCleanDmPanel(u, { embeds: [levelUpEmbed] })).catch(() => {});
       }
     } catch (error) {
       console.error('[Relay] Connection XP update failed:', error);

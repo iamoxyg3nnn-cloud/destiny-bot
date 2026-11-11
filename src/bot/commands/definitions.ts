@@ -26,6 +26,7 @@ import { UserProfile } from '../../core/types.js';
 import { buildProfileCard, createProfileActionRow, isProfileComplete } from '../profile-view.js';
 import { buildProfileModal, normalizeGender, parseList } from '../profile-modal.js';
 import { pickIcebreaker } from '../icebreakers.js';
+import { sendCleanDmPanel } from '../dm-cleanup.js';
 import { handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
 
 export const slashCommands = [
@@ -376,7 +377,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
         if (partnerDiscordId) {
           interaction.client.users.fetch(partnerDiscordId)
-            .then((partner) => partner.send({
+            .then((partner) => sendCleanDmPanel(partner, {
               embeds: [
                 new EmbedBuilder()
                   .setColor(COLORS.DARK)
@@ -562,7 +563,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         const promptContainer = embedService.createIcebreakerContainer(picked, true);
 
         if (partnerUser) {
-          await partnerUser.send({
+          await sendCleanDmPanel(partnerUser, {
             components: [promptContainer],
             flags: [MessageFlags.IsComponentsV2],
           }).catch(() => {});

@@ -21,6 +21,7 @@ import { buildProfileCard, createProfileActionRow, isProfileComplete } from '../
 import { refreshBotPresence } from '../presence-manager.js';
 import { createRevealResultContainer, resolveRevealPair } from '../reveal-view.js';
 import { pickIcebreaker } from '../icebreakers.js';
+import { sendCleanDmPanel } from '../dm-cleanup.js';
 
 /**
  * Safe message reply helper with Components V2:
@@ -34,6 +35,15 @@ async function safeV2Reply(message: Message, container: any, files?: any[]): Pro
   };
   if (files && files.length > 0) {
     payload.files = files;
+  }
+
+  if (!message.guild) {
+    try {
+      return await sendCleanDmPanel(message.author, payload as any);
+    } catch (err: any) {
+      console.error('[Bot] Failed to send clean DM panel:', err?.message || err);
+      return null;
+    }
   }
 
   try {
@@ -147,7 +157,7 @@ export class MessageCommandHandler {
                       .setStyle(ButtonStyle.Danger)
                   )
                 );
-              partner.send({ components: [partnerContainer], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+              sendCleanDmPanel(partner, { components: [partnerContainer], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
             }).catch(() => {});
           }
 
@@ -206,7 +216,7 @@ export class MessageCommandHandler {
             if (partnerDiscordId) {
               const partnerUser = await client.users.fetch(partnerDiscordId).catch(() => null);
               if (partnerUser) {
-                await partnerUser.send({
+                await sendCleanDmPanel(partnerUser, {
                   components: [createRevealResultContainer(mine, consentResult.agreedFields)],
                   flags: [MessageFlags.IsComponentsV2],
                 }).catch(() => {});
@@ -225,7 +235,7 @@ export class MessageCommandHandler {
             const partnerUser = await client.users.fetch(partnerDiscordId).catch(() => null);
             if (partnerUser) {
               const promptContainer = embedService.createRevealPromptPartnerContainer(myAvatar, myPseudonym);
-              await partnerUser.send({
+              await sendCleanDmPanel(partnerUser, {
                 components: [promptContainer],
                 flags: [MessageFlags.IsComponentsV2],
               }).catch(() => {});
@@ -508,14 +518,13 @@ export class MessageCommandHandler {
     // When someone types 'destiny' in any server channel, immediately deliver their Destiny
     // console directly to their private DMs and show a self-deleting notice in the channel.
     try {
-      const dmChannel = await message.author.createDM();
       const user = await db.getUserByDiscordId(message.author.id, true);
       const profileComplete = isProfileComplete(user);
 
       const authorDisplayName = message.author.displayName || message.author.username;
       const menuContainer = embedService.createMainMenuContainer(authorDisplayName, user, profileComplete);
 
-      await dmChannel.send({
+      await sendCleanDmPanel(message.author, {
         components: [menuContainer],
         flags: [MessageFlags.IsComponentsV2]
       });
@@ -676,7 +685,7 @@ export class MessageCommandHandler {
             const partner = await message.client.users.fetch(partnerDiscordId).catch(() => null);
             if (partner) {
               const partnerContainer = embedService.createIcebreakerContainer(prompt, true);
-              await partner.send({
+              await sendCleanDmPanel(partner, {
                 components: [partnerContainer],
                 flags: [MessageFlags.IsComponentsV2],
               }).catch(() => {});

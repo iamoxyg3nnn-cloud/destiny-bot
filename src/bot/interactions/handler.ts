@@ -40,6 +40,7 @@ import { refreshBotPresence } from '../presence-manager.js';
 import { createRevealResultContainer, resolveRevealPair } from '../reveal-view.js';
 import { pickIcebreaker } from '../icebreakers.js';
 import { handleCommand } from '../commands/definitions.js';
+import { sendCleanDmPanel } from '../dm-cleanup.js';
 
 /**
  * Ultra-fast safe defer reply wrapper (<5ms)
@@ -197,7 +198,6 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
 
     if (!isAdminAction) {
       try {
-        const dm = await interaction.user.createDM();
         const user = await db.getUserByDiscordId(interaction.user.id, true);
         const isProfileComplete = Boolean(
           user &&
@@ -209,7 +209,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         const authorDisplayName = interaction.user.displayName || interaction.user.username;
         const menuContainer = embedService.createMainMenuContainer(authorDisplayName, user, isProfileComplete);
 
-        await dm.send({
+        await sendCleanDmPanel(interaction.user, {
           components: [menuContainer],
           flags: [MessageFlags.IsComponentsV2]
         });
@@ -282,7 +282,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
             const partnerUser = await select.client.users.fetch(partnerDiscordId).catch(() => null);
             if (partnerUser) {
               const successForPartner = createRevealResultContainer(mine, res.agreedFields);
-              await partnerUser.send({
+              await sendCleanDmPanel(partnerUser, {
                 components: [successForPartner],
                 flags: [MessageFlags.IsComponentsV2],
               }).catch(() => {});
@@ -308,7 +308,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
               const partnerUser = await select.client.users.fetch(partnerDiscordId).catch(() => null);
               if (partnerUser) {
                 const promptContainer = embedService.createRevealPromptPartnerContainer(myAvatar, myPseudonym);
-                await partnerUser.send({
+                await sendCleanDmPanel(partnerUser, {
                   components: [promptContainer],
                   flags: [MessageFlags.IsComponentsV2],
                 }).catch(() => {});
@@ -637,7 +637,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
           const partnerUser = await btn.client.users.fetch(partnerDiscordId).catch(() => null);
           if (partnerUser) {
             const partnerPrompt = embedService.createIcebreakerContainer(prompt, true);
-            await partnerUser.send({
+            await sendCleanDmPanel(partnerUser, {
               components: [partnerPrompt],
               flags: [MessageFlags.IsComponentsV2],
             }).catch(() => {});
@@ -788,7 +788,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
               };
               if (recapAttachment) sendOptions.files = [recapAttachment];
 
-              partner.send(sendOptions).catch(() => {});
+              sendCleanDmPanel(partner, sendOptions).catch(() => {});
             }).catch(() => {});
           }
 
@@ -882,7 +882,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         if (partnerDiscordId) {
           const partnerUser = await btn.client.users.fetch(partnerDiscordId).catch(() => null);
           if (partnerUser) {
-            await partnerUser.send({
+            await sendCleanDmPanel(partnerUser, {
               components: [createRevealResultContainer(mine, consentResult.agreedFields)],
               flags: [MessageFlags.IsComponentsV2],
             }).catch(() => {});
@@ -903,7 +903,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         const partnerUser = await btn.client.users.fetch(partnerDiscordId).catch(() => null);
         if (partnerUser) {
           const promptContainer = embedService.createRevealPromptPartnerContainer(myAvatar, myPseudonym);
-          await partnerUser.send({
+          await sendCleanDmPanel(partnerUser, {
             components: [promptContainer],
             flags: [MessageFlags.IsComponentsV2],
           }).catch((err) => {
@@ -957,7 +957,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
           const partnerUser = await btn.client.users.fetch(partnerDiscordId).catch(() => null);
           if (partnerUser) {
             const successForRequester = createRevealResultContainer(mine, consentResult.agreedFields);
-            await partnerUser.send({
+            await sendCleanDmPanel(partnerUser, {
               components: [successForRequester],
               flags: [MessageFlags.IsComponentsV2],
             }).catch(() => {});
@@ -994,7 +994,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
           const partnerUser = await btn.client.users.fetch(partnerDiscordId).catch(() => null);
           if (partnerUser) {
             const declinedForRequester = embedService.createRevealDeclinedContainer(true);
-            await partnerUser.send({
+            await sendCleanDmPanel(partnerUser, {
               components: [declinedForRequester],
               flags: [MessageFlags.IsComponentsV2],
             }).catch(() => {});
@@ -1132,7 +1132,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
                     .setStyle(ButtonStyle.Success)
                 )
               );
-            await partner.send({ components: [partnerNotice], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+            await sendCleanDmPanel(partner, { components: [partnerNotice], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
           }
         }
       }

@@ -7,6 +7,7 @@ import { lockManager } from '../../redis/locks.js';
 import { anonymizer } from '../anonymizer.js';
 import { MessageFlags, ContainerBuilder, TextDisplayBuilder } from 'discord.js';
 import { embedService, COLORS } from '../../bot/embeds/index.js';
+import { sendCleanDmPanel } from '../../bot/dm-cleanup.js';
 import { getDiscordClient } from '../../bot/client-registry.js';
 import { refreshBotPresence } from '../../bot/presence-manager.js';
 import fs from 'fs';
@@ -794,13 +795,13 @@ export class MatchmakingManager {
 
     const [deliveryA, deliveryB] = await Promise.allSettled([
       userA
-        ? userA.send({
+        ? sendCleanDmPanel(userA, {
             components: [embedService.createMatchFoundContainer(room, true, iceBreaker, sharedInterests)],
             flags: [MessageFlags.IsComponentsV2],
           })
         : Promise.reject(new Error('Could not fetch Discord user A')),
       userB
-        ? userB.send({
+        ? sendCleanDmPanel(userB, {
             components: [embedService.createMatchFoundContainer(room, false, iceBreaker, sharedInterests)],
             flags: [MessageFlags.IsComponentsV2],
           })
@@ -824,7 +825,7 @@ export class MatchmakingManager {
               '# ⚠️ Partner Unreachable\n\nYour match partner could not be reached through Discord DMs. We have returned you to the top of the queue.'
             )
           );
-        await reachableUser.send({ components: [notice], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+        await sendCleanDmPanel(reachableUser, { components: [notice], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
       }
 
       const ticketsToRestore = sentA ? [ticketA] : sentB ? [ticketB] : [ticketA, ticketB];
