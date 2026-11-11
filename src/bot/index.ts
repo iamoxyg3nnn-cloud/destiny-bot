@@ -5,7 +5,9 @@ import {
   REST, 
   Routes, 
   Events,
-  MessageFlags
+  MessageFlags,
+  AuditLogEvent,
+  PermissionFlagsBits
 } from 'discord.js';
 import { config } from '../config/index.js';
 import { db } from '../database/supabase.js';
@@ -21,6 +23,51 @@ import { slashCommands } from './commands/definitions.js';
 import { matchmakingWorker } from '../workers/matchmaking.worker.js';
 
 let guildSnapshotTimer: NodeJS.Timeout | null = null;
+
+const LEGACY_EMOJI_GUILD_ID = '1555968929023664208';
+const LEGACY_EMOJI_AUDIT_REASON = 'Destiny brand emoji sourced from Emoji.gg entry #';
+
+/**
+ * Removes only emojis created by the retired Emoji.gg installer.
+ * The audit-log reason and bot executor are both checked so existing server
+ * emojis with similar names are never touched.
+ */
+async function removeLegacyEmojiGgAssets(client: Client): Promise<void> {
+  const guild = client.guilds.cache.get(LEGACY_EMOJI_GUILD_ID)
+    || await client.guilds.fetch(LEGACY_EMOJI_GUILD_ID).catch(() => null);
+  if (!guild) {
+    console.warn('[Emoji cleanup] Legacy emoji server is not accessible');
+    return;
+  }
+
+  const me = guild.members.me || await guild.members.fetchMe().catch(() => null);
+  if (!me?.permissions.has(PermissionFlagsBits.ManageGuildExpressions)
+    || !me.permissions.has(PermissionFlagsBits.ViewAuditLog)) {
+    console.warn('[Emoji cleanup] Missing Manage Expressions or View Audit Log; skipping');
+    return;
+  }
+
+  try {
+    await guild.emojis.fetch();
+    const audit = await guild.fetchAuditLogs({ type: AuditLogEvent.EmojiCreate, limit: 100 });
+    let removed = 0;
+
+    for (const entry of audit.entries.values()) {
+      if (entry.executorId !== client.user?.id) continue;
+      if (!entry.reason?.startsWith(LEGACY_EMOJI_AUDIT_REASON)) continue;
+
+      const emoji = entry.targetId ? guild.emojis.cache.get(entry.targetId) : null;
+      if (!emoji) continue;
+
+      await emoji.delete('Remove emojis installed by the retired Emoji.gg integration');
+      removed += 1;
+    }
+
+    console.log(`[Emoji cleanup] Removed ${removed} legacy Emoji.gg asset(s)`);
+  } catch (error: any) {
+    console.warn('[Emoji cleanup] Could not remove legacy Emoji.gg assets:', error?.message || error);
+  }
+}
 
 async function publishGuildSnapshot(client: Client): Promise<void> {
   if (!client.isReady()) return;
@@ -79,6 +126,7 @@ export class DestinyBot {
         }
         const isPrimaryShard = !readyClient.shard || readyClient.shard.ids.includes(0);
         if (isPrimaryShard) {
+          await removeLegacyEmojiGgAssets(readyClient);
           await this.syncSlashCommands();
           matchmakingWorker.start();
         }
