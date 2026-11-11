@@ -43,6 +43,8 @@ while [ $# -gt 0 ]; do
 done
 
 mkdir -p "$(dirname "$TUNNEL_URL_FILE")" "$ROOT/logs"
+# Never allow a URL from a previous runner/session to be reused.
+rm -f "$TUNNEL_URL_FILE"
 
 # ---------------------------------------------------------------------------
 # Load the project-root .env (authoritative). Existing env vars win.
@@ -191,6 +193,41 @@ done
 if [ -z "$TUNNEL_URL" ]; then
   echo "::error::Cloudflare tunnel did not publish a URL" >&2
   tail -30 "$TUNNEL_LOG" >&2 || true
+  exit 1
+fi
+
+# cloudflared can print the hostname before public DNS and the edge route are
+# ready. Do not expose it until the public dashboard is reachable.
+echo "▸ verifying public tunnel DNS and dashboard response"
+PUBLIC_READY=0
+for attempt in $(seq 1 120); do
+  if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
+    echo "::error::cloudflared exited before the public URL became ready" >&2
+    tail -40 "$TUNNEL_LOG" >&2 || true
+    exit 1
+  fi
+
+  HTTP_CODE="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    --connect-timeout 5 --max-time 12 "$TUNNEL_URL/login" 2>/dev/null || true)"
+  case "$HTTP_CODE" in
+    2??|3??)
+      PUBLIC_READY=1
+      echo "✓ public admin page is reachable (HTTP ${HTTP_CODE})"
+      break
+      ;;
+  esac
+
+  if [ "$((attempt % 10))" -eq 0 ]; then
+    echo "  still waiting for public DNS/edge readiness (${attempt}/120)"
+  fi
+  sleep 2
+done
+
+if [ "$PUBLIC_READY" -ne 1 ]; then
+  echo "::error::Cloudflare published $TUNNEL_URL but the public admin page never became reachable" >&2
+  echo "Check DNS resolution, Cloudflare edge connectivity, and dashboard logs." >&2
+  tail -50 "$TUNNEL_LOG" >&2 || true
+  tail -30 "$ROOT/logs/dashboard.log" >&2 || true
   exit 1
 fi
 
