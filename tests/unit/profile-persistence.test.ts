@@ -13,6 +13,29 @@ afterEach(() => {
 });
 
 describe('profile extension persistence', () => {
+  it('preserves independent fields when concurrent partial profile updates occur', async () => {
+    const created = await db.createOrUpdateUser({
+      discordUserId,
+      destinyId: 'PROF02',
+      age: 26,
+      gender: 'female',
+      bio: 'initial bio',
+      interests: ['music'],
+    });
+
+    await Promise.all([
+      db.createOrUpdateUser({ discordUserId, bio: 'updated bio' }),
+      db.createOrUpdateUser({ discordUserId, interests: ['gaming', 'coding'] }),
+    ]);
+
+    const refreshed = await db.getUserByDiscordId(discordUserId, true);
+    expect(refreshed?.id).toBe(created.id);
+    expect(refreshed?.age).toBe(26);
+    expect(refreshed?.gender).toBe('female');
+    expect(refreshed?.bio).toBe('updated bio');
+    expect(refreshed?.interests).toEqual(['gaming', 'coding']);
+  });
+
   it('persists and clears optional profile fields without a stale cache restoring them', async () => {
     const created = await db.createOrUpdateUser({
       discordUserId,

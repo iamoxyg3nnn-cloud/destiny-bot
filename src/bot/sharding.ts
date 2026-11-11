@@ -52,14 +52,14 @@ export class ShardCoordinator {
       });
     });
 
-    this.manager.spawn().catch((err) => {
-      console.error('❌ Failed to spawn shard cluster:', err);
-    });
+    // Await startup so failures reach the entrypoint and fail the container;
+    // do not leave a healthy-looking API process running without Discord shards.
+    await this.manager.spawn();
   }
 
   async getClusterStats() {
     if (!this.manager) {
-      return { totalShards: 1, shardsOnline: 1, guilds: 1, cachedUsers: 1 };
+      return { totalShards: 0, shardsOnline: 0, guilds: 0, cachedUsers: 0 };
     }
 
     try {
@@ -78,7 +78,7 @@ export class ShardCoordinator {
         cachedUsers: totalMembers,
       };
     } catch {
-      return { totalShards: 1, shardsOnline: 1, guilds: 0, cachedUsers: 0 };
+      return { totalShards: Number(this.manager.totalShards || 0), shardsOnline: this.manager.shards.size, guilds: 0, cachedUsers: 0 };
     }
   }
 }

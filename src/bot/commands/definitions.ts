@@ -26,6 +26,7 @@ import { UserProfile } from '../../core/types.js';
 import { buildProfileCard, createProfileActionRow, isProfileComplete } from '../profile-view.js';
 import { buildProfileModal, normalizeGender, parseList } from '../profile-modal.js';
 import { pickIcebreaker } from '../icebreakers.js';
+import { handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
 
 export const slashCommands = [
   // 1. /match
@@ -213,23 +214,73 @@ export const slashCommands = [
 ];
 
 /**
+ * Apply the same fresh moderation gate to slash commands as component
+ * interactions. In particular, do not let /profile bypass the guard just
+ * because it needs to open a modal before acknowledging the interaction.
+ */
+async function ensureSlashCommandAccess(interaction: ChatInputCommandInteraction): Promise<boolean> {
+  const account = await db.getUserByDiscordId(interaction.user.id, true);
+  if (!account || (!account.isBanned && account.reputationScore >= 10)) return true;
+
+  const status = await handleReputationCheck(interaction.client, interaction.user.id);
+  const refreshed = await db.getUserByDiscordId(interaction.user.id, true);
+  if (status.restored || (refreshed && !refreshed.isBanned && refreshed.reputationScore >= 10)) {
+    return true;
+  }
+
+  const isModerationBan = account.isBanned && !isReputationRestriction(account);
+  const restrictedContainer = isModerationBan
+    ? null
+    : embedService.createLowReputationRestrictedContainer();
+
+  if (interaction.deferred || interaction.replied) {
+    // Ephemeral is immutable after defer. Only Components V2 is permitted as
+    // an editable flag; do not attempt to set Ephemeral a second time.
+    if (isModerationBan) {
+      await interaction.editReply({
+        content: 'Your account is currently restricted by Destiny moderation. Please contact the moderators if you believe this is a mistake.',
+      }).catch((error) => console.warn('[Commands] Could not deliver restriction response:', error?.message || error));
+    } else {
+      await interaction.editReply({
+        components: [restrictedContainer!],
+        flags: MessageFlags.IsComponentsV2,
+      }).catch((error) => console.warn('[Commands] Could not deliver restriction response:', error?.message || error));
+    }
+  } else if (isModerationBan) {
+    await interaction.reply({
+      content: 'Your account is currently restricted by Destiny moderation. Please contact the moderators if you believe this is a mistake.',
+      flags: MessageFlags.Ephemeral,
+    }).catch((error) => console.warn('[Commands] Could not deliver restriction response:', error?.message || error));
+  } else {
+    await interaction.reply({
+      components: [restrictedContainer!],
+      flags: new MessageFlagsBitField([MessageFlags.Ephemeral, MessageFlags.IsComponentsV2]).bitfield,
+    }).catch((error) => console.warn('[Commands] Could not deliver restriction response:', error?.message || error));
+  }
+  return false;
+}
+
+/**
  * Main Interaction Handler for all Discord Slash Commands
  */
 export async function handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   const { commandName, user: discordUser } = interaction;
 
-  // `/profile` must be handled before the generic defer so it can open a modal
-  // instantly for new or incomplete profiles.
+  // `/profile` must be handled before the generic defer so it can open a modal.
   if (commandName === 'profile') {
+    if (!(await ensureSlashCommandAccess(interaction))) return;
     await handleProfileCommand(interaction);
     return;
   }
 
-  // Immediately defer reply to avoid Discord 3-second timeout on network DB operations
+  // All other commands acknowledge immediately before DB-backed moderation checks.
   if (!interaction.deferred && !interaction.replied) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
   }
+  if (!(await ensureSlashCommandAccess(interaction))) return;
 
+  // Resolve user account in Supabase
+  // instantly for new or incomplete profiles.
   const respond = async (opts: any): Promise<any> => {
     const payload = { ...opts };
     const ephemeral = payload.ephemeral === true;

@@ -14,7 +14,7 @@ import { db } from '../../database/supabase.js';
 import { redis } from '../../redis/client.js';
 import { revealService } from '../../core/moderation/reveal.js';
 import { matchmakingManager } from '../../core/matchmaking/manager.js';
-import { handleReputationCheck } from '../../core/moderation/reputation.js';
+import { handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
 import { embedService, COLORS } from '../embeds/index.js';
 import { UserProfile } from '../../core/types.js';
 import { buildProfileCard, createProfileActionRow, isProfileComplete } from '../profile-view.js';
@@ -82,9 +82,16 @@ export class MessageCommandHandler {
     if (user && (user.reputationScore < 10 || user.isBanned)) {
       const repStatus = await handleReputationCheck(client, authorId);
       if (repStatus.isRestricted) {
-        // User has < 10 reputation and is NOT in discord.gg/eclairs
-        // Ignore them completely and send ONLY the regain message
-        const container = embedService.createLowReputationRestrictedContainer();
+        const isModerationBan = user.isBanned && !isReputationRestriction(user);
+        const container = isModerationBan
+          ? new ContainerBuilder()
+              .setAccentColor(COLORS.DARK)
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  '# ⛔ Account Restricted\\n\\nYour account is currently restricted by Destiny moderation. Please contact the moderators if you believe this is a mistake.'
+                )
+              )
+          : embedService.createLowReputationRestrictedContainer();
         await safeV2Reply(message, container);
         return true;
       }
@@ -319,11 +326,17 @@ export class MessageCommandHandler {
         return true;
       }
 
-      // Automatically capture voice note as gender verification submission!
+      // Automatically capture voice note as gender verification submission.
+      // Do not tell users/staff that a request was submitted when it was rejected
+      // as incomplete, already pending, or already verified.
       const { verificationService } = await import('../../core/moderation/verification.js');
-      await verificationService.submitVerification(user.id, audioAttachment.url);
+      const submission = await verificationService.submitVerification(user.id, audioAttachment.url);
+      if (!submission.success) {
+        await message.reply({ content: `⚠️ ${submission.message}` }).catch(() => {});
+        return true;
+      }
 
-      const updatedUser = await db.getUserById(user.id);
+      const updatedUser = await db.getUserById(user.id, true);
       const { embed, components } = embedService.createVoiceNoteReceivedEmbed(audioAttachment.url, updatedUser || user);
       
       const filename = audioAttachment.name || (audioAttachment.contentType?.includes('wav') ? 'voice_note.wav' : audioAttachment.contentType?.includes('mp3') ? 'voice_note.mp3' : 'voice_note.ogg');
@@ -497,16 +510,10 @@ export class MessageCommandHandler {
     try {
       const dmChannel = await message.author.createDM();
       const user = await db.getUserByDiscordId(message.author.id, true);
-      const isProfileComplete = Boolean(
-        user &&
-        user.age >= 18 &&
-        user.gender &&
-        user.gender !== 'prefer_not_to_say' &&
-        user.gender.trim().length > 0
-      );
+      const profileComplete = isProfileComplete(user);
 
       const authorDisplayName = message.author.displayName || message.author.username;
-      const menuContainer = embedService.createMainMenuContainer(authorDisplayName, user, isProfileComplete);
+      const menuContainer = embedService.createMainMenuContainer(authorDisplayName, user, profileComplete);
 
       await dmChannel.send({
         components: [menuContainer],
@@ -560,19 +567,13 @@ export class MessageCommandHandler {
    */
   async handleMainMenu(message: Message, existingUser?: UserProfile | null): Promise<boolean> {
     const user = existingUser !== undefined ? existingUser : await db.getUserByDiscordId(message.author.id);
-    const isProfileComplete = Boolean(
-      user &&
-      user.age >= 18 &&
-      user.gender &&
-      user.gender !== 'prefer_not_to_say' &&
-      user.gender.trim().length > 0
-    );
+    const profileComplete = isProfileComplete(user);
 
     const authorDisplayName = (message.channel as any).recipient?.displayName || 
                               message.author.displayName || 
                               message.author.username;
 
-    const container = embedService.createMainMenuContainer(authorDisplayName, user, isProfileComplete);
+    const container = embedService.createMainMenuContainer(authorDisplayName, user, profileComplete);
     await safeV2Reply(message, container);
     return true;
   }
@@ -582,16 +583,10 @@ export class MessageCommandHandler {
    */
   async handleStart(message: Message, existingUser?: UserProfile | null): Promise<boolean> {
     const user = existingUser !== undefined ? existingUser : await db.getUserByDiscordId(message.author.id);
-    const isProfileComplete = Boolean(
-      user &&
-      user.age >= 18 &&
-      user.gender &&
-      user.gender !== 'prefer_not_to_say' &&
-      user.gender.trim().length > 0
-    );
+    const profileComplete = isProfileComplete(user);
 
     // Strict profile enforcement: Must create profile first!
-    if (!user || !isProfileComplete) {
+    if (!user || !profileComplete) {
       const container = embedService.createProfileRequiredContainer();
       await safeV2Reply(message, container);
       return true;

@@ -2,8 +2,7 @@
  * Destiny — Dynamic Twitch Streaming Presence Manager
  *
  * Provides a rotating Discord Streaming activity for the Destiny bot:
- * - Live "in conversation" status while the user is actually chatting
- * - Gapless rotation of curated Destiny community statuses when idle
+ * - Continuous rotation of curated Destiny community statuses
  * - Dynamic {members} and {servers} counts computed in real time
  * - Shard-aware: every shard in the cluster rotates independently and never
  *   displays the same status as another shard at the same time

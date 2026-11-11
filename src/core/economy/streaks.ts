@@ -1,6 +1,5 @@
 import { db } from '../../database/supabase.js';
 import { lockManager } from '../../redis/locks.js';
-import { v4 as uuidv4 } from 'uuid';
 
 export interface DailyClaimResult {
   success: boolean;
@@ -14,78 +13,58 @@ export interface DailyClaimResult {
 export class StreakService {
   async claimDaily(userId: string): Promise<DailyClaimResult> {
     return await lockManager.withLock(`lock:streak:${userId}`, async () => {
-      const user = await db.getUserById(userId);
-      if (!user) {
-        return { success: false, message: 'User not found.', rewardDc: 0, newStreak: 0, newBalance: 0 };
-      }
+      // The database function performs the cooldown check, streak calculation,
+      // balance update and ledger insert in one transaction. Do not calculate
+      // the reward from a cached profile or write the cooldown separately.
+      // Stable key for this user's UTC claim day. If Postgres commits but the
+      // response is lost, the retry resolves to the same ledger transaction.
+      // The database still enforces the rolling 24-hour cooldown across days.
+      const utcDay = new Date().toISOString().slice(0, 10);
+      const referenceId = `daily:${userId}:${utcDay}`;
+      const result = await db.claimDailyReward(userId, referenceId);
 
-      const now = new Date();
-      const lastClaim = user.lastDailyClaim ? new Date(user.lastDailyClaim) : null;
+      if (!result.success) {
+        if (result.error === 'USER_NOT_FOUND') {
+          return {
+            success: false,
+            message: 'User not found.',
+            rewardDc: 0,
+            newStreak: 0,
+            newBalance: 0,
+          };
+        }
 
-      if (lastClaim) {
-        const diffMs = now.getTime() - lastClaim.getTime();
-        const diffHours = diffMs / (1000 * 60 * 60);
-
-        if (diffHours < 24) {
-          const hoursLeft = Math.ceil(24 - diffHours);
-          const nextClaimDate = new Date(lastClaim.getTime() + 24 * 60 * 60 * 1000);
+        if (result.error === 'ALREADY_CLAIMED') {
+          const nextClaimAt = result.nextClaimAt;
+          const remainingMs = nextClaimAt ? Math.max(0, Date.parse(nextClaimAt) - Date.now()) : 0;
+          const hoursLeft = Math.max(1, Math.ceil(remainingMs / (60 * 60 * 1000)));
           return {
             success: false,
             message: `You already claimed your daily reward! Please return in ${hoursLeft} hour(s).`,
             rewardDc: 0,
-            newStreak: user.streakCount,
-            newBalance: user.destinyCoins,
-            nextClaimAt: nextClaimDate.toISOString(),
+            newStreak: result.newStreak,
+            newBalance: result.newBalance,
+            nextClaimAt,
           };
         }
 
-        // Streak check: within 48 hours keeps streak alive, >48 hours resets
-        if (diffHours <= 48) {
-          user.streakCount += 1;
-        } else {
-          user.streakCount = 1; // reset streak
-        }
-      } else {
-        user.streakCount = 1;
-      }
-
-      // Base 50 DC + 10 DC per streak day (up to max 150 DC)
-      const baseReward = 50;
-      const streakBonus = Math.min((user.streakCount - 1) * 10, 100);
-      const totalReward = baseReward + streakBonus;
-
-      const dateStr = now.toISOString().split('T')[0];
-      const refId = `daily:${userId}:${dateStr}`;
-
-      const txResult = await db.executeCoinTransaction(
-        userId,
-        totalReward,
-        'daily_reward',
-        refId,
-        { streak: user.streakCount }
-      );
-
-      if (!txResult.success) {
         return {
           success: false,
-          message: txResult.error || 'Failed to claim daily reward.',
+          message: result.error || 'Failed to claim daily reward.',
           rewardDc: 0,
-          newStreak: user.streakCount,
-          newBalance: user.destinyCoins,
+          newStreak: result.newStreak,
+          newBalance: result.newBalance,
+          nextClaimAt: result.nextClaimAt,
         };
       }
 
-      // Update user streak timestamp
-      user.lastDailyClaim = now.toISOString();
-      await db.createOrUpdateUser(user);
-
       return {
         success: true,
-        message: `Claimed daily reward! +${totalReward} Destiny Coins! (${user.streakCount}-day streak 🔥)`,
-        rewardDc: totalReward,
-        newStreak: user.streakCount,
-        newBalance: txResult.newBalance,
-        nextClaimAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        message: `Claimed daily reward! +${result.rewardDc} Destiny Coins! (${result.newStreak}-day streak 🔥)`,
+        rewardDc: result.rewardDc,
+        newStreak: result.newStreak,
+        newBalance: result.newBalance,
+        nextClaimAt: result.nextClaimAt,
       };
     });
   }

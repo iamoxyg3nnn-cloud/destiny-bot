@@ -107,8 +107,10 @@ export class ShopService {
       }
     }
 
-    user.cardTheme = themeKey;
-    await db.createOrUpdateUser(user);
+    await db.createOrUpdateUser({
+      discordUserId: user.discordUserId,
+      cardTheme: themeKey,
+    });
 
     return {
       success: true,
@@ -146,8 +148,10 @@ export class ShopService {
         equippedBadges: user.equippedBadges || [],
       };
     }
-    user.equippedBadges = cleanBadges;
-    await db.createOrUpdateUser(user);
+    await db.createOrUpdateUser({
+      discordUserId: user.discordUserId,
+      equippedBadges: cleanBadges,
+    });
 
     return {
       success: true,

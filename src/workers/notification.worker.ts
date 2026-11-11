@@ -13,10 +13,24 @@ function parseClock(value?: string): number | null {
   return hour * 60 + minute;
 }
 
-function parseCronClock(expression: string): number | null {
-  const fields = expression.trim().split(/\\s+/).filter(Boolean);
-  if (fields.length !== 5 || !/^[0-9]+$/.test(fields[0]) || !/^[0-9]+$/.test(fields[1])) return 19 * 60 + 30;
-  return parseClock(`${fields[1]}:${fields[0]}`) ?? 19 * 60 + 30;
+export function parseCronClock(expression: string): number | null {
+  // This scheduler intentionally supports numeric "minute hour * * *" only.
+  // Unsupported or malformed expressions must not silently become 19:30.
+  const fields = expression.trim().split(/\s+/).filter(Boolean);
+  if (
+    fields.length !== 5 ||
+    !/^[0-9]+$/.test(fields[0]) ||
+    !/^[0-9]+$/.test(fields[1]) ||
+    fields[2] !== '*' ||
+    fields[3] !== '*' ||
+    fields[4] !== '*'
+  ) return null;
+
+  const minute = Number(fields[0]);
+  const hour = Number(fields[1]);
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59 ||
+      !Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+  return hour * 60 + minute;
 }
 
 function getLocalParts(date: Date, timeZone: string): { date: string; minutes: number } | null {
@@ -53,19 +67,29 @@ export class NotificationWorker {
   private worker: Worker | null = null;
   private cronTimer: NodeJS.Timeout | null = null;
   private rest: REST | null = null;
+  private schedulerInFlight = false;
+  private schedulerPromise: Promise<void> | null = null;
 
   start() {
     if (this.cronTimer || this.worker) return;
     console.log('⏰ [Worker] Starting timezone-aware daily notification scheduler...');
     const redisConnection = resolveRedisConnection();
 
-    this.cronTimer = setInterval(async () => {
-      try {
-        await this.dispatchScheduledReminders();
-      } catch (err: any) {
-        console.error('[Worker:Notifications] Error in scheduler cycle:', err?.message || err);
-      }
+    this.cronTimer = setInterval(() => {
+      if (this.schedulerInFlight) return;
+      this.schedulerInFlight = true;
+      const cycle = this.dispatchScheduledReminders()
+        .catch((err: any) => {
+          console.error('[Worker:Notifications] Error in scheduler cycle:', err?.message || err);
+        })
+        .then(() => undefined)
+        .finally(() => {
+          this.schedulerInFlight = false;
+          this.schedulerPromise = null;
+        });
+      this.schedulerPromise = cycle;
     }, 60 * 1000);
+    this.cronTimer.unref?.();
 
     if (redis.isHealthy()) {
       this.worker = new Worker(
@@ -152,11 +176,16 @@ export class NotificationWorker {
     });
   }
 
-  stop() {
+  async stop(): Promise<void> {
     if (this.cronTimer) clearInterval(this.cronTimer);
     this.cronTimer = null;
-    if (this.worker) void this.worker.close();
+
+    const cycle = this.schedulerPromise;
+    if (cycle) await cycle;
+
+    const worker = this.worker;
     this.worker = null;
+    if (worker) await worker.close();
   }
 }
 

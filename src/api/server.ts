@@ -237,15 +237,28 @@ export function createApiServer(): express.Express {
       return res.status(400).json({ error: 'reason must be a string of at most 500 characters.' });
     }
 
-    const user = await db.getUserById(id, true);
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    const result = await matchmakingManager.withTicketLock(id, async () => {
+      const user = await db.getUserById(id, true);
+      if (!user) return { notFound: true as const };
 
-    user.isBanned = banned;
-    user.banReason = banned ? (reason?.trim() || 'Admin moderation action') : '';
-    await db.createOrUpdateUser(user);
+      // Partial update avoids overwriting reputation/profile fields from a
+      // stale in-memory snapshot. The ticket lock serializes this with pairing.
+      const updatedUser = await db.createOrUpdateUser({
+        discordUserId: user.discordUserId,
+        isBanned: banned,
+        banReason: banned ? (reason?.trim() || 'Admin moderation action') : '',
+      });
 
+      if (banned) {
+        await matchmakingManager.removeQueueTicketUnderLock(id);
+        if (user.activeRoomId) await db.endRoom(user.activeRoomId, 'moderated');
+      }
+      return { notFound: false as const, user: updatedUser };
+    });
+
+    if (result.notFound) return res.status(404).json({ error: 'User not found' });
     await db.logAdminAction('admin_web', banned ? 'BAN_USER' : 'UNBAN_USER', 'USER', id, { reason });
-    res.json({ success: true, user });
+    res.json({ success: true, user: result.user });
   });
 
   app.post('/api/users/:id/adjust-coins', async (req: Request, res: Response) => {
@@ -315,23 +328,34 @@ export function createApiServer(): express.Express {
       return res.status(400).json({ error: 'notes must be a string of at most 1000 characters.' });
     }
 
-    const report = await db.getReportById(id);
-    if (!report) return res.status(404).json({ error: 'Report not found' });
+    const initialReport = await db.getReportById(id);
+    if (!initialReport) return res.status(404).json({ error: 'Report not found' });
 
-    const resolved = await db.resolveReport(id, action, notes, 'admin_web');
-    if (!resolved) return res.status(409).json({ error: 'Report could not be resolved.' });
-
-    if (action === 'perma_ban') {
-      const reportedUser = await db.getUserById(report.reportedId, true);
-      if (reportedUser) {
-        reportedUser.isBanned = true;
-        reportedUser.banReason = `Banned via safety report: ${report.category}`;
-        await db.createOrUpdateUser(reportedUser);
+    // For permanent bans, hold the reported user's queue lock around the
+    // database transaction and queue/room cleanup. This prevents a match from
+    // being reserved between the DB ban and Redis ticket removal.
+    const resolve = async () => {
+      const report = await db.getReportById(id);
+      if (!report) return { notFound: true as const, resolved: false as const };
+      const resolved = await db.resolveReport(id, action, notes, 'admin_web');
+      if (!resolved) return { notFound: false as const, resolved: false as const };
+      if (action === 'perma_ban') {
+        await matchmakingManager.removeQueueTicketUnderLock(report.reportedId);
+        const reportedUser = await db.getUserById(report.reportedId, true);
+        if (reportedUser?.activeRoomId) await db.endRoom(reportedUser.activeRoomId, 'moderated');
       }
-    }
+      return { notFound: false as const, resolved: true as const, report };
+    };
+
+    const outcome = action === 'perma_ban'
+      ? await matchmakingManager.withTicketLock(initialReport.reportedId, resolve)
+      : await resolve();
+
+    if (outcome.notFound) return res.status(404).json({ error: 'Report not found' });
+    if (!outcome.resolved) return res.status(409).json({ error: 'Report could not be resolved.' });
 
     await db.logAdminAction('admin_web', 'RESOLVE_REPORT', 'REPORT', id, { action, notes });
-    res.json({ success: true, report: { ...report, status: 'resolved', actionTaken: action } });
+    res.json({ success: true, report: { ...outcome.report, status: 'resolved', actionTaken: action } });
   });
 
   // 6. GENDER VERIFICATIONS

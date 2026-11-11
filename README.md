@@ -14,7 +14,7 @@
 
 ### 🔒 Step 1 & 2 — Privacy & Matchmaking Architecture
 - **Complete Anonymity**: Discord usernames, user IDs, avatars, and server origins are completely masked. Each conversation generates a unique celestial persona (e.g. `Celestial Fox 🦊`, `Lunar Wolf 🐺`).
-- **Multi-Criteria Matching Engine**: Filters by age (18+), mutual gender preferences, shared languages, and Jaccard interest overlap.
+- **Multi-Criteria Matching Engine**: Enforces adult age ranges, shared-language compatibility, and mutual global block lists; shared interests rank compatible candidates. Legacy preferred-gender fields are retained for profile compatibility but are not currently used as match filters.
 - **Race Condition Safeguards**: Distributed Redlock (`lock:reveal:${roomId}`) ensures simultaneous interactions cannot duplicate rooms or leak identities.
 - **Sanitization Pipeline**: Masks Discord invites and mentions, scrubs Discord tokens, blocks known phishing/IP-logger domains, and allows only trusted Discord CDN image, video, audio, and PDF attachments up to 10 MB.
 - **Mutual-Consent Profile Reveal**: Fine-grained field selection (`age`, `gender`, `interests`, `destinyId`, `discordTag`). A field is **only revealed if both partners agree**.
@@ -99,9 +99,14 @@ Also supported: `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_TLS=true`,
 `REDIS_KEY_PREFIX`. The same resolved connection is shared by the ioredis client and
 the BullMQ queues, so both always talk to the same instance. Credentials are never
 logged — the startup line only reports the target host, port and whether auth is on.
-The GitHub Actions runner reads `REDIS_HOST`, `REDIS_PORT`, `REDIS_USERNAME`,
-`REDIS_PASSWORD` or `REDIS_TOKEN`, and optional `REDIS_URL`/`REDIS_TLS` from
-repository Actions secrets. It verifies connectivity before starting the bot.
+The GitHub Actions runner requires a persistent hosted Redis configuration: set
+`REDIS_URL` (recommended for hosted providers) or `REDIS_HOST` plus its port and
+credentials in repository Actions secrets. The runner intentionally does not start
+a temporary local Redis service, because that would make `PING` pass while losing
+queue, lock, rate-limit and reminder state when the job ends. Before startup,
+`redis:check` verifies `PING` and a real `SET`/`GET`/`DEL` round trip using the
+same logical database and `destiny:` key prefix as the application. Redis dashboards
+usually show keys within a logical database, not a separately created database object.
 
 ### 3. Database Schema Setup
 Execute the SQL migrations located in `supabase/migrations/` in order:
@@ -117,6 +122,9 @@ Execute the SQL migrations located in `supabase/migrations/` in order:
 10. `010_dashboard_aggregates.sql` — Accurate economy totals and hourly activity buckets.
 11. `011_transfer_ledger_types.sql` — Separate peer transfers from shop and mission rewards.
 12. `012_welcome_bonus_ledger.sql` — Record signup welcome balances atomically in the coin ledger.
+13. `013_atomic_daily_claim.sql` — Atomically apply daily rewards, streaks, and the 24-hour cooldown.
+14. `014_atomic_report_resolution.sql` — Resolve moderation reports and apply permanent bans in one transaction.
+15. `015_conditional_room_inactivity.sql` — Close rooms only when they remain inactive at the transactionally rechecked cutoff.
 
 ### 4. Running Destiny
 ```bash

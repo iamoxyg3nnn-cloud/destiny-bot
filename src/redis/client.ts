@@ -8,6 +8,7 @@ export class RedisService {
   private fallbackStore: Map<string, string> = new Map();
   private fallbackSets: Map<string, Set<string>> = new Map();
   private fallbackRateTimers: Map<string, NodeJS.Timeout> = new Map();
+  private fallbackTtlTimers: Map<string, NodeJS.Timeout> = new Map();
 
   constructor() {
     this.initClient();
@@ -25,11 +26,15 @@ export class RedisService {
         db: options.db,
         ...(options.tls ? { tls: options.tls } : {}),
         keyPrefix: config.REDIS_KEY_PREFIX,
+        // Keep retrying with a capped delay. Stopping after a few failures
+        // leaves a long-running production bot permanently disconnected even
+        // after the hosted Redis service has recovered.
         retryStrategy: (times: number) => {
-          if (times > 3) {
-            return null; // Stop retrying and fallback to in-memory store
-          }
-          return Math.min(times * 100, 1000);
+          // Production should recover automatically from transient hosted Redis
+          // outages. Development/tests stop retrying and use their local
+          // fallback so an absent local Redis daemon cannot keep the process alive.
+          if (config.NODE_ENV !== 'production' && times > 3) return null;
+          return Math.min(Math.max(times, 1) * 500, 10_000);
         },
         maxRetriesPerRequest: 1,
         lazyConnect: true,
@@ -72,6 +77,28 @@ export class RedisService {
     }
   }
 
+  private storeFallbackValue(key: string, value: string, ttlSeconds?: number): void {
+    const existingTimer = this.fallbackTtlTimers.get(key);
+    if (existingTimer) clearTimeout(existingTimer);
+    this.fallbackTtlTimers.delete(key);
+    this.fallbackStore.set(key, value);
+
+    if (ttlSeconds === undefined) return;
+    const timer = setTimeout(() => {
+      this.fallbackStore.delete(key);
+      this.fallbackTtlTimers.delete(key);
+    }, Math.min(ttlSeconds * 1000, 2_147_483_647));
+    timer.unref?.();
+    this.fallbackTtlTimers.set(key, timer);
+  }
+
+  private deleteFallbackValue(key: string): boolean {
+    const timer = this.fallbackTtlTimers.get(key);
+    if (timer) clearTimeout(timer);
+    this.fallbackTtlTimers.delete(key);
+    return this.fallbackStore.delete(key);
+  }
+
   public async waitForConnection(timeoutMs = 10_000): Promise<boolean> {
     const client = this.client;
     if (!client) return false;
@@ -106,7 +133,7 @@ export class RedisService {
       }
     }
     this.assertFallbackAllowed('get');
-    return this.fallbackStore.get(key) || null;
+    return this.fallbackStore.get(key) ?? null;
   }
 
   async getBuffer(key: string): Promise<Buffer | null> {
@@ -120,7 +147,7 @@ export class RedisService {
     }
     this.assertFallbackAllowed('get');
     const val = this.fallbackStore.get(key);
-    return val ? Buffer.from(val, 'base64') : null;
+    return val !== undefined ? Buffer.from(val, 'base64') : null;
   }
 
   async setBuffer(key: string, buffer: Buffer, ttlSeconds?: number): Promise<boolean> {
@@ -139,14 +166,7 @@ export class RedisService {
       }
     }
     this.assertFallbackAllowed('setBuffer');
-    const encoded = buffer.toString('base64');
-    this.fallbackStore.set(key, encoded);
-    if (ttlSeconds) {
-      const ms = Math.min(ttlSeconds * 1000, 2147483647);
-      const timer = setTimeout(() => { if (this.fallbackStore.get(key) === encoded) this.fallbackStore.delete(key); }, ms);
-      // Never let an eviction timer hold the process open.
-      timer.unref?.();
-    }
+    this.storeFallbackValue(key, buffer.toString('base64'), ttlSeconds);
     return true;
   }
 
@@ -166,13 +186,7 @@ export class RedisService {
       }
     }
     this.assertFallbackAllowed('set');
-    this.fallbackStore.set(key, value);
-    if (ttlSeconds) {
-      const ms = Math.min(ttlSeconds * 1000, 2147483647);
-      const timer = setTimeout(() => { if (this.fallbackStore.get(key) === value) this.fallbackStore.delete(key); }, ms);
-      // Never let an eviction timer hold the process open.
-      timer.unref?.();
-    }
+    this.storeFallbackValue(key, value, ttlSeconds);
     return true;
   }
 
@@ -187,7 +201,7 @@ export class RedisService {
       }
     }
     this.assertFallbackAllowed('delete');
-    return this.fallbackStore.delete(key);
+    return this.deleteFallbackValue(key);
   }
 
   /** Delete a key only when its current value still belongs to this operation. */
@@ -207,7 +221,7 @@ export class RedisService {
     }
     this.assertFallbackAllowed('conditional delete');
     if (this.fallbackStore.get(key) !== expectedValue) return false;
-    return this.fallbackStore.delete(key);
+    return this.deleteFallbackValue(key);
   }
 
   /**
@@ -227,11 +241,7 @@ export class RedisService {
     }
     this.assertFallbackAllowed('conditional set');
     if (this.fallbackStore.has(key)) return false;
-    this.fallbackStore.set(key, value);
-    const timer = setTimeout(() => {
-      if (this.fallbackStore.get(key) === value) this.fallbackStore.delete(key);
-    }, Math.min(ttlSeconds * 1000, 2147483647));
-    timer.unref?.();
+    this.storeFallbackValue(key, value, ttlSeconds);
     return true;
   }
 
@@ -364,6 +374,25 @@ export class RedisService {
     cleanupTimer.unref?.();
     this.fallbackRateTimers.set(zKey, cleanupTimer);
     return { allowed: true, remaining: limit - timestamps.length };
+  }
+
+  /** Close the Redis connection and clear fallback timers on process shutdown. */
+  public async close(): Promise<void> {
+    this.isConnected = false;
+    for (const timer of this.fallbackTtlTimers.values()) clearTimeout(timer);
+    for (const timer of this.fallbackRateTimers.values()) clearTimeout(timer);
+    this.fallbackTtlTimers.clear();
+    this.fallbackRateTimers.clear();
+
+    const client = this.client;
+    this.client = null;
+    if (!client) return;
+    try {
+      if (client.status === 'ready') await client.quit();
+      else client.disconnect();
+    } catch {
+      client.disconnect();
+    }
   }
 }
 

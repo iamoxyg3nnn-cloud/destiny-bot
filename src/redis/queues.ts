@@ -68,6 +68,12 @@ export class QueueManager {
     }
   }
 
+  async close(): Promise<void> {
+    const queues = Array.from(this.queues.values());
+    this.queues.clear();
+    await Promise.allSettled(queues.map((queue) => queue.close()));
+  }
+
   async getQueueStats(): Promise<Record<string, { waiting: number; active: number; completed: number; failed: number }>> {
     this.ensureQueues();
     const stats: Record<string, any> = {};

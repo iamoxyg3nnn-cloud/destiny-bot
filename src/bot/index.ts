@@ -12,7 +12,8 @@ import {
 import { config } from '../config/index.js';
 import { db } from '../database/supabase.js';
 import { redis } from '../redis/client.js';
-import { ECLAIRS_GUILD_ID } from '../core/moderation/reputation.js';
+import { ECLAIRS_GUILD_IDS, checkOtherEclairsMembership, isReputationRestriction } from '../core/moderation/reputation.js';
+import { matchmakingManager } from '../core/matchmaking/manager.js';
 import { embedService } from './embeds/index.js';
 import { setDiscordClient } from './client-registry.js';
 import { initPresence, refreshPresence, stopPresence } from './presence-manager.js';
@@ -188,29 +189,72 @@ export class DestinyBot {
       await publishGuildSnapshot(this.client).catch((error) => console.warn('[Bot] Guild snapshot update failed:', error?.message || error));
     });
 
-    // Enforce reputation drop when a member leaves discord.gg/eclairs
+    // Enforce reputation drop only after confirming the user left every
+    // recognized Eclairs community. The per-user ticket lock serializes this
+    // policy with queue reservation and profile changes.
     this.client.on(Events.GuildMemberRemove, async (member) => {
       try {
-        if (member.guild.id === ECLAIRS_GUILD_ID || member.guild.vanityURLCode === 'eclairs') {
+        const vanity = member.guild.vanityURLCode?.toLowerCase();
+        const guildName = member.guild.name?.toLowerCase?.() || '';
+        const isEclairsCommunity = ECLAIRS_GUILD_IDS.includes(member.guild.id) ||
+          vanity === 'eclairs' || vanity === 'affairs' || vanity === 'together' ||
+          guildName.includes('eclairs');
+        if (!isEclairsCommunity) return;
+
+        const initialUser = await db.getUserByDiscordId(member.id, true);
+        if (!initialUser) return;
+
+        const result = await matchmakingManager.withTicketLock(initialUser.id, async () => {
+          // Recheck while holding the same internal-user lock used by /match,
+          // report/admin bans and pair reservation.
+          const remainingMembership = await checkOtherEclairsMembership(
+            this.client,
+            member.id,
+            member.guild.id
+          );
+          if (remainingMembership === true) return { action: 'retained' as const };
+          if (remainingMembership === null) return { action: 'indeterminate' as const };
+
           const user = await db.getUserByDiscordId(member.id, true);
-          if (user) {
-            console.log(`[Reputation] User ${member.user?.tag || member.id} left Eclairs. Dropping reputation < 10...`);
-            user.reputationScore = 5; // Drops below 10
-            user.isBanned = true;
-            user.banReason = 'Left discord.gg/eclairs (Reputation dropped < 10)';
+          if (!user || user.id !== initialUser.id) return { action: 'missing' as const };
 
-            if (user.activeRoomId) {
-              await db.endRoom(user.activeRoomId, 'user_left');
-            }
+          const hasIndependentAdminBan = user.isBanned && !isReputationRestriction(user);
+          await db.createOrUpdateUser({
+            discordUserId: user.discordUserId,
+            reputationScore: 5,
+            ...(hasIndependentAdminBan ? {} : {
+              isBanned: true,
+              banReason: 'Left discord.gg/eclairs (Reputation dropped < 10)',
+            }),
+          });
 
-            await db.createOrUpdateUser(user);
+          await matchmakingManager.removeQueueTicketUnderLock(user.id);
+          if (user.activeRoomId) await db.endRoom(user.activeRoomId, 'moderated');
 
-            // Notify user in DM with the regain card
-            try {
-              const dm = await member.user.createDM();
-              const container = embedService.createLowReputationRestrictedContainer();
-              await dm.send({ components: [container], flags: [MessageFlags.IsComponentsV2] });
-            } catch {}
+          return {
+            action: hasIndependentAdminBan ? 'admin-banned' as const : 'restricted' as const,
+            discordUser: member.user,
+          };
+        });
+
+        if (result.action === 'retained') {
+          console.log(`[Reputation] User ${member.user?.tag || member.id} remains in another Eclairs community; access retained.`);
+          return;
+        }
+        if (result.action === 'indeterminate') {
+          console.warn(`[Reputation] Could not verify other Eclairs memberships for ${member.id}; no penalty applied.`);
+          return;
+        }
+        if (result.action === 'missing') return;
+
+        console.log(`[Reputation] User ${member.user?.tag || member.id} left the Eclairs community; queue and active-room state cleared.`);
+        if (result.action === 'restricted') {
+          try {
+            const dm = await result.discordUser.createDM();
+            const container = embedService.createLowReputationRestrictedContainer();
+            await dm.send({ components: [container], flags: [MessageFlags.IsComponentsV2] });
+          } catch (error: any) {
+            console.warn('[Reputation] Could not send recovery instructions:', error?.message || error);
           }
         }
       } catch (err: any) {

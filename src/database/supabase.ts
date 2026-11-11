@@ -15,6 +15,7 @@ import {
 } from '../core/types.js';
 import { v4 as uuidv4 } from 'uuid';
 import { redis } from '../redis/client.js';
+import { lockManager } from '../redis/locks.js';
 
 export class DatabaseService {
   private client: SupabaseClient | null = null;
@@ -168,6 +169,44 @@ export class DatabaseService {
     return await this.enrichProfileExtensions(user);
   }
 
+  /**
+   * Load current profiles in bounded batches without consulting the 60-second
+   * cache. Matchmaking uses this to invalidate queue snapshots after bans,
+   * profile edits, or room transitions made by another process.
+   */
+  async getUsersByIds(ids: string[], forceFresh = true): Promise<UserProfile[]> {
+    const uniqueIds = Array.from(new Set(
+      ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    ));
+    if (uniqueIds.length === 0) return [];
+
+    if (this.isMockMode || !this.client) {
+      return uniqueIds
+        .map((id) => this.mockUsers.get(id))
+        .filter((user): user is UserProfile => Boolean(user))
+        .map((user) => ({ ...user }));
+    }
+
+    const users: UserProfile[] = [];
+    const batchSize = 100;
+    for (let offset = 0; offset < uniqueIds.length; offset += batchSize) {
+      const batch = uniqueIds.slice(offset, offset + batchSize);
+      const { data, error } = await this.client
+        .from('users')
+        .select('*')
+        .in('id', batch);
+      if (error) throw new Error(`Failed to load matchmaking profiles: ${error.message}`);
+
+      for (const row of data || []) {
+        const user = this.mapUser(row);
+        users.push(user);
+        this.userCache.set(user.id, { user, expires: Date.now() + 60_000 });
+        this.discordUserCache.set(user.discordUserId, { user, expires: Date.now() + 60_000 });
+      }
+    }
+    return users;
+  }
+
   async getUserByDestinyId(destinyId: string): Promise<UserProfile | null> {
     if (this.isMockMode || !this.client) {
       for (const user of this.mockUsers.values()) {
@@ -224,41 +263,54 @@ export class DatabaseService {
     const existing = await this.getUserByDiscordId(user.discordUserId, true);
 
     if (existing) {
-      const updated: UserProfile = {
-        ...existing,
-        ...user,
-        updatedAt: now,
-      };
-
       if (this.isMockMode || !this.client) {
+        // Re-read the current map value immediately before merging. Two
+        // simultaneous partial updates must not overwrite each other's fields.
+        const latest = this.mockUsers.get(existing.id) || existing;
+        const updated: UserProfile = {
+          ...latest,
+          ...user,
+          id: latest.id,
+          createdAt: latest.createdAt,
+          updatedAt: now,
+        };
         this.mockUsers.set(existing.id, updated);
         return updated;
       }
 
-      const updatePayload: Record<string, any> = {
-        age: updated.age,
-        gender: updated.gender,
-        gender_verified: updated.genderVerified,
-        gender_verification_status: updated.genderVerificationStatus,
-        gender_verification_evidence: updated.genderVerificationEvidence,
-        interests: updated.interests,
-        languages: updated.languages,
-        preferred_gender: updated.preferredGender,
-        min_age_pref: updated.minAgePref,
-        max_age_pref: updated.maxAgePref,
-        streak_count: updated.streakCount,
-        last_daily_claim: updated.lastDailyClaim,
-        active_room_id: updated.activeRoomId,
-        is_banned: updated.isBanned,
-        ban_reason: updated.banReason,
-        reputation_score: updated.reputationScore,
-        last_active_at: now,
-        updated_at: now,
-      };
-      if (user.bio !== undefined) updatePayload.bio = user.bio;
-      if (user.matchIntent !== undefined) updatePayload.match_intent = user.matchIntent;
-      if (user.cardTheme !== undefined) updatePayload.card_theme = user.cardTheme;
-      if (user.equippedBadges !== undefined) updatePayload.equipped_badges = user.equippedBadges;
+      // Only persist fields explicitly supplied by this caller. Writing a
+      // whole cached profile for a one-field change can clobber a concurrent
+      // moderation/profile update from another request or bot process.
+      const updatePayload: Record<string, any> = { updated_at: now };
+      const writableFields: Array<[keyof UserProfile, string]> = [
+        ['destinyId', 'destiny_id'],
+        ['age', 'age'],
+        ['gender', 'gender'],
+        ['genderVerified', 'gender_verified'],
+        ['genderVerificationStatus', 'gender_verification_status'],
+        ['genderVerificationEvidence', 'gender_verification_evidence'],
+        ['interests', 'interests'],
+        ['languages', 'languages'],
+        ['preferredGender', 'preferred_gender'],
+        ['minAgePref', 'min_age_pref'],
+        ['maxAgePref', 'max_age_pref'],
+        ['streakCount', 'streak_count'],
+        ['lastDailyClaim', 'last_daily_claim'],
+        ['connectionTier', 'connection_tier'],
+        ['activeRoomId', 'active_room_id'],
+        ['isBanned', 'is_banned'],
+        ['banReason', 'ban_reason'],
+        ['reputationScore', 'reputation_score'],
+        ['bio', 'bio'],
+        ['matchIntent', 'match_intent'],
+        ['cardTheme', 'card_theme'],
+        ['equippedBadges', 'equipped_badges'],
+      ];
+      for (const [field, column] of writableFields) {
+        if (Object.prototype.hasOwnProperty.call(user, field) && user[field] !== undefined) {
+          updatePayload[column] = user[field];
+        }
+      }
 
       const { data, error } = await this.client
         .from('users')
@@ -267,7 +319,7 @@ export class DatabaseService {
         .select()
         .single();
 
-      if (error || !data) throw new Error(`Failed to update user: ${error?.message}`);
+      if (error || !data) throw new Error(`Failed to update user: ${error?.message || 'no row returned'}`);
       const mapped = this.mapUser(data);
       this.userCache.set(mapped.id, { user: mapped, expires: Date.now() + 60_000 });
       this.discordUserCache.set(mapped.discordUserId, { user: mapped, expires: Date.now() + 60_000 });
@@ -288,7 +340,7 @@ export class DatabaseService {
       preferredGender: user.preferredGender || ['any'],
       minAgePref: user.minAgePref || 18,
       maxAgePref: user.maxAgePref || 99,
-      destinyCoins: 100, // Initial welcome grant
+      destinyCoins: 100,
       streakCount: 0,
       connectionTier: 'Strangers',
       activeRoomId: null,
@@ -348,11 +400,19 @@ export class DatabaseService {
       .select()
       .single();
 
-    if (error || !data) throw new Error(`Failed to insert user: ${error?.message}`);
+    if (error || !data) {
+      // Two commands can create the same Discord profile at once. Let the
+      // unique constraint pick one winner, then apply the loser's requested
+      // partial fields to the row that won instead of surfacing a 500.
+      if (error?.code === '23505') {
+        const concurrentUser = await this.getUserByDiscordId(user.discordUserId, true).catch(() => null);
+        if (concurrentUser) return this.createOrUpdateUser(user);
+      }
+      throw new Error(`Failed to insert user: ${error?.message || 'no row returned'}`);
+    }
     const mapped = this.mapUser(data);
     this.userCache.set(mapped.id, { user: mapped, expires: Date.now() + 60_000 });
     this.discordUserCache.set(mapped.discordUserId, { user: mapped, expires: Date.now() + 60_000 });
-
     return mapped;
   }
 
@@ -362,6 +422,11 @@ export class DatabaseService {
       const user = this.mockUsers.get(userId);
       if (!user || user.activeRoomId !== expectedRoomId) return false;
       user.activeRoomId = null;
+      try {
+        await redis.delIfValue(`user:active_room:${userId}`, expectedRoomId);
+      } catch (cacheError) {
+        console.warn('[Database] Cleared mock active room reference but Redis cleanup failed:', cacheError);
+      }
       return true;
     }
 
@@ -504,6 +569,109 @@ export class DatabaseService {
       newBalance: Number(res.new_balance),
       error: res.error_message,
       txId: res.transaction_id,
+    };
+  }
+
+  /**
+   * Atomically claim the daily reward, update its streak/cooldown and write the
+   * coin ledger entry. The DB RPC serializes claims by user across processes.
+   */
+  async claimDailyReward(
+    userId: string,
+    referenceId: string
+  ): Promise<{
+    success: boolean;
+    rewardDc: number;
+    newStreak: number;
+    newBalance: number;
+    nextClaimAt?: string;
+    error?: string;
+  }> {
+    if (!userId || !referenceId || referenceId.trim().length === 0 || referenceId.length > 128) {
+      return { success: false, rewardDc: 0, newStreak: 0, newBalance: 0, error: 'INVALID_CLAIM' };
+    }
+
+    if (this.isMockMode || !this.client) {
+      const user = this.mockUsers.get(userId);
+      if (!user) {
+        return { success: false, rewardDc: 0, newStreak: 0, newBalance: 0, error: 'USER_NOT_FOUND' };
+      }
+
+      const existing = this.mockTransactions.find((tx) => tx.referenceId === referenceId);
+      if (existing) {
+        if (existing.userId !== userId || existing.type !== 'daily_reward' || existing.amount <= 0) {
+          return { success: false, rewardDc: 0, newStreak: user.streakCount, newBalance: user.destinyCoins, error: 'IDEMPOTENCY_KEY_REUSED' };
+        }
+        const claimedAt = new Date(existing.createdAt);
+        const lastClaim = user.lastDailyClaim ? new Date(user.lastDailyClaim) : null;
+        if (!lastClaim || lastClaim.getTime() < claimedAt.getTime()) {
+          user.lastDailyClaim = claimedAt.toISOString();
+          user.streakCount = Number(existing.metadata?.streak) || 1;
+        }
+        return {
+          success: true,
+          rewardDc: existing.amount,
+          newStreak: user.streakCount,
+          newBalance: user.destinyCoins,
+          nextClaimAt: new Date(new Date(user.lastDailyClaim || claimedAt.toISOString()).getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        };
+      }
+
+      const now = new Date();
+      const lastClaim = user.lastDailyClaim ? new Date(user.lastDailyClaim) : null;
+      if (lastClaim && Number.isFinite(lastClaim.getTime()) && now.getTime() < lastClaim.getTime() + 24 * 60 * 60 * 1000) {
+        const nextClaimAt = new Date(lastClaim.getTime() + 24 * 60 * 60 * 1000).toISOString();
+        return { success: false, rewardDc: 0, newStreak: user.streakCount, newBalance: user.destinyCoins, nextClaimAt, error: 'ALREADY_CLAIMED' };
+      }
+
+      const previousClaimMs = lastClaim?.getTime();
+      const newStreak = !lastClaim || previousClaimMs === undefined || !Number.isFinite(previousClaimMs)
+        ? 1
+        : now.getTime() <= previousClaimMs + 48 * 60 * 60 * 1000
+          ? user.streakCount + 1
+          : 1;
+      const rewardDc = 50 + Math.min(Math.max((newStreak - 1) * 10, 0), 100);
+      const transaction = await this.executeCoinTransaction(
+        userId,
+        rewardDc,
+        'daily_reward',
+        referenceId,
+        { streak: newStreak }
+      );
+      if (!transaction.success) {
+        return { success: false, rewardDc: 0, newStreak, newBalance: transaction.newBalance, error: transaction.error || 'TRANSACTION_FAILED' };
+      }
+
+      user.streakCount = newStreak;
+      user.lastDailyClaim = now.toISOString();
+      user.updatedAt = now.toISOString();
+      this.invalidateUserCaches(userId);
+      return {
+        success: true,
+        rewardDc,
+        newStreak,
+        newBalance: transaction.newBalance,
+        nextClaimAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      };
+    }
+
+    const { data, error } = await this.client.rpc('claim_daily_reward', {
+      p_user_id: userId,
+      p_reference_id: referenceId,
+    });
+    if (error || !data || data.length === 0) {
+      return { success: false, rewardDc: 0, newStreak: 0, newBalance: 0, error: error?.message || 'CLAIM_FAILED' };
+    }
+
+    const result = Array.isArray(data) ? data[0] : data;
+    if (result.success) this.invalidateUserCaches(userId);
+    return {
+      success: Boolean(result.success),
+      rewardDc: Number(result.reward_dc || 0),
+      newStreak: Number(result.new_streak || 0),
+      newBalance: Number(result.new_balance || 0),
+      nextClaimAt: result.next_claim_at ? new Date(result.next_claim_at).toISOString() : undefined,
+      error: result.error_message || undefined,
     };
   }
 
@@ -692,13 +860,48 @@ export class DatabaseService {
     return (data || []).map((d: any) => this.mapRoom(d));
   }
 
+  /**
+   * Update reveal-consent fields without writing stale room XP/status over
+   * concurrent message progression or room lifecycle changes.
+   */
+  async updateRoomRevealStatus(
+    roomId: string,
+    user1Status: RoomSession['revealStatusUser1'],
+    user2Status: RoomSession['revealStatusUser2']
+  ): Promise<boolean> {
+    const now = new Date().toISOString();
+    if (this.isMockMode || !this.client) {
+      const room = this.mockRooms.get(roomId);
+      if (!room || room.status !== 'active') return false;
+      room.revealStatusUser1 = user1Status;
+      room.revealStatusUser2 = user2Status;
+      room.updatedAt = now;
+      return true;
+    }
+
+    const { data, error } = await this.client
+      .from('rooms')
+      .update({
+        reveal_status_user1: user1Status,
+        reveal_status_user2: user2Status,
+        updated_at: now,
+      })
+      .eq('id', roomId)
+      .eq('status', 'active')
+      .select('id')
+      .maybeSingle();
+
+    if (error) throw new Error(`Failed to update room reveal consent: ${error.message}`);
+    return Boolean(data);
+  }
+
   async updateRoom(room: RoomSession): Promise<RoomSession> {
     room.updatedAt = new Date().toISOString();
     if (this.isMockMode || !this.client) {
       this.mockRooms.set(room.id, { ...room });
       return room;
     }
-    await this.client
+    const { data, error } = await this.client
       .from('rooms')
       .update({
         status: room.status,
@@ -711,7 +914,12 @@ export class DatabaseService {
         end_reason: room.endReason,
         updated_at: room.updatedAt,
       })
-      .eq('id', room.id);
+      .eq('id', room.id)
+      .select('id')
+      .maybeSingle();
+
+    if (error) throw new Error(`Failed to update room: ${error.message}`);
+    if (!data) throw new Error('Failed to update room: room no longer exists.');
     return room;
   }
 
@@ -724,7 +932,65 @@ export class DatabaseService {
     return (data || []).map(this.mapRoom);
   }
 
+  /**
+   * End a room only if its latest committed activity is older than the cutoff.
+   * The PostgreSQL RPC locks and rechecks the room row, preventing a cleanup
+   * snapshot from closing a room after a new message/touch has landed.
+   */
+  async endRoomIfInactive(roomId: string, cutoff: Date): Promise<boolean> {
+    if (!(cutoff instanceof Date) || !Number.isFinite(cutoff.getTime())) {
+      throw new Error('A valid inactivity cutoff date is required.');
+    }
+
+    // The same room lock is held while a relay delivers and persists a message.
+    // That prevents cleanup from ending a room mid-delivery before its activity
+    // timestamp can be advanced.
+    return await lockManager.withLock(`lock:room:${roomId}`, async () => {
+      if (this.isMockMode || !this.client) {
+        const room = this.mockRooms.get(roomId);
+        if (!room || room.status !== 'active') return false;
+        const lastActivity = Date.parse(room.updatedAt || room.startedAt);
+        if (!Number.isFinite(lastActivity) || lastActivity > cutoff.getTime()) return false;
+        return this.endRoomUnlocked(roomId, 'inactivity');
+      }
+
+      const room = await this.getRoomById(roomId);
+      const { data, error } = await this.client.rpc('end_room_if_inactive', {
+        p_room_id: roomId,
+        p_cutoff: cutoff.toISOString(),
+      });
+      if (error) throw new Error(`Failed to conditionally end inactive room: ${error.message}`);
+      const ended = data === true;
+      if (!ended) return false;
+
+      if (room) {
+        this.userCache.delete(room.user1Id);
+        this.userCache.delete(room.user2Id);
+        if (room.user1DiscordId) this.discordUserCache.delete(room.user1DiscordId);
+        if (room.user2DiscordId) this.discordUserCache.delete(room.user2DiscordId);
+        try {
+          await Promise.all([
+            redis.delIfValue(`user:active_room:${room.user1Id}`, roomId),
+            redis.delIfValue(`user:active_room:${room.user2Id}`, roomId),
+            redis.del(`room:${roomId}`),
+            redis.set(`user:last_room:${room.user1Id}`, roomId, 3600),
+            redis.set(`user:last_room:${room.user2Id}`, roomId, 3600),
+          ]);
+        } catch (cacheError) {
+          console.warn('[Database] Inactive room ended but Redis cache cleanup failed:', cacheError);
+        }
+      }
+      return true;
+    });
+  }
+
   async endRoom(roomId: string, reason: RoomSession['endReason'] = 'user_left'): Promise<boolean> {
+    return await lockManager.withLock(`lock:room:${roomId}`, async () =>
+      this.endRoomUnlocked(roomId, reason)
+    );
+  }
+
+  private async endRoomUnlocked(roomId: string, reason: RoomSession['endReason'] = 'user_left'): Promise<boolean> {
     const now = new Date().toISOString();
     if (this.isMockMode || !this.client) {
       const room = this.mockRooms.get(roomId);
@@ -738,6 +1004,18 @@ export class DatabaseService {
       if (u1 && u1.activeRoomId === roomId) u1.activeRoomId = null;
       const u2 = this.mockUsers.get(room.user2Id);
       if (u2 && u2.activeRoomId === roomId) u2.activeRoomId = null;
+
+      try {
+        await Promise.all([
+          redis.delIfValue(`user:active_room:${room.user1Id}`, roomId),
+          redis.delIfValue(`user:active_room:${room.user2Id}`, roomId),
+          redis.del(`room:${roomId}`),
+          redis.set(`user:last_room:${room.user1Id}`, roomId, 3600),
+          redis.set(`user:last_room:${room.user2Id}`, roomId, 3600),
+        ]);
+      } catch (cacheError) {
+        console.warn('[Database] Mock room ended but Redis cache cleanup failed:', cacheError);
+      }
       return true;
     }
 
@@ -786,6 +1064,31 @@ export class DatabaseService {
       }
     }
     return true;
+  }
+
+  /**
+   * Record conversation activity independently from XP progression. A failed
+   * reward/XP RPC must not make an actively used room look abandoned to cleanup.
+   */
+  async touchRoomActivity(roomId: string): Promise<boolean> {
+    const now = new Date().toISOString();
+    if (this.isMockMode || !this.client) {
+      const room = this.mockRooms.get(roomId);
+      if (!room || room.status !== 'active') return false;
+      room.updatedAt = now;
+      return true;
+    }
+
+    const { data, error } = await this.client
+      .from('rooms')
+      .update({ updated_at: now })
+      .eq('id', roomId)
+      .eq('status', 'active')
+      .select('id')
+      .maybeSingle();
+
+    if (error) throw new Error(`Failed to update room activity: ${error.message}`);
+    return Boolean(data);
   }
 
   async updateRoomXP(roomId: string, addedXp: number): Promise<{ newXp: number; level: RoomSession['connectionLevel'] }> {
@@ -1039,26 +1342,38 @@ export class DatabaseService {
   }
 
   async resolveReport(id: string, action: string, notes?: string, adminId?: string): Promise<boolean> {
+    if (!['none', 'warned', 'temp_ban', 'perma_ban'].includes(action)) return false;
+
     if (this.isMockMode || !this.client) {
-      const r = this.mockReports.get(id);
-      if (!r) return false;
-      r.status = 'resolved';
-      r.actionTaken = action as any;
-      r.moderatorNotes = notes;
-      r.resolvedBy = adminId;
+      const report = this.mockReports.get(id);
+      if (!report || report.status !== 'pending') return false;
+
+      if (action === 'perma_ban') {
+        const reportedUser = this.mockUsers.get(report.reportedId);
+        if (!reportedUser) return false;
+        reportedUser.isBanned = true;
+        reportedUser.banReason = `Banned via safety report: ${report.category}`;
+        reportedUser.updatedAt = new Date().toISOString();
+      }
+
+      report.status = 'resolved';
+      report.actionTaken = action as any;
+      report.moderatorNotes = notes;
+      report.resolvedBy = adminId;
+      report.updatedAt = new Date().toISOString();
       return true;
     }
-    const { error } = await this.client
-      .from('reports')
-      .update({
-        status: 'resolved',
-        action_taken: action,
-        moderator_notes: notes,
-        resolved_by: adminId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id);
-    return !error;
+
+    // The report row lock, permanent ban and resolution update are one
+    // transaction. Two moderators cannot race a different resolution action.
+    const { data, error } = await this.client.rpc('resolve_report_atomic', {
+      p_report_id: id,
+      p_action: action,
+      p_notes: notes ?? null,
+      p_admin_id: adminId || 'admin_web',
+    });
+    if (error) throw new Error(`Failed to resolve report: ${error.message}`);
+    return Boolean(data);
   }
 
   // ---------------- AUDIT LOGS ----------------
@@ -1191,9 +1506,11 @@ export class DatabaseService {
       .select('item_id, quantity')
       .eq('user_id', userId);
     if (error) throw new Error(`Failed to load user inventory: ${error.message}`);
-    const items = (data || []).flatMap((row: any) => Array.from({ length: Math.max(1, Number(row.quantity) || 1) }, () => row.item_id));
-    this.mockInventory.set(userId, items);
-    return items;
+    // Callers only need ownership checks, not one array entry per consumable.
+    // Expanding a corrupt/large quantity into repeated strings can allocate
+    // millions of entries, and retaining the production result in mockInventory
+    // creates an unbounded process-local cache with no reader.
+    return Array.from(new Set((data || []).map((row: any) => row.item_id)));
   }
 
   async addToUserInventory(userId: string, itemId: string, allowDuplicate = false): Promise<boolean> {
@@ -1236,9 +1553,6 @@ export class DatabaseService {
       if (error) return false;
     }
 
-    const inventory = this.mockInventory.get(userId) || [];
-    if (!inventory.includes(itemId)) inventory.push(itemId);
-    this.mockInventory.set(userId, inventory);
     return true;
   }
 

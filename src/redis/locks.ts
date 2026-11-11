@@ -117,24 +117,53 @@ export class DistributedLock {
       throw new Error(`Failed to acquire distributed lock for resource: ${resource}`);
     }
     let renewalInFlight = false;
-    const renewalTimer = setInterval(async () => {
-      if (renewalInFlight) return;
+    let stopping = false;
+    let leaseLost = false;
+    let renewalPromise: Promise<void> | null = null;
+    const renewalTimer = setInterval(() => {
+      if (renewalInFlight || stopping) return;
       renewalInFlight = true;
-      try {
-        const renewed = await this.renew(resource, token, ttlMs);
-        if (!renewed) console.warn(`[Lock] Lease renewal failed for ${resource}; the operation may be running without exclusivity.`);
-      } finally {
-        renewalInFlight = false;
-      }
+      renewalPromise = this.renew(resource, token, ttlMs)
+        .then((renewed) => {
+          if (!renewed) {
+            leaseLost = true;
+            console.error(`[Lock] Lease lost for ${resource}; refusing to report the protected operation as successful.`);
+          }
+        })
+        .catch((error) => {
+          leaseLost = true;
+          console.error(`[Lock] Lease renewal errored for ${resource}; refusing to report the protected operation as successful:`, error);
+        })
+        .finally(() => {
+          renewalInFlight = false;
+        });
     }, Math.max(250, Math.floor(ttlMs / 3)));
     renewalTimer.unref?.();
 
+    let result!: T;
+    let operationError: unknown;
+    let operationFailed = false;
     try {
-      return await fn();
+      result = await fn();
+    } catch (error) {
+      operationFailed = true;
+      operationError = error;
     } finally {
+      stopping = true;
       clearInterval(renewalTimer);
-      await this.release(resource, token);
+      if (renewalPromise) await renewalPromise;
+      const released = await this.release(resource, token);
+      if (!released) {
+        leaseLost = true;
+        console.error(`[Lock] Could not confirm release of ${resource}; the lease may already have expired or been replaced.`);
+      }
     }
+
+    if (operationFailed) throw operationError;
+    if (leaseLost) {
+      throw new Error(`Distributed lock lease was lost for resource: ${resource}`);
+    }
+    return result;
   }
 }
 

@@ -15,7 +15,8 @@ import {
   SeparatorBuilder,
   MessageFlags,
   AttachmentBuilder,
-  Message
+  Message,
+  PermissionFlagsBits
 } from 'discord.js';
 import { db } from '../../database/supabase.js';
 import { redis } from '../../redis/client.js';
@@ -25,7 +26,7 @@ import { shopService } from '../../core/economy/shop.js';
 import { revealService } from '../../core/moderation/reveal.js';
 import { reporterService } from '../../core/moderation/reporter.js';
 import { verificationService } from '../../core/moderation/verification.js';
-import { handleReputationCheck } from '../../core/moderation/reputation.js';
+import { ECLAIRS_GUILD_IDS, handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
 import { embedService, COLORS } from '../embeds/index.js';
 import { ProfileField, ReportItem, UserProfile } from '../../core/types.js';
 import { profileCardGenerator } from '../../core/profile/card-generator.js';
@@ -143,22 +144,37 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       return;
     }
 
+    const account = await db.getUserByDiscordId(btn.user.id, true);
+    if (account?.isBanned && !isReputationRestriction(account)) {
+      await safeEditReply(btn, {
+        content: 'Your account is currently restricted by Destiny moderation. Please contact the moderators if you believe this is a mistake.',
+      });
+      return;
+    }
+
     const stillRestricted = embedService.createLowReputationRestrictedContainer();
     await safeEditReply(btn, { components: [stillRestricted] });
     return;
   }
 
   // Reputation & Ban Guard for all other interactions
-  const activeUser = await db.getUserByDiscordId(interaction.user.id);
+  const activeUser = await db.getUserByDiscordId(interaction.user.id, true);
   if (activeUser && (activeUser.reputationScore < 10 || activeUser.isBanned)) {
     const repStatus = await handleReputationCheck(interaction.client, interaction.user.id);
     if (repStatus.isRestricted) {
       // Ignore their request completely, show only the discord.gg/eclairs regain message
-      if (interaction.isButton() || interaction.isStringSelectMenu()) {
+      if (interaction.isRepliable()) {
         const ok = await safeDeferReply(interaction as any);
         if (ok) {
-          const container = embedService.createLowReputationRestrictedContainer();
-          await safeEditReply(interaction as any, { components: [container] });
+          const moderationBan = activeUser.isBanned && !isReputationRestriction(activeUser);
+          if (moderationBan) {
+            await safeEditReply(interaction as any, {
+              content: 'Your account is currently restricted by Destiny moderation. Please contact the moderators if you believe this is a mistake.',
+            });
+          } else {
+            const container = embedService.createLowReputationRestrictedContainer();
+            await safeEditReply(interaction as any, { components: [container] });
+          }
         }
       }
       return;
@@ -1150,7 +1166,7 @@ async function handleProfileModalSubmit(interaction: ModalSubmitInteraction): Pr
   const bioStr = getOptionalField('profile_bio');
 
   const age = parseInt(ageStr, 10);
-  if (isNaN(age) || age < 18 || age > 99) {
+  if (!/^\\d{2}$/.test(ageStr) || !Number.isInteger(age) || age < 18 || age > 99) {
     await safeEditReply(interaction, {
       content: '🔞 **Age Verification Failed**: You must be at least 18 years old to use Destiny (18-99). Use `/profile` to try again.',
     });
@@ -1161,29 +1177,41 @@ async function handleProfileModalSubmit(interaction: ModalSubmitInteraction): Pr
   const interests = parseList(interestsStr)
     .map((interest) => interest.toLowerCase());
 
-  const existing = await db.getUserByDiscordId(interaction.user.id);
-  const languages = languagesStr
-    ? parseList(languagesStr, 6)
-    : (existing?.languages && existing.languages.length > 0 ? existing.languages : ['en']);
+  // Ticket locks use the database UUID. For first-time signup, use a
+  // Discord-scoped bootstrap lock until the profile row has been created.
+  const profileBefore = await db.getUserByDiscordId(interaction.user.id, true);
+  const profileLockId = profileBefore?.id || `discord:${interaction.user.id}`;
 
-  const preferredGender: string[] = existing?.preferredGender && existing.preferredGender.length > 0
-    ? existing.preferredGender
-    : ['any'];
+  // Serialize profile changes with match reservation so a stale ticket cannot
+  // be reserved while the user is editing age or compatibility fields.
+  const savedUser = await matchmakingManager.withTicketLock(profileLockId, async () => {
+    const existing = await db.getUserByDiscordId(interaction.user.id, true);
+    if (profileBefore && existing?.id !== profileBefore.id) {
+      throw new Error('Profile changed while the edit form was open. Please reopen /profile.');
+    }
+    const languages = languagesStr
+      ? parseList(languagesStr, 6)
+      : (existing?.languages && existing.languages.length > 0 ? existing.languages : ['en']);
 
-  let destinyId = existing?.destinyId;
-  if (!destinyId || destinyId.length !== 6 || !/^[A-Z0-9]{6}$/.test(destinyId)) {
-    destinyId = await db.generateUniqueDestinyId();
-  }
+    const preferredGender: string[] = existing?.preferredGender && existing.preferredGender.length > 0
+      ? existing.preferredGender
+      : ['any'];
 
-  const savedUser = await db.createOrUpdateUser({
-    discordUserId: interaction.user.id,
-    destinyId,
-    age,
-    gender,
-    preferredGender,
-    interests,
-    languages,
-    bio: bioStr || existing?.bio,
+    let destinyId = existing?.destinyId;
+    if (!destinyId || destinyId.length !== 6 || !/^[A-Z0-9]{6}$/.test(destinyId)) {
+      destinyId = await db.generateUniqueDestinyId();
+    }
+
+    return db.createOrUpdateUser({
+      discordUserId: interaction.user.id,
+      destinyId,
+      age,
+      gender,
+      preferredGender,
+      interests,
+      languages,
+      bio: bioStr,
+    });
   });
 
   try {
@@ -1348,7 +1376,11 @@ async function handleVerifyModalSubmit(interaction: ModalSubmitInteraction): Pro
   const notes = interaction.fields.getTextInputValue('verify_notes')?.trim() || '';
 
   const fullEvidence = notes ? `${evidence} | Notes: ${notes}` : evidence;
-  await verificationService.submitVerification(user.id, fullEvidence);
+  const submission = await verificationService.submitVerification(user.id, fullEvidence);
+  if (!submission.success) {
+    await safeEditReply(interaction, { content: `⚠️ ${submission.message}` });
+    return;
+  }
 
   const container = embedService.createVerificationSubmittedContainer();
   await safeEditReply(interaction, { components: [container] });
@@ -1376,7 +1408,10 @@ async function handleSyncServerRole(btn: ButtonInteraction): Promise<void> {
   let matchedRole: string | null = null;
   let serverName = '';
 
-  for (const guild of btn.client.guilds.cache.values()) {
+  // Only configured Eclairs communities are trusted sources for role sync.
+  for (const guildId of ECLAIRS_GUILD_IDS) {
+    const guild = btn.client.guilds.cache.get(guildId) || await btn.client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) continue;
     const member = await guild.members.fetch(discordUser.id).catch(() => null);
     if (member) {
       inAnyServer = true;
@@ -1434,23 +1469,30 @@ async function handleSyncServerRole(btn: ButtonInteraction): Promise<void> {
  * Handle Admin Approve / Reject from Staff Channel
  */
 async function handleAdminVerifyAction(btn: ButtonInteraction, approve: boolean, userId: string): Promise<void> {
-  const member = btn.member as any;
-  const isStaff = member?.permissions?.has?.('ManageGuild') || 
-                  member?.permissions?.has?.('Administrator') ||
-                  member?.permissions?.has?.('ModerateMembers') ||
-                  member?.roles?.cache?.some((r: any) => /mod|admin|staff|owner/i.test(r.name));
+  // Verification actions are privileged moderation operations. Do not trust
+  // role names ("admin", "mod", etc.) or buttons copied into unrelated servers.
+  const trustedGuild = Boolean(btn.guildId && ECLAIRS_GUILD_IDS.includes(btn.guildId));
+  const isStaff = trustedGuild && Boolean(
+    btn.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
+    btn.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ||
+    btn.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)
+  );
 
   if (!isStaff && btn.user.id !== '971251685773152326') {
-    await safeEditReply(btn, { content: '⛔ Only Destiny administrators and staff can review verifications.' });
+    await safeEditReply(btn, { content: '⛔ Verification reviews are restricted to authorized Eclairs community moderators.' });
     return;
   }
 
-  await verificationService.reviewVerification(
+  const review = await verificationService.reviewVerification(
     btn.user.tag,
     userId,
     approve,
     approve ? `Approved by staff @${btn.user.tag}` : `Rejected by staff @${btn.user.tag}`
   );
+  if (!review.success) {
+    await safeEditReply(btn, { content: `⚠️ ${review.message}` });
+    return;
+  }
 
   const targetUser = await db.getUserById(userId);
   const statusText = approve
@@ -1493,13 +1535,12 @@ export function isGuildAdmin(interactionOrMessage: Interaction | Message): boole
   // Server Owner
   if (interactionOrMessage.guild?.ownerId === authorId) return true;
 
-  // Discord permissions
-  if (member.permissions?.has?.('Administrator') || member.permissions?.has?.('ManageGuild')) {
-    return true;
-  }
-
-  // Common staff / mod roles
-  if (member.roles?.cache?.some?.((r: any) => /admin|owner|manager|moderator|staff/i.test(r.name))) {
+  // Actual Discord permissions only. Role names are user-configurable and
+  // must never be treated as proof of administrator authority.
+  if (
+    member.permissions?.has?.(PermissionFlagsBits.Administrator) ||
+    member.permissions?.has?.(PermissionFlagsBits.ManageGuild)
+  ) {
     return true;
   }
 
@@ -1649,49 +1690,49 @@ async function handleResetSetup(btn: ButtonInteraction): Promise<void> {
  */
 export async function postStaffVerificationAlert(client: any, user: UserProfile, audioUrl: string): Promise<void> {
   const { embed, components } = embedService.createStaffVerificationReviewEmbed(user, audioUrl);
-  const filename = audioUrl.toLowerCase().includes('.mp3') 
-    ? 'voice_note.mp3' 
-    : audioUrl.toLowerCase().includes('.wav') 
-      ? 'voice_note.wav' 
+  const filename = audioUrl.toLowerCase().includes('.mp3')
+    ? 'voice_note.mp3'
+    : audioUrl.toLowerCase().includes('.wav')
+      ? 'voice_note.wav'
       : 'voice_note.ogg';
   const attachment = new AttachmentBuilder(audioUrl, { name: filename });
 
-  for (const guild of client.guilds.cache.values()) {
+  // Verification evidence is sensitive. Never guess a destination from a
+  // channel name: require an explicitly configured, private moderation log.
+  for (const guildId of ECLAIRS_GUILD_IDS) {
+    const guild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) continue;
+
     const settings = await db.getGuildSettings(guild.id).catch(() => null);
-    let targetChannel: any = null;
-
-    // 1. Prioritize explicitly configured channel
-    if (settings?.modLogChannelId) {
-      targetChannel = guild.channels.cache.get(settings.modLogChannelId) || 
-        await guild.channels.fetch(settings.modLogChannelId).catch(() => null);
+    if (!settings?.modLogChannelId) {
+      console.warn(`[Verification] No private moderation log is configured for trusted guild ${guild.id}; evidence was not posted.`);
+      continue;
     }
 
-    // 2. Fall back to smart channel name matching
-    if (!targetChannel) {
-      targetChannel = guild.channels.cache.find((c: any) => {
-        const name = c.name.toLowerCase();
-        return c.isTextBased() && (
-          name.includes('destiny') ||
-          name.includes('mod-log') ||
-          name.includes('modlog') ||
-          name.includes('report-den') ||
-          name.includes('staff') ||
-          name.includes('verification') ||
-          name.includes('admin') ||
-          name.includes('log')
-        );
-      });
+    const targetChannel = guild.channels.cache.get(settings.modLogChannelId) ||
+      await guild.channels.fetch(settings.modLogChannelId).catch(() => null);
+    if (!targetChannel || !targetChannel.isTextBased() || !('permissionsFor' in targetChannel)) {
+      console.warn(`[Verification] Configured moderation channel is unavailable in guild ${guild.id}.`);
+      continue;
     }
 
-    if (targetChannel && targetChannel.isTextBased()) {
+    // Fail closed when @everyone can view the channel or its permissions
+    // cannot be determined. A moderator must configure a genuinely private log.
+    const everyoneCanView = targetChannel.permissionsFor(guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel);
+    if (everyoneCanView !== false) {
+      console.warn(`[Verification] Refusing to post private evidence to a channel visible to @everyone in guild ${guild.id}.`);
+      continue;
+    }
+
+    try {
       await (targetChannel as any).send({
         embeds: [embed],
         components,
-        files: [attachment]
-      }).catch((err: any) => {
-        console.error('[Verification] Failed to send staff verification alert:', err?.message || err);
+        files: [attachment],
       });
       return;
+    } catch (error: any) {
+      console.error('[Verification] Failed to send private staff verification alert:', error?.message || error);
     }
   }
 }

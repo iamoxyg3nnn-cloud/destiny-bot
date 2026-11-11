@@ -30,7 +30,12 @@ export class RevealService {
     fields: ProfileField[],
     mode: ConsentMode = 'replace'
   ): Promise<RevealConsentResult> {
-    return await lockManager.withLock(`lock:reveal:${roomId}`, async () => {
+    const allowedFields = new Set<ProfileField>(['destinyId', 'age', 'gender', 'interests', 'discordTag']);
+    const requestedFields = Array.isArray(fields) ? fields.filter((field) => allowedFields.has(field)) : [];
+
+    // Share the room lifecycle lock so a reveal cannot complete after a leave,
+    // moderation termination, or inactivity cleanup has begun.
+    return await lockManager.withLock(`lock:room:${roomId}`, async () => {
       const room = await db.getRoomById(roomId);
       if (!room || room.status !== 'active') {
         return { completed: false, agreedFields: [], message: 'Room is no longer active.' };
@@ -46,8 +51,8 @@ export class RevealService {
       // Update the user's reveal preferences
       const previous = isUser1 ? room.revealStatusUser1 : room.revealStatusUser2;
       const effectiveFields = mode === 'narrow' && previous?.consented
-        ? fields.filter((f) => previous.revealedFields.includes(f))
-        : fields;
+        ? requestedFields.filter((f) => previous.revealedFields.includes(f))
+        : requestedFields;
 
       // Detect whether the reveal was already completed before this submission so
       // the bonus XP is only granted on the transition into a completed reveal.
@@ -60,7 +65,14 @@ export class RevealService {
         room.revealStatusUser2 = { consented: true, revealedFields: effectiveFields };
       }
 
-      await db.updateRoom(room);
+      const saved = await db.updateRoomRevealStatus(
+        room.id,
+        room.revealStatusUser1,
+        room.revealStatusUser2
+      );
+      if (!saved) {
+        return { completed: false, agreedFields: [], message: 'Room is no longer active.' };
+      }
 
       // Check if both users have consented
       if (room.revealStatusUser1.consented && room.revealStatusUser2.consented) {
@@ -68,8 +80,8 @@ export class RevealService {
         const set1 = new Set(room.revealStatusUser1.revealedFields);
         const agreedFields = room.revealStatusUser2.revealedFields.filter((f) => set1.has(f));
 
-        const u1 = await db.getUserById(room.user1Id);
-        const u2 = await db.getUserById(room.user2Id);
+        const u1 = await db.getUserById(room.user1Id, true);
+        const u2 = await db.getUserById(room.user2Id, true);
 
         // Filter user data to ONLY agreed fields
         const filterData = (user: UserProfile | null): Partial<UserProfile> & { discordTag?: string } => {

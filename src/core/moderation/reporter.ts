@@ -1,4 +1,5 @@
 import { db } from '../../database/supabase.js';
+import { blockerService } from './blocker.js';
 import { sanitizer } from '../sanitizer.js';
 import { ReportItem } from '../types.js';
 
@@ -53,16 +54,27 @@ export class ReporterService {
       return { success: false, message: 'The report could not be saved. Please try again.' };
     }
 
-    // Auto-block the reported user; moderation penalties are applied only after review.
+    // Auto-block using the same sorted ticket locks as pair reservation.
     // The report remains saved if a secondary safety action fails.
-    const [blockResult, roomResult] = await Promise.allSettled([
-      db.addBlock(reporterUserId, reportedUserId, `Auto-blocked following safety report (${category})`),
-      db.endRoom(roomId, 'moderated'),
-    ]);
-    const blocked = blockResult.status === 'fulfilled' && blockResult.value;
-    const roomClosed = roomResult.status === 'fulfilled' && roomResult.value;
-    if (!blocked) console.error('[Reports] Report saved but automatic block failed:', blockResult);
-    if (roomResult.status === 'rejected') console.error('[Reports] Report saved but room closure failed:', roomResult.reason);
+    let blocked = false;
+    try {
+      const result = await blockerService.blockUser(
+        reporterUserId,
+        reportedUserId,
+        `Auto-blocked following safety report (${category})`
+      );
+      blocked = result.success;
+      if (!blocked) console.error('[Reports] Report saved but automatic block failed:', result.message);
+    } catch (error) {
+      console.error('[Reports] Report saved but automatic block failed:', error);
+    }
+
+    let roomClosed = false;
+    try {
+      roomClosed = await db.endRoom(roomId, 'moderated');
+    } catch (error) {
+      console.error('[Reports] Report saved but room closure failed:', error);
+    }
 
     return {
       success: true,

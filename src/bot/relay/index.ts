@@ -4,6 +4,8 @@ import { redis } from '../../redis/client.js';
 import { sanitizer } from '../../core/sanitizer.js';
 import { embedService, COLORS } from '../embeds/index.js';
 import { progressionService } from '../../core/progression/levels.js';
+import { lockManager } from '../../redis/locks.js';
+import { RoomSession, UserProfile } from '../../core/types.js';
 
 export class MessageRelayService {
   /**
@@ -13,17 +15,15 @@ export class MessageRelayService {
     // Ignore bot messages
     if (message.author.bot) return false;
 
-    // We focus on private DM conversations or dedicated thread channels
+    // We focus on private DM conversations or designated thread channels
     if (message.guild !== null) return false;
 
     const authorDiscordId = message.author.id;
     const authorUser = await db.getUserByDiscordId(authorDiscordId, true);
     if (!authorUser) return false;
 
-    let activeRoomId = authorUser.activeRoomId;
-    if (!activeRoomId) {
-      activeRoomId = (await redis.get(`user:active_room:${authorUser.id}`)) || undefined;
-    }
+    const activeRoomId = authorUser.activeRoomId ||
+      (await redis.get(`user:active_room:${authorUser.id}`)) || undefined;
     if (!activeRoomId) return false;
 
     const room = await db.getRoomById(activeRoomId);
@@ -37,6 +37,41 @@ export class MessageRelayService {
       return false;
     }
 
+    // Serialize delivery/persistence with every room-ending path. Re-read both
+    // rows after acquiring the lock so a stale pre-lock snapshot cannot relay
+    // after a leave, moderation action, or inactivity close.
+    return await lockManager.withLock(`lock:room:${room.id}`, async () => {
+      const latestUser = await db.getUserById(authorUser.id, true);
+      const latestRoom = await db.getRoomById(room.id);
+      if (
+        !latestUser ||
+        !latestRoom ||
+        latestRoom.status !== 'active' ||
+        latestUser.activeRoomId !== latestRoom.id ||
+        (latestRoom.user1Id !== latestUser.id && latestRoom.user2Id !== latestUser.id)
+      ) {
+        return false;
+      }
+
+      const partnerId = latestRoom.user1Id === latestUser.id
+        ? latestRoom.user2Id
+        : latestRoom.user1Id;
+      const partner = await db.getUserById(partnerId, true);
+      if (!partner || latestUser.isBanned || partner.isBanned) {
+        console.warn(`[Relay] Refusing message in room ${latestRoom.id}: a participant is missing or moderation-restricted.`);
+        return false;
+      }
+
+      return this.deliverToRoom(client, message, latestUser, latestRoom);
+    });
+  }
+
+  private async deliverToRoom(
+    client: Client,
+    message: Message,
+    authorUser: UserProfile,
+    room: RoomSession
+  ): Promise<boolean> {
     // Rate limit check: max 5 messages per 3s
     const rateLimit = await redis.checkRateLimit(`relay:${authorUser.id}`, 5, 3);
     if (!rateLimit.allowed) {
@@ -130,6 +165,15 @@ export class MessageRelayService {
       console.error('[Relay] Message was delivered but could not be persisted:', error);
       await message.reply('⚠️ Your message was delivered, but chat history could not be saved. Please try again later.').catch(() => {});
       return true;
+    }
+
+    // Advance room inactivity tracking even when the separate XP/reward path
+    // fails. Cleanup must never end a conversation because an XP RPC failed.
+    try {
+      const touched = await db.touchRoomActivity(room.id);
+      if (!touched) console.warn(`[Relay] Room ${room.id} was no longer active after message persistence.`);
+    } catch (activityError) {
+      console.error('[Relay] Could not update room activity timestamp:', activityError);
     }
 
     // Award connection XP after the message has been delivered and recorded.

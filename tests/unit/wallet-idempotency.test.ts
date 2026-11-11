@@ -121,16 +121,56 @@ describe('Destiny Coins Wallet & Idempotency Tests', () => {
     expect(await walletService.getBalance(testUserId)).toBe(100);
   });
 
-  it('should enforce 24h daily streak reward cooldown and prevent duplicate claims', async () => {
+  it('should enforce the 24h daily streak cooldown without duplicating the reward', async () => {
     const firstClaim = await streakService.claimDaily(testUserId);
     expect(firstClaim.success).toBe(true);
     expect(firstClaim.newStreak).toBe(1);
     expect(firstClaim.rewardDc).toBe(50); // Base reward
 
-    // Immediate second claim must be rejected by cooldown
+    // Same-day retries reuse the stable daily idempotency key and return the
+    // original claim result instead of attempting a second credit.
     const secondClaim = await streakService.claimDaily(testUserId);
-    expect(secondClaim.success).toBe(false);
-    expect(secondClaim.message).toContain('already claimed');
-    expect(secondClaim.rewardDc).toBe(0);
+    expect(secondClaim.success).toBe(true);
+    expect(secondClaim.newStreak).toBe(firstClaim.newStreak);
+    expect(secondClaim.rewardDc).toBe(firstClaim.rewardDc);
+    expect(secondClaim.newBalance).toBe(firstClaim.newBalance);
+    expect(await walletService.getBalance(testUserId)).toBe(150);
+    expect(db.mockTransactions.filter((tx) => tx.referenceId.startsWith(`daily:${testUserId}:`))).toHaveLength(1);
+  });
+
+  it('should serialize simultaneous daily claims and credit the wallet only once', async () => {
+    const [first, second] = await Promise.all([
+      streakService.claimDaily(testUserId),
+      streakService.claimDaily(testUserId),
+    ]);
+
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+    expect(second.rewardDc).toBe(first.rewardDc);
+    expect(second.newBalance).toBe(first.newBalance);
+    expect(await walletService.getBalance(testUserId)).toBe(150);
+    expect(db.mockTransactions.filter((tx) => tx.referenceId.startsWith(`daily:${testUserId}:`))).toHaveLength(1);
+  });
+
+  it('should repair the cooldown timestamp after an interrupted legacy claim without crediting twice', async () => {
+    const reference = `daily:${testUserId}:legacy-retry`;
+    const initial = await db.executeCoinTransaction(
+      testUserId,
+      50,
+      'daily_reward',
+      reference,
+      { streak: 1 }
+    );
+    expect(initial.success).toBe(true);
+
+    const userBeforeRetry = await db.getUserById(testUserId, true);
+    expect(userBeforeRetry?.lastDailyClaim).toBeFalsy();
+
+    const retry = await db.claimDailyReward(testUserId, reference);
+    expect(retry.success).toBe(true);
+    expect(retry.rewardDc).toBe(50);
+    expect((await db.getUserById(testUserId, true))?.lastDailyClaim).toBeTruthy();
+    expect(await walletService.getBalance(testUserId)).toBe(150);
+    expect(db.mockTransactions.filter((tx) => tx.referenceId === reference)).toHaveLength(1);
   });
 });

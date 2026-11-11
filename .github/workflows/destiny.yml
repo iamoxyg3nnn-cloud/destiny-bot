@@ -20,7 +20,9 @@ on:
 
 concurrency:
   group: destiny-bot-runner
-  cancel-in-progress: true
+  # Session chaining dispatches a successor before this run exits. Cancelling
+  # the current run here would kill the session that just created the successor.
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -31,17 +33,6 @@ jobs:
     name: Run Destiny Ecosystem
     runs-on: ubuntu-latest
     timeout-minutes: 360
-
-    services:
-      redis:
-        image: redis:alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     env:
       DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
@@ -54,7 +45,7 @@ jobs:
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      REDIS_HOST: ${{ secrets.REDIS_HOST || '127.0.0.1' }}
+      REDIS_HOST: ${{ secrets.REDIS_HOST }}
       REDIS_PORT: ${{ secrets.REDIS_PORT || '6379' }}
       REDIS_USERNAME: ${{ secrets.REDIS_URL && secrets.REDIS_USERNAME || (secrets.REDIS_HOST && secrets.REDIS_HOST != '127.0.0.1' && secrets.REDIS_USERNAME) || '' }}
       REDIS_PASSWORD: ${{ secrets.REDIS_URL && secrets.REDIS_PASSWORD || (secrets.REDIS_HOST && secrets.REDIS_HOST != '127.0.0.1' && secrets.REDIS_PASSWORD) || '' }}
@@ -167,6 +158,21 @@ jobs:
         run: |
           node scripts/setup-env.js
           chmod 0600 .env
+
+      - name: Require the configured persistent Redis instance
+        env:
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          REDIS_HOST: ${{ secrets.REDIS_HOST }}
+        run: |
+          set -euo pipefail
+          if [ -z "${REDIS_URL}" ] && [ -z "${REDIS_HOST}" ]; then
+            echo "::error::Configure REDIS_URL or REDIS_HOST in repository Actions secrets. The runner no longer substitutes an ephemeral local Redis service."
+            exit 1
+          fi
+          if [ -z "${REDIS_URL}" ] && { [ "${REDIS_HOST}" = "127.0.0.1" ] || [ "${REDIS_HOST}" = "localhost" ]; }; then
+            echo "::error::REDIS_HOST must point to your persistent hosted Redis instance, not localhost."
+            exit 1
+          fi
 
       - name: Verify Redis Connection
         id: redis_check

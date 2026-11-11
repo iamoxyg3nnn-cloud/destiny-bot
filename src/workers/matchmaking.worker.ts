@@ -10,6 +10,7 @@ export class MatchmakingWorker {
   private worker: Worker | null = null;
   private intervalTimer: NodeJS.Timeout | null = null;
   private cycleInFlight = false;
+  private cyclePromise: Promise<void> | null = null;
 
   start() {
     if (this.intervalTimer || this.worker) return;
@@ -21,18 +22,21 @@ export class MatchmakingWorker {
 
     // 1. High frequency polling fallback loop (every 2.5 seconds)
     startWorkerHeartbeat('matchmaking');
-    this.intervalTimer = setInterval(async () => {
+    this.intervalTimer = setInterval(() => {
       // Prevent overlapping local polls from competing for the same distributed
       // cycle lock and flooding Redis while a slow room/DM operation is active.
       if (this.cycleInFlight) return;
       this.cycleInFlight = true;
-      try {
-        await matchmakingManager.processMatchCycle();
-      } catch (err: any) {
-        console.error('[Worker:Matchmaking] Error in match cycle:', err?.message);
-      } finally {
-        this.cycleInFlight = false;
-      }
+      const cycle = matchmakingManager.processMatchCycle()
+        .catch((err: any) => {
+          console.error('[Worker:Matchmaking] Error in match cycle:', err?.message);
+        })
+        .then(() => undefined)
+        .finally(() => {
+          this.cycleInFlight = false;
+          this.cyclePromise = null;
+        });
+      this.cyclePromise = cycle;
     }, 2500);
 
     // 2. BullMQ Distributed Job Worker
@@ -64,12 +68,20 @@ export class MatchmakingWorker {
     }
   }
 
-  stop() {
+  async stop(): Promise<void> {
     if (this.intervalTimer) clearInterval(this.intervalTimer);
     this.intervalTimer = null;
-    if (this.worker) void this.worker.close();
-    this.worker = null;
-    void stopWorkerHeartbeat('matchmaking');
+
+    try {
+      const cycle = this.cyclePromise;
+      if (cycle) await cycle;
+
+      const worker = this.worker;
+      this.worker = null;
+      if (worker) await worker.close();
+    } finally {
+      await stopWorkerHeartbeat('matchmaking');
+    }
   }
 }
 

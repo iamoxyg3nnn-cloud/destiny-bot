@@ -20,20 +20,41 @@ export async function middleware(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   const authenticated = await verifySessionToken(token);
 
-  if (authenticated) {
-    return NextResponse.next();
+  if (!authenticated) {
+    // API calls get a 401 so the client can react; pages get redirected.
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const loginUrl = req.nextUrl.clone();
+    loginUrl.pathname = '/login';
+    loginUrl.search = '';
+    return NextResponse.redirect(loginUrl);
   }
 
-  // API calls get a 401 so the client can react; pages get redirected.
-  if (pathname.startsWith('/api/')) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // SameSite cookies alone do not prevent requests from hostile sibling
+  // subdomains (they are same-site). Require an exact same-origin Origin for
+  // every state-changing dashboard API request.
+  const mutatingMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method.toUpperCase());
+  if (pathname.startsWith('/api/') && mutatingMethod) {
+    const origin = req.headers.get('origin');
+    if (!origin) {
+      return NextResponse.json({ error: 'Forbidden: missing request origin.' }, { status: 403 });
+    }
+
+    try {
+      const parsedOrigin = new URL(origin);
+      const requestHost = req.headers.get('host');
+      if (!requestHost || parsedOrigin.host.toLowerCase() !== requestHost.toLowerCase() ||
+          (process.env.NODE_ENV === 'production' && parsedOrigin.protocol !== 'https:')) {
+        return NextResponse.json({ error: 'Forbidden: cross-origin request.' }, { status: 403 });
+      }
+    } catch {
+      return NextResponse.json({ error: 'Forbidden: invalid request origin.' }, { status: 403 });
+    }
   }
 
-  // Keep redirects same-origin; never trust attacker-controlled forwarded-host headers.
-  const loginUrl = req.nextUrl.clone();
-  loginUrl.pathname = '/login';
-  loginUrl.search = '';
-  return NextResponse.redirect(loginUrl);;
+  return NextResponse.next();
 }
 
 export const config = {
