@@ -16,13 +16,9 @@ export interface ProfileViewer {
 }
 
 export function isProfileComplete(user: UserProfile | null | undefined): boolean {
-  return Boolean(
-    user &&
-      user.age >= 18 &&
-      user.gender &&
-      user.gender !== 'prefer_not_to_say' &&
-      user.gender.trim().length > 0
-  );
+  // Gender is optional profile metadata, not a matchmaking eligibility gate.
+  // Users who prefer not to disclose it must still be able to join the pool.
+  return Boolean(user && Number.isInteger(user.age) && user.age >= 18 && user.age <= 99);
 }
 
 export function getDisplayName(viewer: ProfileViewer, member?: unknown): string {

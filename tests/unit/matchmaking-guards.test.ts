@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { matchmakingEngine } from '../../src/core/matchmaking/engine.js';
 import { MatchTicket } from '../../src/core/types.js';
+import { isProfileComplete } from '../../src/bot/profile-view.js';
 
 function ticket(overrides: Partial<MatchTicket> = {}): MatchTicket {
   return {
@@ -20,6 +21,14 @@ function ticket(overrides: Partial<MatchTicket> = {}): MatchTicket {
 }
 
 describe('Matchmaking edge-case guards', () => {
+  it('allows an adult profile to match without disclosing gender', () => {
+    expect(isProfileComplete({ age: 24, gender: 'prefer_not_to_say' } as any)).toBe(true);
+  });
+
+  it('rejects profiles below the adult age threshold', () => {
+    expect(isProfileComplete({ age: 17, gender: 'female' } as any)).toBe(false);
+  });
+
   it('rejects invalid ages without throwing', async () => {
     const result = await matchmakingEngine.evaluateMatch(ticket({ age: Number.NaN }), ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b' }));
     expect(result.isEligible).toBe(false);
@@ -60,6 +69,20 @@ describe('Matchmaking edge-case guards', () => {
     );
     expect(result.isEligible).toBe(true);
     expect(result.reasons).toContain('MUTUAL_COMPATIBILITY_CONFIRMED');
+  });
+
+  it('rejects a pair when either preloaded block list contains the other user', async () => {
+    const blocks = new Map<string, ReadonlySet<string>>([
+      ['user-a', new Set<string>()],
+      ['user-b', new Set<string>(['user-a'])],
+    ]);
+    const result = await matchmakingEngine.evaluateMatch(
+      ticket(),
+      ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b', gender: 'male' }),
+      blocks
+    );
+    expect(result.isEligible).toBe(false);
+    expect(result.reasons).toContain('USER_BLOCKED');
   });
 
   it('rejects mutually incompatible age ranges', async () => {

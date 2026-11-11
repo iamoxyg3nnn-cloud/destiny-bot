@@ -886,7 +886,7 @@ export class DatabaseService {
   }
 
   // ---------------- BLOCKS & SAFETY ----------------
-  private async getBlockedUserIds(userId: string): Promise<Set<string>> {
+  async getBlockedUserIds(userId: string): Promise<Set<string>> {
     const cached = this.blockListCache.get(userId);
     if (cached && cached.expires > Date.now()) return new Set(cached.ids);
 

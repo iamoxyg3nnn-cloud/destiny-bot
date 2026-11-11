@@ -21,7 +21,7 @@ async function bootstrap() {
   console.log(`[Config] Node Environment: ${config.NODE_ENV}`);
   console.log(`[Database] Supabase Mode: ${db.isUsingMock() ? 'In-Memory Testing Store' : 'Connected to Supabase'}`);
   // 1. Start Workers
-  await startAllWorkers({ includeMatchmaking: false });
+  await startAllWorkers({ includeMatchmaking: true });
   console.log(`[Cache/Locks] Redis Mode: ${redis.isHealthy() ? 'Connected' : 'High-Speed Memory Fallback'}`);
 
   // 2. Start API Server (loopback only — never exposed directly)

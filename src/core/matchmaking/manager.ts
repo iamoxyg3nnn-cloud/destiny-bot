@@ -248,33 +248,51 @@ export class MatchmakingManager {
 
       const activeTickets: MatchTicket[] = [];
       const activeIds = new Set<string>();
-      for (const userId of ids) {
-        const raw = await redis.get(`ticket:${userId}`);
+
+      // Fetch Redis tickets concurrently in bounded batches. Serial GETs made
+      // queue scan latency grow linearly with queue size and delayed every
+      // matchmaking cycle.
+      const ticketEntries: Array<[string, string | null]> = [];
+      const batchSize = 100;
+      for (let offset = 0; offset < ids.length; offset += batchSize) {
+        const batch = ids.slice(offset, offset + batchSize);
+        const values = await Promise.all(batch.map(async (userId) => [userId, await redis.get(`ticket:${userId}`)] as [string, string | null]));
+        ticketEntries.push(...values);
+      }
+
+      const staleIds: string[] = [];
+      for (const [userId, raw] of ticketEntries) {
         if (!raw) {
-          await redis.sRem('matchmaking:queue', userId);
+          staleIds.push(userId);
           continue;
         }
         try {
           const ticket = JSON.parse(raw) as MatchTicket;
           const valid = isValidMatchTicket(ticket) && ticket.userId === userId;
           if (!valid) {
-            await redis.del(`ticket:${userId}`);
-            await redis.sRem('matchmaking:queue', userId);
+            staleIds.push(userId);
             continue;
           }
           this.inMemoryQueue.set(userId, ticket);
           activeIds.add(userId);
           activeTickets.push(ticket);
         } catch {
+          staleIds.push(userId);
+        }
+      }
+
+      if (staleIds.length > 0) {
+        await Promise.all(staleIds.map(async (userId) => {
           await redis.del(`ticket:${userId}`);
           await redis.sRem('matchmaking:queue', userId);
-        }
+        }));
       }
 
       for (const userId of this.inMemoryQueue.keys()) {
         if (!activeIds.has(userId)) this.inMemoryQueue.delete(userId);
       }
-      this.savePersistentQueue();
+      // Redis is authoritative in production; avoid synchronous disk writes on
+      // every 2.5s poll. Join/leave still persist local snapshots for migration.
       activeTickets.sort((a, b) => a.queuedAt - b.queuedAt);
       return activeTickets;
       }
@@ -301,6 +319,11 @@ export class MatchmakingManager {
    * Process matchmaking iteration atomically
    */
   async processMatchCycle(): Promise<{ matchesCreated: number }> {
+    // The worker starts before Discord login completes. Never consume tickets
+    // or create active rooms until the client can actually deliver both DMs.
+    const client = getDiscordClient();
+    if (!client || !client.isReady()) return { matchesCreated: 0 };
+
     return await lockManager.withLock('lock:matchmaking:cycle', async () => {
       const tickets = await this.getQueueTickets();
       if (tickets.length < 2) return { matchesCreated: 0 };
@@ -308,21 +331,16 @@ export class MatchmakingManager {
       console.log(`[Matchmaking Cycle] Evaluating ${tickets.length} queue tickets:`, tickets.map(t => t.destinyId));
 
       let matchesCreated = 0;
-      const matchedUserIds = new Set<string>();
+      const blockLists = await matchmakingEngine.preloadBlockLists(tickets);
+      const unmatched = [...tickets];
 
-      for (let i = 0; i < tickets.length; i++) {
-        const ticketA = tickets[i];
-        if (matchedUserIds.has(ticketA.userId)) continue;
-
-        const remainingCandidates = tickets.filter(
-          (t) => !matchedUserIds.has(t.userId) && t.userId !== ticketA.userId
-        );
-
-        const match = await matchmakingEngine.findBestMatch(ticketA, remainingCandidates);
+      while (unmatched.length > 1) {
+        const ticketA = unmatched.shift()!;
+        const match = await matchmakingEngine.findBestMatch(ticketA, unmatched, blockLists);
         if (match) {
           const ticketB = match.partner;
-          matchedUserIds.add(ticketA.userId);
-          matchedUserIds.add(ticketB.userId);
+          const partnerIndex = unmatched.findIndex((ticket) => ticket.userId === ticketB.userId);
+          if (partnerIndex >= 0) unmatched.splice(partnerIndex, 1);
 
           console.log(`[Matchmaking Cycle] Match confirmed between ${ticketA.destinyId} and ${ticketB.destinyId}! Creating room...`);
 

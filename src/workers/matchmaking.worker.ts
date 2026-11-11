@@ -9,6 +9,7 @@ import { startWorkerHeartbeat, stopWorkerHeartbeat } from './heartbeat.js';
 export class MatchmakingWorker {
   private worker: Worker | null = null;
   private intervalTimer: NodeJS.Timeout | null = null;
+  private cycleInFlight = false;
 
   start() {
     if (this.intervalTimer || this.worker) return;
@@ -21,10 +22,16 @@ export class MatchmakingWorker {
     // 1. High frequency polling fallback loop (every 2.5 seconds)
     startWorkerHeartbeat('matchmaking');
     this.intervalTimer = setInterval(async () => {
+      // Prevent overlapping local polls from competing for the same distributed
+      // cycle lock and flooding Redis while a slow room/DM operation is active.
+      if (this.cycleInFlight) return;
+      this.cycleInFlight = true;
       try {
         await matchmakingManager.processMatchCycle();
       } catch (err: any) {
         console.error('[Worker:Matchmaking] Error in match cycle:', err?.message);
+      } finally {
+        this.cycleInFlight = false;
       }
     }, 2500);
 
