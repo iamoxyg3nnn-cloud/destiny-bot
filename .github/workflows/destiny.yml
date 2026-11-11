@@ -188,6 +188,10 @@ jobs:
           NODE_ENV: production
           SESSION_MINUTES: ${{ inputs.session_minutes || '345' }}
           ENABLE_ADMIN_TUNNEL: ${{ github.event_name != 'workflow_dispatch' || inputs.admin_tunnel != false }}
+          # Explicitly forward dashboard credentials to the tunnel subprocess.
+          API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+          DASHBOARD_ADMIN_PASSWORD: ${{ secrets.DASHBOARD_ADMIN_PASSWORD }}
+          DASHBOARD_SESSION_SECRET: ${{ secrets.DASHBOARD_SESSION_SECRET }}
         run: |
           SESSION_MINUTES="${SESSION_MINUTES:-345}"
           case "${SESSION_MINUTES}" in
