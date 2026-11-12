@@ -239,6 +239,21 @@ async function ensureSlashCommandAccess(interaction: ChatInputCommandInteraction
 /**
  * Main Interaction Handler for all Discord Slash Commands
  */
+async function logGuildSetupAudit(
+  actorId: string,
+  action: string,
+  guildId: string,
+  changes: Record<string, any> = {}
+): Promise<boolean> {
+  try {
+    await db.logAdminAction(actorId, action, 'GUILD', guildId, changes);
+    return true;
+  } catch (error: any) {
+    console.error('[Guild Setup] Setting saved but audit log failed:', error?.message || error);
+    return false;
+  }
+}
+
 export async function handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   const { commandName, user: discordUser } = interaction;
 
@@ -545,7 +560,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         await respond({ content: '⚠️ Could not save the matchmaking portal channel. Please try again.', ephemeral: true });
         return;
       }
-      await db.logAdminAction(interaction.user.id, 'SET_GUILD_MATCH_CHANNEL', 'GUILD', interaction.guild.id, { channelId: channel.id });
+      const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_MATCH_CHANNEL', interaction.guild.id, { channelId: channel.id });
 
       const portalContainer = embedService.createMatchmakingPortalContainer();
       await channel.send({
@@ -584,7 +599,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         await respond({ content: '⚠️ Could not save the moderation channel. Please try again.', ephemeral: true });
         return;
       }
-      await db.logAdminAction(interaction.user.id, 'SET_GUILD_MODLOG_CHANNEL', 'GUILD', interaction.guild.id, { channelId: channel.id });
+      const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_MODLOG_CHANNEL', interaction.guild.id, { channelId: channel.id });
 
       await respond({
         content: `✅ Moderation and verification alerts channel configured to <#${channel.id}>.`,
@@ -600,9 +615,9 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         await respond({ content: '⚠️ Could not save this server setting. Please try again; no success was reported.', ephemeral: true });
         return;
       }
-      await db.logAdminAction(interaction.user.id, 'SET_GUILD_CROSS_SERVER', 'GUILD', interaction.guild.id, { enabled });
+      const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_CROSS_SERVER', interaction.guild.id, { enabled });
       await respond({
-        content: `✅ Cross-server matchmaking has been **${enabled ? 'ENABLED' : 'DISABLED'}** for ${interaction.guild.name}. This setting is saved.`,
+        content: `✅ Cross-server matchmaking has been **${enabled ? 'ENABLED' : 'DISABLED'}** for ${interaction.guild.name}. This setting is saved.${auditLogged ? '' : ' ⚠️ Audit logging failed; notify a platform owner.'}`,
         ephemeral: true
       });
       return;
