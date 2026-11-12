@@ -21,7 +21,6 @@ concurrency:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
   run-bot:
@@ -211,9 +210,9 @@ jobs:
             exit 0
           fi
 
-          echo "::warning::Destiny bot exited with status ${rc}; waiting 3m before triggering recovery..."
+          echo "::error::Destiny bot exited with status ${rc}; waiting 3m before the completion watcher starts a recovery session..."
           sleep 180
-          exit 0
+          exit "${rc}"
 
       - name: Session Summary
         if: always()
@@ -223,25 +222,9 @@ jobs:
           {
             echo "### 🌌 Destiny Bot Session"
             echo ""
-            echo "- **Status:** Completed window / Triggering chained successor"
+            echo "- **Status:** Session ended; completion watcher schedules the successor"
             echo "- **Runner:** ${RUNNER_NAME} (GitHub Actions Ubuntu)"
             echo "- **Redis connectivity check:** ${REDIS_CHECK_OUTCOME:-not-run}"
             echo "- **Supabase:** Connected"
           } >> "${GITHUB_STEP_SUMMARY}"
           echo "- **Admin dashboard:** Disabled (not published)" >> "${GITHUB_STEP_SUMMARY}"
-
-      - name: Chain Next Session
-        if: success()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          WF: destiny.yml
-          REF: ${{ github.ref_name }}
-        run: |
-          queued=$(gh api "repos/${GH_REPO}/actions/workflows/${WF}/runs?status=queued" --jq '.total_count' 2>/dev/null || echo 0)
-          if [ "${queued:-0}" -gt 0 ]; then
-            echo "A successor session is already queued (${queued}); skipping extra dispatch."
-            exit 0
-          fi
-          gh workflow run "${WF}" --repo "${GH_REPO}" --ref "${REF}" -f session_minutes=345
-          echo "Dispatched the next session successfully."
