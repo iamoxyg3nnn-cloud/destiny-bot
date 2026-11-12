@@ -153,7 +153,7 @@ export default function UsersPage() {
                   <td className="px-5 py-3.5">{user.genderVerified ? <Badge variant="emerald">Verified</Badge> : <span className="text-zinc-500">Unverified</span>}</td>
                   <td className="px-5 py-3.5">{user.isBanned ? <Badge variant="rose">Banned</Badge> : <Badge variant="zinc">Active</Badge>}</td>
                   <td className="px-5 py-3.5 text-right">
-                    <Button size="sm" variant={user.isBanned ? 'emerald' : 'danger'} onClick={() => void toggleBan(user)} disabled={loading}>
+                    <Button size="sm" variant={user.isBanned ? 'amber' : 'danger'} onClick={() => void toggleBan(user)} disabled={loading}>
                       {user.isBanned ? 'Unban' : 'Ban'}
                     </Button>
                   </td>
