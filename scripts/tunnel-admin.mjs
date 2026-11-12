@@ -270,7 +270,7 @@ if (!process.env.DASHBOARD_SESSION_SECRET || process.env.DASHBOARD_SESSION_SECRE
   console.error('✖ DASHBOARD_SESSION_SECRET must contain at least 32 characters.');
   process.exit(1);
 }
-if (!process.env.API_SECRET_KEY || process.env.API_SECRET_KEY.length < 32) {
+if (!process.env.API_SECRET_KEY || process.env.API_SECRET_KEY.length < 32 || process.env.API_SECRET_KEY === 'destiny_internal_secret_32bytes_min_key!') {
   console.error('✖ API_SECRET_KEY must contain at least 32 characters.');
   process.exit(1);
 }
