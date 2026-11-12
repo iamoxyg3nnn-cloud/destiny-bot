@@ -1330,22 +1330,11 @@ export function isGuildAdmin(interactionOrMessage: Interaction | Message): boole
   if (!member) return false;
 
   const authorId = interactionOrMessage instanceof Message ? interactionOrMessage.author.id : interactionOrMessage.user.id;
-  // Bot Developer / Master Override
-  if (authorId === '971251685773152326') return true;
-
-  // Server Owner
+  // Server ownership and the native Administrator permission authorize only
+  // this guild's setup. Platform-owner access is handled separately through
+  // BOT_OWNER_IDS and must never be a hidden cross-server override.
   if (interactionOrMessage.guild?.ownerId === authorId) return true;
-
-  // Actual Discord permissions only. Role names are user-configurable and
-  // must never be treated as proof of administrator authority.
-  if (
-    member.permissions?.has?.(PermissionFlagsBits.Administrator) ||
-    member.permissions?.has?.(PermissionFlagsBits.ManageGuild)
-  ) {
-    return true;
-  }
-
-  return false;
+  return Boolean(member.permissions?.has?.(PermissionFlagsBits.Administrator));
 }
 
 /**
@@ -1358,13 +1347,29 @@ async function handleSetCurrentAdminChannel(btn: ButtonInteraction): Promise<voi
     const errorContainer = new ContainerBuilder()
       .setAccentColor(COLORS.DANGER)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent('⚠️ Only server administrators with **Manage Server** or **Administrator** permissions can configure Destiny.')
+        new TextDisplayBuilder().setContent('⚠️ Only the server owner or a member with Discord **Administrator** permission can configure Destiny.')
       );
     await safeEditReply(btn, { components: [errorContainer] });
     return;
   }
 
-  await db.setGuildAdminChannel(btn.guildId, btn.channelId, btn.guild?.name);
+  const channel = btn.channel as any;
+  const botMember = btn.guild?.members.me || await btn.guild?.members.fetchMe().catch(() => null);
+  const botPermissions = botMember && channel?.permissionsFor ? channel.permissionsFor(botMember) : null;
+  if (!channel?.isTextBased?.() || !botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
+    const errorContainer = new ContainerBuilder().setAccentColor(COLORS.DANGER)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent('Destiny needs a text channel with View Channel and Send Messages permissions.'));
+    await safeEditReply(btn, { components: [errorContainer] });
+    return;
+  }
+  const saved = await db.setGuildMatchChannel(btn.guildId, btn.channelId, btn.guild?.name);
+  if (!saved) {
+    const errorContainer = new ContainerBuilder().setAccentColor(COLORS.DANGER)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent('Could not save the matchmaking portal channel. Please try again.'));
+    await safeEditReply(btn, { components: [errorContainer] });
+    return;
+  }
+  await db.logAdminAction(btn.user.id, 'SET_GUILD_MATCH_CHANNEL', 'GUILD', btn.guildId, { channelId: btn.channelId });
   const successContainer = embedService.createChannelSetSuccessContainer(btn.channelId, btn.guild?.name || 'Server');
   await safeEditReply(btn, { components: [successContainer] });
 }
@@ -1388,7 +1393,23 @@ async function handleSelectAdminChannel(select: ChannelSelectMenuInteraction): P
   const selectedChannelId = select.values[0];
   if (!selectedChannelId) return;
 
-  await db.setGuildAdminChannel(select.guildId, selectedChannelId, select.guild?.name);
+  const channel = select.guild?.channels.cache.get(selectedChannelId) || await select.guild?.channels.fetch(selectedChannelId).catch(() => null);
+  const botMember = select.guild?.members.me || await select.guild?.members.fetchMe().catch(() => null);
+  const botPermissions = botMember && channel && 'permissionsFor' in channel ? channel.permissionsFor(botMember) : null;
+  if (!channel || !channel.isTextBased() || !botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
+    const errorContainer = new ContainerBuilder().setAccentColor(COLORS.DANGER)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent('Choose a text channel where Destiny has View Channel and Send Messages permissions.'));
+    await safeEditReply(select, { components: [errorContainer] });
+    return;
+  }
+  const saved = await db.setGuildMatchChannel(select.guildId, selectedChannelId, select.guild?.name);
+  if (!saved) {
+    const errorContainer = new ContainerBuilder().setAccentColor(COLORS.DANGER)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent('Could not save the matchmaking portal channel. Please try again.'));
+    await safeEditReply(select, { components: [errorContainer] });
+    return;
+  }
+  await db.logAdminAction(select.user.id, 'SET_GUILD_MATCH_CHANNEL', 'GUILD', select.guildId, { channelId: selectedChannelId });
   const successContainer = embedService.createChannelSetSuccessContainer(selectedChannelId, select.guild?.name || 'Server');
   await safeEditReply(select, { components: [successContainer] });
 }
@@ -1480,7 +1501,14 @@ async function handleResetSetup(btn: ButtonInteraction): Promise<void> {
     return;
   }
 
-  await db.clearGuildChannels(btn.guildId);
+  const saved = await db.setGuildMatchChannel(btn.guildId, null, btn.guild.name);
+  if (!saved) {
+    const errorContainer = new ContainerBuilder().setAccentColor(COLORS.DANGER)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent('Could not clear the matchmaking portal channel. Please try again.'));
+    await safeEditReply(btn, { components: [errorContainer] });
+    return;
+  }
+  await db.logAdminAction(btn.user.id, 'CLEAR_GUILD_MATCH_CHANNEL', 'GUILD', btn.guildId);
   const container = embedService.createChannelResetSuccessContainer(btn.guild.name);
   await safeEditReply(btn, { components: [container] });
 }
