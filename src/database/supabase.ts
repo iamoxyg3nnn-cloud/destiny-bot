@@ -400,6 +400,59 @@ export class DatabaseService {
     return cleared;
   }
 
+  async searchUsers(query = '', limit = 200): Promise<UserProfile[]> {
+    const safeLimit = Number.isFinite(limit) ? Math.min(200, Math.max(1, Math.trunc(limit))) : 200;
+    const normalized = query.trim().slice(0, 64);
+    if (this.isMockMode || !this.client) {
+      const users = Array.from(this.mockUsers.values());
+      const filtered = normalized
+        ? users.filter((user) => user.destinyId.toLowerCase().includes(normalized.toLowerCase()) ||
+            user.discordUserId.includes(normalized))
+        : users;
+      return filtered.slice(0, safeLimit).map((user) => ({ ...user }));
+    }
+
+    let request = this.client.from('users').select('*').order('created_at', { ascending: false }).limit(safeLimit);
+    if (normalized) {
+      if (/^[0-9]{17,20}$/.test(normalized)) {
+        request = request.eq('discord_user_id', normalized);
+      } else {
+        const escaped = normalized.replace(/[\\%_]/g, (character) => '\\' + character);
+        request = request.ilike('destiny_id', '%' + escaped + '%');
+      }
+    }
+    const { data, error } = await request;
+    if (error) throw new Error(`Failed to search users: ${error.message}`);
+    return (data || []).map((row: any) => this.mapUser(row));
+  }
+
+  async getUsersByVerificationStatus(
+    status: GenderVerificationStatus | 'all',
+    limit = 500,
+    offset = 0
+  ): Promise<UserProfile[]> {
+    const safeLimit = Number.isFinite(limit) ? Math.min(1000, Math.max(1, Math.trunc(limit))) : 500;
+    const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 0;
+    if (this.isMockMode || !this.client) {
+      const users = Array.from(this.mockUsers.values()).filter((user) =>
+        status === 'all'
+          ? Boolean(user.genderVerificationStatus && user.genderVerificationStatus !== 'unverified')
+          : user.genderVerificationStatus === status
+      );
+      return users.slice(safeOffset, safeOffset + safeLimit).map((user) => ({ ...user }));
+    }
+
+    let request = this.client.from('users').select('*').order('created_at', { ascending: false });
+    if (status === 'all') {
+      request = request.not('gender_verification_status', 'is', null).neq('gender_verification_status', 'unverified');
+    } else {
+      request = request.eq('gender_verification_status', status);
+    }
+    const { data, error } = await request.range(safeOffset, safeOffset + safeLimit - 1);
+    if (error) throw new Error(`Failed to load verification queue: ${error.message}`);
+    return (data || []).map((row: any) => this.mapUser(row));
+  }
+
   async getAllUsers(limit: number = 100, offset: number = 0): Promise<UserProfile[]> {
     if (this.isMockMode || !this.client) {
       return Array.from(this.mockUsers.values()).slice(offset, offset + limit);
