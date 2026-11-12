@@ -416,8 +416,8 @@ export class DatabaseService {
     if (this.isMockMode || !this.client) {
       const users = Array.from(this.mockUsers.values());
       const filtered = normalized
-        ? users.filter((user) => user.destinyId.toLowerCase().includes(normalized.toLowerCase()) ||
-            user.discordUserId.includes(normalized))
+        ? users.filter((user) => String(user.destinyId || '').toLowerCase().includes(normalized.toLowerCase()) ||
+            String(user.discordUserId || '').includes(normalized))
         : users;
       return filtered.slice(0, safeLimit).map((user) => this.normalizeUserBan(user));
     }
