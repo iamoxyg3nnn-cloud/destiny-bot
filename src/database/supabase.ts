@@ -419,18 +419,32 @@ export class DatabaseService {
       return filtered.slice(0, safeLimit).map((user) => this.normalizeUserBan(user));
     }
 
-    let request = this.client.from('users').select('*').order('created_at', { ascending: false }).limit(safeLimit);
-    if (normalized) {
-      if (/^[0-9]{17,20}$/.test(normalized)) {
-        request = request.eq('discord_user_id', normalized);
-      } else {
-        const escaped = normalized.replace(/[\\%_]/g, (character) => '\\' + character);
-        request = request.ilike('destiny_id', '%' + escaped + '%');
-      }
+    const baseQuery = () => this.client!.from('users').select('*').order('created_at', { ascending: false }).limit(safeLimit);
+    if (!normalized) {
+      const { data, error } = await baseQuery();
+      if (error) throw new Error(`Failed to search users: ${error.message}`);
+      return (data || []).map((row: any) => this.mapUser(row));
     }
-    const { data, error } = await request;
-    if (error) throw new Error(`Failed to search users: ${error.message}`);
-    return (data || []).map((row: any) => this.mapUser(row));
+
+    const escaped = normalized.replace(/[\\%_]/g, (character) => '\\' + character);
+    if (/^[0-9]{17,20}$/.test(normalized)) {
+      const { data, error } = await baseQuery().eq('discord_user_id', normalized);
+      if (error) throw new Error(`Failed to search users: ${error.message}`);
+      return (data || []).map((row: any) => this.mapUser(row));
+    }
+
+    const [destinyResult, discordResult] = await Promise.all([
+      baseQuery().ilike('destiny_id', '%' + escaped + '%'),
+      /^[0-9]+$/.test(normalized)
+        ? baseQuery().ilike('discord_user_id', '%' + escaped + '%')
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (destinyResult.error || discordResult.error) {
+      throw new Error('Failed to search users: ' + (destinyResult.error?.message || discordResult.error?.message));
+    }
+    const unique = new Map<string, any>();
+    for (const row of [...(destinyResult.data || []), ...(discordResult.data || [])]) unique.set(row.id, row);
+    return Array.from(unique.values()).slice(0, safeLimit).map((row: any) => this.mapUser(row));
   }
 
   async getUsersByVerificationStatus(
