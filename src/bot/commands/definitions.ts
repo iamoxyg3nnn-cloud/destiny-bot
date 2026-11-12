@@ -590,7 +590,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_MATCH_CHANNEL', interaction.guild.id, { channelId: channel.id });
 
       await respond({
-        content: `✅ **Destiny Matchmaking Portal** deployed successfully in <#${channel.id}>! Members can now click "Find Match" to start chatting.`,
+        content: `✅ **Destiny Matchmaking Portal** deployed successfully in <#${channel.id}>! Members can now click "Find Match" to start chatting.${auditLogged ? '' : ' ⚠️ Audit logging failed; notify a platform owner.'}`,
         ephemeral: true
       });
       return;
@@ -625,7 +625,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_MODLOG_CHANNEL', interaction.guild.id, { channelId: channel.id });
 
       await respond({
-        content: `✅ Moderation and verification alerts channel configured to <#${channel.id}>.`,
+        content: `✅ Moderation and verification alerts channel configured to <#${channel.id}>.${auditLogged ? '' : ' ⚠️ Audit logging failed; notify a platform owner.'}`,
         ephemeral: true
       });
       return;
