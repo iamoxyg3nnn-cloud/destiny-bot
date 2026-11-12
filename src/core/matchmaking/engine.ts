@@ -193,11 +193,27 @@ export class MatchmakingEngine {
     preloadedBlockLists?: ReadonlyMap<string, ReadonlySet<string>>
   ): Promise<{ partner: MatchTicket; matchResult: MatchCandidateResult } | null> {
     const blockLists = preloadedBlockLists ?? await this.preloadBlockLists([ticket, ...candidates]);
+    // A guild may opt out of cross-server discovery. Load each involved guild
+    // once per selection cycle rather than issuing a query for every candidate.
+    const guildIds = Array.from(new Set([ticket, ...candidates]
+      .map((entry) => entry.guildId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)));
+    const guildSettings = new Map<string, Awaited<ReturnType<typeof db.getGuildSettings>>>();
+    const settings = await Promise.all(guildIds.map(async (guildId) =>
+      [guildId, await db.getGuildSettings(guildId)] as const
+    ));
+    for (const [guildId, value] of settings) guildSettings.set(guildId, value);
+
     let selected: { partner: MatchTicket; matchResult: MatchCandidateResult } | null = null;
     let eligibleCount = 0;
 
     for (const candidate of candidates) {
       if (candidate.userId === ticket.userId || candidate.discordUserId === ticket.discordUserId) continue;
+      if (ticket.guildId && candidate.guildId && ticket.guildId !== candidate.guildId) {
+        const sourceAllowsGlobal = guildSettings.get(ticket.guildId)?.crossServerEnabled !== false;
+        const candidateAllowsGlobal = guildSettings.get(candidate.guildId)?.crossServerEnabled !== false;
+        if (!sourceAllowsGlobal || !candidateAllowsGlobal) continue;
+      }
       const result = this.evaluateWithBlockLists(ticket, candidate, blockLists);
       if (!result.isEligible) continue;
 
