@@ -43,7 +43,7 @@ export class VerificationService {
     userId: string,
     approved: boolean,
     notes?: string
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<{ success: boolean; message: string; auditWarning?: boolean; user?: import('../types.js').UserProfile }> {
     if (typeof approved !== 'boolean') {
       return { success: false, message: 'A valid approve/reject decision is required.' };
     }
@@ -59,21 +59,29 @@ export class VerificationService {
         discordUserId: user.discordUserId,
         genderVerified: approved,
         genderVerificationStatus: approved ? 'verified' : 'rejected',
+        genderVerificationEvidence: null,
       });
 
       const updatedUser = await db.getUserById(userId, true);
-      await db.logAdminAction(
-        adminId,
-        approved ? 'APPROVE_VERIFICATION' : 'REJECT_VERIFICATION',
-        'USER',
-        userId,
-        { approved, notes }
-      );
+      let auditWarning = false;
+      try {
+        await db.logAdminAction(
+          adminId,
+          approved ? 'APPROVE_VERIFICATION' : 'REJECT_VERIFICATION',
+          'USER',
+          userId,
+          { approved, notes }
+        );
+      } catch (error: any) {
+        auditWarning = true;
+        console.error('[Verification] Decision saved but audit log failed:', error?.message || error);
+      }
 
       return {
         success: true as const,
         message: approved ? 'User gender verification approved.' : 'User gender verification rejected.',
         user: updatedUser || user,
+        auditWarning,
       };
     });
 
