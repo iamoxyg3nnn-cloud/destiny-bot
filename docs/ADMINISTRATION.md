@@ -12,7 +12,7 @@ BOT_OWNER_IDS=123456789012345678,234567890123456789
 
 Use Discord user IDs (17–20 digits), comma-separated. These identities can run `/owner status` for global service diagnostics and perform platform-owner verification overrides. An empty list disables all platform-owner command and verification overrides. Never put this list in a public dashboard form or allow a guild administrator to modify it.
 
-The web dashboard password (`DASHBOARD_ADMIN_PASSWORD`) is a platform-owner credential. It is distinct from Discord server administration.
+The web dashboard can use individual Discord OAuth sessions (`DASHBOARD_OWNER_OAUTH_ENABLED=true`). Each login is checked against `BOT_OWNER_IDS` and the Discord user ID is written to the audit log. OAuth requires `NEXTAUTH_URL` to be the stable public HTTPS dashboard origin and the exact callback URL `/api/auth/callback/discord` to be registered in the Discord Developer Portal. Rotating quick-tunnel URLs cannot be used for OAuth. If OAuth is disabled, the dashboard falls back to the shared `DASHBOARD_ADMIN_PASSWORD`; that fallback is owner-only by operational policy but audit entries use the generic `dashboard_owner` actor. It is distinct from Discord server administration.
 
 ## 2. Discord server setup
 
@@ -31,7 +31,8 @@ A guild opting out of cross-server discovery can still match members from its ow
 
 ## 4. Operational notes
 
-- Keep `API_SECRET_KEY`, `DASHBOARD_ADMIN_PASSWORD`, and `DASHBOARD_SESSION_SECRET` in deployment secrets, never in source control.
+- Keep `API_SECRET_KEY`, `DASHBOARD_ADMIN_PASSWORD`, `DASHBOARD_SESSION_SECRET`, and `DISCORD_CLIENT_SECRET` in deployment secrets, never in source control.
+- For individually attributable dashboard owners, set `DASHBOARD_OWNER_OAUTH_ENABLED=true`, configure a stable HTTPS `NEXTAUTH_URL`, and register `${NEXTAUTH_URL}/api/auth/callback/discord` in Discord Developer Portal. Do not use a rotating quick tunnel in OAuth mode.
 - Set `BOT_OWNER_IDS` in the environment for every bot/shard process.
 - Re-deploy slash commands after changing command definitions so Discord publishes `/owner`.
 - Do not grant the dashboard credential to guild administrators. They should use Discord's `/setup` command.
