@@ -42,5 +42,6 @@ A guild opting out of cross-server discovery can still match members from its ow
 - Keep `API_SECRET_KEY`, `DASHBOARD_ADMIN_PASSWORD`, `DASHBOARD_SESSION_SECRET`, and `DISCORD_CLIENT_SECRET` in deployment secrets, never in source control.
 - For individually attributable dashboard owners, set `DASHBOARD_OWNER_OAUTH_ENABLED=true`, configure a stable HTTPS `NEXTAUTH_URL`, and register `${NEXTAUTH_URL}/api/auth/callback/discord` in Discord Developer Portal. Do not use a rotating quick tunnel in OAuth mode.
 - Set `BOT_OWNER_IDS` in the environment for every bot/shard process.
+- The GitHub deployment runner tracks applied SQL in the private `destiny_internal.schema_migrations` table and skips completed migrations. The existing database was baselined after checking its live schema; do not run `supabase db push` against it until the separate Supabase CLI migration history has been reconciled.
 - Re-deploy slash commands after changing command definitions so Discord publishes `/owner`.
 - Do not grant the dashboard credential to guild administrators. They should use Discord's `/setup` command.
