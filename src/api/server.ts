@@ -30,6 +30,22 @@ function safeEqual(a: string, b: string): boolean {
  * configured the API refuses every request rather than defaulting to open —
  * this API can manage users, moderate rooms and read private anonymous chat messages.
  */
+async function writeDashboardAudit(
+  req: Request,
+  action: string,
+  targetType: string,
+  targetId: string,
+  changes: Record<string, any> = {}
+): Promise<boolean> {
+  try {
+    await db.logAdminAction(dashboardActor(req), action, targetType, targetId, changes);
+    return true;
+  } catch (error: any) {
+    console.error('[API] Action completed but audit write failed:', error?.message || error);
+    return false;
+  }
+}
+
 function dashboardActor(req: Request): string {
   const actor = req.header('x-admin-id') || '';
   return /^[0-9]{17,20}$/.test(actor) ? actor : 'dashboard_owner';
@@ -252,6 +268,7 @@ export function createApiServer(): express.Express {
         discordUserId: user.discordUserId,
         isBanned: banned,
         banReason: banned ? (reason?.trim() || 'Admin moderation action') : '',
+        banExpiresAt: null,
       });
 
       if (banned) {
@@ -262,8 +279,8 @@ export function createApiServer(): express.Express {
     });
 
     if (result.notFound) return res.status(404).json({ error: 'User not found' });
-    await db.logAdminAction(dashboardActor(req), banned ? 'BAN_USER' : 'UNBAN_USER', 'USER', id, { reason });
-    res.json({ success: true, user: result.user });
+    const auditLogged = await writeDashboardAudit(req, banned ? 'BAN_USER' : 'UNBAN_USER', 'USER', id, { reason });
+    res.json({ success: true, user: result.user, auditWarning: !auditLogged });
   });
 
 
@@ -281,8 +298,9 @@ export function createApiServer(): express.Express {
     }
 
     const success = await db.endRoom(id, 'moderated');
-    await db.logAdminAction(dashboardActor(req), 'TERMINATE_ROOM', 'ROOM', id, { reason });
-    res.json({ success });
+    if (!success) return res.status(409).json({ error: 'Room is missing or is no longer active.' });
+    const auditLogged = await writeDashboardAudit(req, 'TERMINATE_ROOM', 'ROOM', id, { reason });
+    res.json({ success: true, auditWarning: !auditLogged });
   });
 
   app.get('/api/rooms/:id/messages', async (req: Request, res: Response) => {
@@ -318,23 +336,40 @@ export function createApiServer(): express.Express {
       if (!report) return { notFound: true as const, resolved: false as const };
       const resolved = await db.resolveReport(id, action, notes, dashboardActor(req));
       if (!resolved) return { notFound: false as const, resolved: false as const };
-      if (action === 'perma_ban') {
-        await matchmakingManager.removeQueueTicketUnderLock(report.reportedId);
+      let cleanupWarning = false;
+      if (action === 'perma_ban' || action === 'temp_ban') {
         const reportedUser = await db.getUserById(report.reportedId, true);
-        if (reportedUser?.activeRoomId) await db.endRoom(reportedUser.activeRoomId, 'moderated');
+        const cleanup = await Promise.allSettled([
+          matchmakingManager.removeQueueTicketUnderLock(report.reportedId),
+          ...(reportedUser?.activeRoomId
+            ? [db.endRoom(reportedUser.activeRoomId, 'moderated').then(async (ended) => {
+                if (!ended) await db.clearActiveRoom(report.reportedId, reportedUser.activeRoomId!);
+              })]
+            : []),
+        ]);
+        cleanupWarning = cleanup.some((result) => result.status === 'rejected');
+        if (cleanupWarning) {
+          console.error('[API] Ban was recorded but queue/room cleanup needs attention:', cleanup.filter((result) => result.status === 'rejected'));
+        }
       }
-      return { notFound: false as const, resolved: true as const, report };
+      return { notFound: false as const, resolved: true as const, report, cleanupWarning };
     };
 
-    const outcome = action === 'perma_ban'
+    const requiresBan = action === 'perma_ban' || action === 'temp_ban';
+    const outcome = requiresBan
       ? await matchmakingManager.withTicketLock(initialReport.reportedId, resolve)
       : await resolve();
 
     if (outcome.notFound) return res.status(404).json({ error: 'Report not found' });
     if (!outcome.resolved) return res.status(409).json({ error: 'Report could not be resolved.' });
 
-    await db.logAdminAction(dashboardActor(req), 'RESOLVE_REPORT', 'REPORT', id, { action, notes });
-    res.json({ success: true, report: { ...outcome.report, status: 'resolved', actionTaken: action } });
+    const auditLogged = await writeDashboardAudit(req, 'RESOLVE_REPORT', 'REPORT', id, { action, notes });
+    res.json({
+      success: true,
+      auditWarning: !auditLogged,
+      cleanupWarning: outcome.cleanupWarning,
+      report: { ...outcome.report, status: 'resolved', actionTaken: action },
+    });
   });
 
   // 6. GENDER VERIFICATIONS
@@ -452,12 +487,12 @@ export function createApiServer(): express.Express {
       if (results.some((saved) => !saved)) {
         return res.status(500).json({ error: 'One or more server settings could not be saved. Refresh the page before retrying.' });
       }
-      await db.logAdminAction(dashboardActor(req), 'UPDATE_GUILD_SETTINGS', 'GUILD', guildId, {
+      const auditLogged = await writeDashboardAudit(req, 'UPDATE_GUILD_SETTINGS', 'GUILD', guildId, {
         ...(hasMatch ? { matchChannelId: matchChannelId ?? null } : {}),
         ...(hasModLog ? { modLogChannelId: modLogChannelId ?? null } : {}),
         ...(hasCrossServer ? { crossServerEnabled } : {}),
       });
-      res.json({ success: true, guildId });
+      res.json({ success: true, guildId, auditWarning: !auditLogged });
     } catch (err: any) {
       console.error('[API] Failed to update guild settings:', err?.message || err);
       res.status(500).json({ error: 'Failed to update guild settings' });
