@@ -98,7 +98,7 @@ export class DatabaseService {
 
     if (this.isMockMode || !this.client) {
       for (const user of this.mockUsers.values()) {
-        if (user.discordUserId === discordUserId) return await this.enrichProfileExtensions({ ...user });
+        if (user.discordUserId === discordUserId) return await this.enrichProfileExtensions(this.normalizeUserBan(user));
       }
       return null;
     }
@@ -127,7 +127,7 @@ export class DatabaseService {
 
     if (this.isMockMode || !this.client) {
       const user = this.mockUsers.get(id);
-      return user ? await this.enrichProfileExtensions({ ...user }) : null;
+      return user ? await this.enrichProfileExtensions(this.normalizeUserBan(user)) : null;
     }
 
     const { data, error } = await this.client
@@ -159,7 +159,7 @@ export class DatabaseService {
       return uniqueIds
         .map((id) => this.mockUsers.get(id))
         .filter((user): user is UserProfile => Boolean(user))
-        .map((user) => ({ ...user }));
+        .map((user) => this.normalizeUserBan(user));
     }
 
     const users: UserProfile[] = [];
@@ -185,7 +185,7 @@ export class DatabaseService {
   async getUserByDestinyId(destinyId: string): Promise<UserProfile | null> {
     if (this.isMockMode || !this.client) {
       for (const user of this.mockUsers.values()) {
-        if (user.destinyId === destinyId) return await this.enrichProfileExtensions({ ...user });
+        if (user.destinyId === destinyId) return await this.enrichProfileExtensions(this.normalizeUserBan(user));
       }
       return null;
     }
@@ -241,14 +241,14 @@ export class DatabaseService {
       if (this.isMockMode || !this.client) {
         // Re-read the current map value immediately before merging. Two
         // simultaneous partial updates must not overwrite each other's fields.
-        const latest = this.mockUsers.get(existing.id) || existing;
-        const updated: UserProfile = {
+        const latest = this.normalizeUserBan(this.mockUsers.get(existing.id) || existing);
+        const updated: UserProfile = this.normalizeUserBan({
           ...latest,
           ...user,
           id: latest.id,
           createdAt: latest.createdAt,
           updatedAt: now,
-        };
+        });
         this.mockUsers.set(existing.id, updated);
         return updated;
       }
@@ -272,6 +272,7 @@ export class DatabaseService {
         ['activeRoomId', 'active_room_id'],
         ['isBanned', 'is_banned'],
         ['banReason', 'ban_reason'],
+        ['banExpiresAt', 'ban_expires_at'],
         ['reputationScore', 'reputation_score'],
         ['bio', 'bio'],
         ['matchIntent', 'match_intent'],
@@ -439,7 +440,7 @@ export class DatabaseService {
           ? Boolean(user.genderVerificationStatus && user.genderVerificationStatus !== 'unverified')
           : user.genderVerificationStatus === status
       );
-      return users.slice(safeOffset, safeOffset + safeLimit).map((user) => ({ ...user }));
+      return users.slice(safeOffset, safeOffset + safeLimit).map((user) => this.normalizeUserBan(user));
     }
 
     let request = this.client.from('users').select('*').order('created_at', { ascending: false });
@@ -455,7 +456,7 @@ export class DatabaseService {
 
   async getAllUsers(limit: number = 100, offset: number = 0): Promise<UserProfile[]> {
     if (this.isMockMode || !this.client) {
-      return Array.from(this.mockUsers.values()).slice(offset, offset + limit);
+      return Array.from(this.mockUsers.values()).slice(offset, offset + limit).map((user) => this.normalizeUserBan(user));
     }
     const safeLimit = Number.isFinite(limit) ? Math.min(1000, Math.max(1, Math.trunc(limit))) : 100;
     const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 0;
@@ -1071,11 +1072,16 @@ export class DatabaseService {
       const report = this.mockReports.get(id);
       if (!report || report.status !== 'pending') return false;
 
-      if (action === 'perma_ban') {
+      if (action === 'perma_ban' || action === 'temp_ban') {
         const reportedUser = this.mockUsers.get(report.reportedId);
         if (!reportedUser) return false;
         reportedUser.isBanned = true;
-        reportedUser.banReason = `Banned via safety report: ${report.category}`;
+        reportedUser.banReason = action === 'temp_ban'
+          ? `Temporarily banned via safety report: ${report.category}`
+          : `Banned via safety report: ${report.category}`;
+        reportedUser.banExpiresAt = action === 'temp_ban'
+          ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+          : null;
         reportedUser.updatedAt = new Date().toISOString();
       }
 
@@ -1326,6 +1332,11 @@ export class DatabaseService {
     return true;
   }
 
+  private normalizeUserBan(user: UserProfile): UserProfile {
+    if (isBanActive(user.isBanned, user.banExpiresAt)) return { ...user };
+    return { ...user, isBanned: false, banReason: undefined, banExpiresAt: null };
+  }
+
   private mapUser(row: any): UserProfile {
     return {
       id: row.id,
@@ -1342,8 +1353,9 @@ export class DatabaseService {
       minAgePref: Number(row.min_age_pref || 18),
       maxAgePref: Number(row.max_age_pref || 99),
       activeRoomId: row.active_room_id,
-      isBanned: Boolean(row.is_banned),
-      banReason: row.ban_reason,
+      isBanned: isBanActive(Boolean(row.is_banned), row.ban_expires_at || null),
+      banReason: isBanActive(Boolean(row.is_banned), row.ban_expires_at || null) ? row.ban_reason : undefined,
+      banExpiresAt: isBanActive(Boolean(row.is_banned), row.ban_expires_at || null) ? (row.ban_expires_at || null) : null,
       reputationScore: Number(row.reputation_score || 100),
       bio: row.bio ?? undefined,
       matchIntent: row.match_intent ?? undefined,
