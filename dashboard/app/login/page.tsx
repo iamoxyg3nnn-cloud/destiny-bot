@@ -72,7 +72,7 @@ export default function LoginPage() {
         </a>
 
         <p className="mb-3 text-center text-[11px] text-zinc-600">
-          Only Discord IDs listed in BOT_OWNER_IDS can enter the owner console.
+          With owner OAuth enabled, only Discord IDs listed in BOT_OWNER_IDS can enter. Otherwise use the bootstrap password.
         </p>
 
         <form
