@@ -13,17 +13,20 @@ export default function VerificationPage() {
   const [loading, setLoading] = useState(false);
   const [reviewNotes, setReviewNotes] = useState<{ [key: string]: string }>({});
   const [lastSync, setLastSync] = useState('');
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const fetchRequests = async () => {
     try {
       const res = await fetch(`/api/verifications?status=${tab}`, { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        setRequests(data);
-        setLastSync(new Date().toLocaleTimeString());
-      }
-    } catch (err) {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !Array.isArray(data)) throw new Error(data.error || 'Could not load verification requests.');
+      setRequests(data);
+      setError('');
+      setLastSync(new Date().toLocaleTimeString());
+    } catch (err: any) {
       console.error('Failed to fetch verification requests:', err);
+      setError(err?.message || 'Could not load verification requests.');
     }
   };
 
@@ -34,30 +37,34 @@ export default function VerificationPage() {
   }, [tab]);
 
   const handleReview = async (userId: string, approved: boolean) => {
+    setError('');
+    setNotice('');
     try {
       const notes = reviewNotes[userId] || (approved ? 'Identity verified by admin review' : 'Insufficient verification documentation');
-      await fetch(`/api/verifications/${userId}/review`, {
+      const response = await fetch(`/api/verifications/${userId}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          approved, 
-          notes,
-          adminId: 'verifier_admin' 
-        }),
+        body: JSON.stringify({ approved, notes }),
       });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.message || result.error || 'Verification review failed.');
       setReviewNotes((prev) => {
         const copy = { ...prev };
         delete copy[userId];
         return copy;
       });
-      fetchRequests();
-    } catch (err) {
+      setNotice(result.auditWarning ? 'Verification decision saved, but its audit log could not be written.' : result.message);
+      await fetchRequests();
+    } catch (err: any) {
       console.error(err);
+      setError(err?.message || 'Verification review failed.');
     }
   };
 
   return (
     <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
+      {error && <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">{error}</div>}
+      {notice && <div role="status" className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-xs text-zinc-300">{notice}</div>}
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/[0.07]">
         <div>
