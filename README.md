@@ -121,6 +121,8 @@ Execute the SQL migrations located in `supabase/migrations/` in order. Migration
 15. `015_conditional_room_inactivity.sql` — Close rooms only when they remain inactive at the transactionally rechecked cutoff.
 16. `016_remove_economy_and_progression.sql` — Drop all legacy economy/progression data and schema while preserving user profiles, rooms, chat, safety and moderation data.
 
+**Deployment note:** Stop the bot and worker processes, apply the migrations through `016`, deploy the updated application, then restart the processes. Do not run the old bot version against the migrated schema because the room-creation RPC no longer accepts progression arguments.
+
 ### 4. Running Destiny
 ```bash
 # Install dependencies
