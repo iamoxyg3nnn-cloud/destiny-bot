@@ -1195,6 +1195,32 @@ export class DatabaseService {
     return settings;
   }
 
+  async setGuildCrossServerEnabled(guildId: string, enabled: boolean, guildName?: string): Promise<boolean> {
+    if (!/^[0-9]{17,20}$/.test(guildId)) return false;
+    const cached = this.guildSettingsCache.get(guildId)?.settings;
+    if (cached) {
+      cached.crossServerEnabled = enabled;
+      if (guildName) cached.guildName = guildName;
+      this.guildSettingsCache.set(guildId, { settings: cached, expires: Date.now() + 300_000 });
+    } else {
+      this.guildSettingsCache.delete(guildId);
+    }
+
+    if (this.isMockMode || !this.client) return true;
+    const { error } = await this.client.from('guild_settings').upsert({
+      guild_id: guildId,
+      ...(guildName ? { guild_name: guildName } : {}),
+      cross_server_enabled: enabled,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'guild_id' });
+    if (error) {
+      this.guildSettingsCache.delete(guildId);
+      console.error('[Database] Failed to persist guild matchmaking scope:', error.message);
+      return false;
+    }
+    return true;
+  }
+
   async setGuildMatchChannel(guildId: string, channelId: string, guildName?: string): Promise<boolean> {
     const existing = this.guildSettingsCache.get(guildId)?.settings;
     if (existing) {
