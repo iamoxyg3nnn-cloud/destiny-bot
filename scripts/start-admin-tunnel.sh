@@ -66,7 +66,7 @@ validate_secret() {
 
   normalized="${value,,}"
   case "$normalized" in
-    admin|password|change_me|change-me|changeme|replace_with|replace-with|your_password|your_admin_password|your_secret|your_session_secret|destiny_dashboard_secret_key_32bytes!)
+    admin|password|change_me|change-me|changeme|replace_with|replace-with|your_password|your_admin_password|your_secret|your_session_secret|destiny_dashboard_secret_key_32bytes!|destiny_internal_secret_32bytes_min_key!)
       echo "::error::$name is a known placeholder. Replace it with a unique secret." >&2
       return 1
       ;;
