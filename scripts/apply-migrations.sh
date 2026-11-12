@@ -19,7 +19,7 @@ for migration in /workspace/supabase/migrations/*.sql; do
       exit 1
       ;;
   esac
-  applied="$(psql "$DATABASE_URL" -Atqc "SELECT 1 FROM destiny_internal.schema_migrations WHERE version = '$version'")"
+  applied="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT 1 FROM destiny_internal.schema_migrations WHERE version = '$version'")"
 
   if [ "$applied" = "1" ]; then
     echo "Skipping already applied migration $version"
@@ -27,8 +27,14 @@ for migration in /workspace/supabase/migrations/*.sql; do
   fi
 
   echo "Applying migration $version"
-  # Run each migration atomically. Record it only after the SQL succeeds.
-  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f "$migration"
-  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
-    -c "INSERT INTO destiny_internal.schema_migrations (version) VALUES ('$version') ON CONFLICT (version) DO NOTHING"
+  # Apply the SQL and record its version in the same transaction. This avoids
+  # replaying a non-idempotent migration if the runner stops between schema
+  # changes and a separate history insert.
+  combined="$(mktemp)"
+  trap 'rm -f "$combined"' EXIT HUP INT TERM
+  cat "$migration" > "$combined"
+  printf "\\nINSERT INTO destiny_internal.schema_migrations (version) VALUES ('%s') ON CONFLICT (version) DO NOTHING;\\n" "$version" >> "$combined"
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f "$combined"
+  rm -f "$combined"
+  trap - EXIT HUP INT TERM
 done
