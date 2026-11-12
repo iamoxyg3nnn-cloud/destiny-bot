@@ -1273,31 +1273,6 @@ export class DatabaseService {
     return true;
   }
 
-  async clearGuildChannels(guildId: string): Promise<boolean> {
-    const existing = this.guildSettingsCache.get(guildId)?.settings;
-    if (existing) {
-      existing.matchChannelId = null;
-      existing.modLogChannelId = null;
-      this.guildSettingsCache.set(guildId, { settings: existing, expires: Date.now() + 300_000 });
-    } else {
-      this.guildSettingsCache.delete(guildId);
-    }
-
-    if (this.isMockMode || !this.client) {
-      return true;
-    }
-    const { error } = await this.client
-      .from('guild_settings')
-      .update({
-        match_channel_id: null,
-        mod_log_channel_id: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('guild_id', guildId);
-
-    return !error;
-  }
-
   private mapUser(row: any): UserProfile {
     return {
       id: row.id,
