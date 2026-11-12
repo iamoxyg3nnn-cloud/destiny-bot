@@ -16,18 +16,6 @@ import path from 'path';
 const QUEUE_STORAGE_PATH = path.resolve(process.cwd(), 'data', 'matchmaking_queue.json');
 const TICKET_TTL_MS = 900_000; // 15 minutes TTL
 
-export const ICE_BREAKERS = [
-  "✨ If you could travel to any era in human history for 24 hours, where and when would you go?",
-  "🎮 What's a movie or show that completely changed your perspective on life?",
-  "☕ Are you a morning coffee person or a late-night midnight owl?",
-  "🚀 If humanity colonized Mars tomorrow, would you take a one-way ticket?",
-  "🎵 What's one song that you can listen to on repeat without ever getting tired of it?",
-  "🎨 What is a creative passion or weird hobby you secretly enjoy?",
-  "🏝️ If stranded on an island with only 3 items, what are you bringing?",
-  "🍕 What's your most controversial food opinion (e.g. pineapple on pizza)?",
-  "🌌 If you could have one superpower that nobody else has, what would you choose?"
-];
-
 function isValidMatchTicket(value: unknown): value is MatchTicket {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const ticket = value as Partial<MatchTicket>;
@@ -796,18 +784,17 @@ export class MatchmakingManager {
     ]);
     const userA = userAResult.status === 'fulfilled' ? userAResult.value : null;
     const userB = userBResult.status === 'fulfilled' ? userBResult.value : null;
-    const iceBreaker = this.getRandomIceBreaker();
 
     const [deliveryA, deliveryB] = await Promise.allSettled([
       userA
         ? sendCleanDmPanel(userA, {
-            components: [embedService.createMatchFoundContainer(room, true, iceBreaker, sharedInterests)],
+            components: [embedService.createMatchFoundContainer(room, true, sharedInterests)],
             flags: [MessageFlags.IsComponentsV2],
           })
         : Promise.reject(new Error('Could not fetch Discord user A')),
       userB
         ? sendCleanDmPanel(userB, {
-            components: [embedService.createMatchFoundContainer(room, false, iceBreaker, sharedInterests)],
+            components: [embedService.createMatchFoundContainer(room, false, sharedInterests)],
             flags: [MessageFlags.IsComponentsV2],
           })
         : Promise.reject(new Error('Could not fetch Discord user B')),
@@ -850,12 +837,6 @@ export class MatchmakingManager {
     return room;
   }
 
-  /**
-   * Returns a random ice-breaker prompt
-   */
-  getRandomIceBreaker(): string {
-    return ICE_BREAKERS[Math.floor(Math.random() * ICE_BREAKERS.length)];
-  }
 }
 
 export const matchmakingManager = new MatchmakingManager();

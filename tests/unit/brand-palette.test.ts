@@ -72,15 +72,13 @@ describe('Destiny Brand Colour Palette', () => {
       embedService.createMainMenuContainer('Tester', mockUser, true),
       embedService.createProfileRequiredContainer(),
       embedService.createProfileCreatedContainer(mockUser),
-      embedService.createMatchFoundContainer(mockRoom, true, 'Favourite movie?'),
+      embedService.createMatchFoundContainer(mockRoom, true),
       embedService.createReportMenuContainer('room_palette', 'Starlit'),
       embedService.createReportSuccessContainer(),
       embedService.createSearchingContainer(mockUser),
       embedService.createLowReputationRestrictedContainer(),
       embedService.createReputationRestoredContainer(),
       embedService.createRelayMessageContainer('Starlit', '🌌', 'Hello!'),
-      embedService.createIcebreakerContainer('Favourite late-night snack?'),
-      embedService.createIcebreakerContainer('Favourite late-night snack?', true),
       embedService.createDMRedirectContainer('Tester'),
       embedService.createRevealPromptPartnerContainer('🌌', 'Starlit'),
       embedService.createRevealWaitingContainer(),
@@ -104,7 +102,7 @@ describe('Destiny Brand Colour Palette', () => {
 
   it('should only emit approved embed colours on legacy embeds', () => {
     const embeds: any[] = [
-      embedService.createMatchFoundEmbed(mockRoom, true, 'Favourite movie?'),
+      embedService.createMatchFoundEmbed(mockRoom, true),
       embedService.createProfileEmbed(mockUser),
       embedService.createRelayMessageEmbed('Starlit', '🌌', 'Hello!'),
     ];

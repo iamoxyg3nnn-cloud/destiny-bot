@@ -340,9 +340,6 @@ export class DatabaseService {
         preferred_gender: newUser.preferredGender,
         min_age_pref: newUser.minAgePref,
         max_age_pref: newUser.maxAgePref,
-        destiny_coins: 0,
-        streak_count: 0,
-        connection_tier: 'Strangers',
         reputation_score: newUser.reputationScore,
         last_active_at: now,
         bio: newUser.bio,
@@ -480,8 +477,6 @@ export class DatabaseService {
       p_user2_pseudonym: newRoom.user2Pseudonym,
       p_status: newRoom.status,
       p_started_at: newRoom.startedAt,
-      p_connection_xp: 0,
-      p_connection_level: 'Strangers',
       p_reveal_status_user1: newRoom.revealStatusUser1,
       p_reveal_status_user2: newRoom.revealStatusUser2,
     });

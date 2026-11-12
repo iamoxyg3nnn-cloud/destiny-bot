@@ -47,7 +47,6 @@ In compliance with open-source licensing rules, **zero proprietary code was blin
   - Interest overlap scoring formula:
     $$\text{Score} = \frac{|\text{Interests}_A \cap \text{Interests}_B|}{\max(|\text{Interests}_A|, |\text{Interests}_B|)} \times 100$$
   - Daily scheduled reminder cadence (configured for 7:30 PM IST with quiet hours and opt-out).
-  - Engaging ice-breakers and conversation starters when a new room connects.
 
 ### C. `stealth-bot` (Finite-Loop-Club-NMAMIT)
 - **Vulnerabilities**:

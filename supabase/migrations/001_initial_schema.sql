@@ -33,6 +33,15 @@ CREATE TABLE IF NOT EXISTS public.users (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Recreate legacy columns when the historical migration set is replayed.
+-- Migration 016 drops these fields in the final schema; this keeps a full
+-- replay of migrations 001-016 deterministic and idempotent.
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS destiny_coins BIGINT NOT NULL DEFAULT 100 CHECK (destiny_coins >= 0),
+    ADD COLUMN IF NOT EXISTS streak_count INT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS last_daily_claim TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS connection_tier VARCHAR(32) NOT NULL DEFAULT 'Strangers';
+
 -- Indexing for high-performance lookup
 CREATE INDEX IF NOT EXISTS idx_users_discord_id ON public.users(discord_user_id);
 CREATE INDEX IF NOT EXISTS idx_users_destiny_id ON public.users(destiny_id);
@@ -75,6 +84,11 @@ CREATE TABLE IF NOT EXISTS public.rooms (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT check_different_users CHECK (user1_id <> user2_id)
 );
+
+-- See the replay note above: these legacy fields are removed by migration 016.
+ALTER TABLE public.rooms
+    ADD COLUMN IF NOT EXISTS connection_xp INT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS connection_level VARCHAR(32) NOT NULL DEFAULT 'Strangers';
 
 CREATE INDEX IF NOT EXISTS idx_rooms_user1 ON public.rooms(user1_id);
 CREATE INDEX IF NOT EXISTS idx_rooms_user2 ON public.rooms(user2_id);
