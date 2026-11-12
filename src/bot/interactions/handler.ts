@@ -601,6 +601,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         // The conversation just ended — reflect it in the rotating presence.
         refreshBotPresence();
 
+        if (room) {
           const partnerDiscordId = room.user1Id === user.id ? room.user2DiscordId : room.user1DiscordId;
           if (partnerDiscordId) {
             btn.client.users.fetch(partnerDiscordId).then((partner) => {
@@ -633,8 +634,9 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
               sendCleanDmPanel(partner, sendOptions).catch(() => {});
             }).catch(() => {});
           }
+        }
 
-          const leaveResponseContainer = new ContainerBuilder()
+        const leaveResponseContainer = new ContainerBuilder()
             .setAccentColor(COLORS.DARK)
             .addTextDisplayComponents(
               new TextDisplayBuilder().setContent(
