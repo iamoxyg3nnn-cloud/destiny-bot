@@ -15,8 +15,8 @@ on:
 
 concurrency:
   group: destiny-bot-runner
-  # Session chaining dispatches a successor before this run exits. Cancelling
-  # the current run here would kill the session that just created the successor.
+  # A separate workflow_run watcher dispatches only after this run completes.
+  # Never cancel an active bot session when another trigger arrives.
   cancel-in-progress: false
 
 permissions:
