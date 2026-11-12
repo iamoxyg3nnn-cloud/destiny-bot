@@ -69,7 +69,7 @@ export default function UsersPage() {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.success) throw new Error(result.error || 'Moderation action failed.');
-      setNotice(result.auditWarning ? 'Ban status saved, but the audit log could not be written.' : 'Moderation status updated.');
+      setNotice([result.auditWarning ? 'Ban status saved, but the audit log could not be written.' : '', result.cleanupWarning ? 'Ban status saved, but queue or room cleanup needs owner attention.' : '', !result.auditWarning && !result.cleanupWarning ? 'Moderation status updated.' : ''].filter(Boolean).join(' '));
       await fetchUsers();
     } catch (error: any) {
       console.error(error);
