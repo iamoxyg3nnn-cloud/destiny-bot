@@ -10,20 +10,20 @@ The platform owner is configured out-of-band in the bot runtime environment:
 BOT_OWNER_IDS=123456789012345678,234567890123456789
 ```
 
-Use Discord user IDs (17–20 digits), comma-separated. These identities can run `/owner status` for global service diagnostics. An empty list disables all `/owner` access. Never put this list in a public dashboard form or allow a guild administrator to modify it.
+Use Discord user IDs (17–20 digits), comma-separated. These identities can run `/owner status` for global service diagnostics and perform platform-owner verification overrides. An empty list disables all platform-owner command and verification overrides. Never put this list in a public dashboard form or allow a guild administrator to modify it.
 
 The web dashboard password (`DASHBOARD_ADMIN_PASSWORD`) is a platform-owner credential. It is distinct from Discord server administration.
 
 ## 2. Discord server setup
 
-A Discord member with the native Discord `Administrator` permission can configure only the guild in which the command is run:
+A Discord server owner or member with the native Discord `Administrator` permission can configure only the guild in which the command is run. `Manage Server` alone is not sufficient for setup.
 
 - `/setup portal channel:#channel` sets the matchmaking portal.
 - `/setup modlog channel:#channel` sets the moderation-alert channel independently.
 - `/setup cross_server enabled:true|false` sets that guild's cross-server matchmaking policy.
 - `/setup view` displays that guild's stored configuration.
 
-The portal and moderation channels are separate settings. The bot persists them to `guild_settings` and records the acting Discord user ID in `admin_audit_logs`.
+The portal and moderation channels are separate settings. The portal can be configured from the setup panel or `/setup portal`; moderation logs require `/setup modlog` and a channel hidden from `@everyone`. The bot persists them to `guild_settings` and records the acting Discord user ID in `admin_audit_logs`.
 
 ## 3. Cross-server matchmaking
 
