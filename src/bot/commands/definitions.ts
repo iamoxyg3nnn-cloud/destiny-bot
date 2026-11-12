@@ -510,7 +510,12 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         return;
       }
 
-      await db.setGuildMatchChannel(interaction.guild.id, channel.id, interaction.guild.name);
+      const saved = await db.setGuildMatchChannel(interaction.guild.id, channel.id, interaction.guild.name);
+      if (!saved) {
+        await respond({ content: '⚠️ Could not save the matchmaking portal channel. Please try again.', ephemeral: true });
+        return;
+      }
+      await db.logAdminAction(interaction.user.id, 'SET_GUILD_MATCH_CHANNEL', 'GUILD', interaction.guild.id, { channelId: channel.id });
 
       const portalContainer = embedService.createMatchmakingPortalContainer();
       await channel.send({
@@ -529,7 +534,12 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
     if (sub === 'modlog') {
       const channel = interaction.options.getChannel('channel', true) as any;
-      await db.setGuildAdminChannel(interaction.guild.id, channel.id, interaction.guild.name);
+      const saved = await db.setGuildModLogChannel(interaction.guild.id, channel.id, interaction.guild.name);
+      if (!saved) {
+        await respond({ content: '⚠️ Could not save the moderation channel. Please try again.', ephemeral: true });
+        return;
+      }
+      await db.logAdminAction(interaction.user.id, 'SET_GUILD_MODLOG_CHANNEL', 'GUILD', interaction.guild.id, { channelId: channel.id });
 
       await respond({
         content: `✅ Moderation and verification alerts channel configured to <#${channel.id}>.`,
