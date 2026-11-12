@@ -1327,6 +1327,21 @@ async function handleAdminVerifyAction(btn: ButtonInteraction, approve: boolean,
 /**
  * Check if an interaction or message author has admin/staff permissions in the guild
  */
+async function logGuildSetupAudit(
+  actorId: string,
+  action: string,
+  guildId: string,
+  changes: Record<string, any> = {}
+): Promise<boolean> {
+  try {
+    await db.logAdminAction(actorId, action, 'GUILD', guildId, changes);
+    return true;
+  } catch (error: any) {
+    console.error('[Guild Setup] Setting saved but audit log failed:', error?.message || error);
+    return false;
+  }
+}
+
 export function isGuildAdmin(interactionOrMessage: Interaction | Message): boolean {
   const authorId = interactionOrMessage instanceof Message
     ? interactionOrMessage.author.id
@@ -1379,9 +1394,10 @@ async function handleSetCurrentAdminChannel(btn: ButtonInteraction): Promise<voi
     await safeEditReply(btn, { components: [errorContainer] });
     return;
   }
-  await db.logAdminAction(btn.user.id, 'SET_GUILD_MATCH_CHANNEL', 'GUILD', btn.guildId, { channelId: btn.channelId });
+  const audited = await logGuildSetupAudit(btn.user.id, 'SET_GUILD_MATCH_CHANNEL', btn.guildId, { channelId: btn.channelId });
   const successContainer = embedService.createChannelSetSuccessContainer(btn.channelId, btn.guild?.name || 'Server');
-  await safeEditReply(btn, { components: [successContainer] });
+  if (audited) await safeEditReply(btn, { components: [successContainer] });
+  else await safeEditReply(btn, { components: [successContainer, new ContainerBuilder().setAccentColor(COLORS.WARNING).addTextDisplayComponents(new TextDisplayBuilder().setContent('The portal was saved, but the audit log could not be written. Notify a platform owner.'))] });
 }
 
 /**
@@ -1419,9 +1435,10 @@ async function handleSelectAdminChannel(select: ChannelSelectMenuInteraction): P
     await safeEditReply(select, { components: [errorContainer] });
     return;
   }
-  await db.logAdminAction(select.user.id, 'SET_GUILD_MATCH_CHANNEL', 'GUILD', select.guildId, { channelId: selectedChannelId });
+  const audited = await logGuildSetupAudit(select.user.id, 'SET_GUILD_MATCH_CHANNEL', select.guildId, { channelId: selectedChannelId });
   const successContainer = embedService.createChannelSetSuccessContainer(selectedChannelId, select.guild?.name || 'Server');
-  await safeEditReply(select, { components: [successContainer] });
+  if (audited) await safeEditReply(select, { components: [successContainer] });
+  else await safeEditReply(select, { components: [successContainer, new ContainerBuilder().setAccentColor(COLORS.WARNING).addTextDisplayComponents(new TextDisplayBuilder().setContent('The portal was saved, but the audit log could not be written. Notify a platform owner.'))] });
 }
 
 /**
@@ -1518,9 +1535,10 @@ async function handleResetSetup(btn: ButtonInteraction): Promise<void> {
     await safeEditReply(btn, { components: [errorContainer] });
     return;
   }
-  await db.logAdminAction(btn.user.id, 'CLEAR_GUILD_MATCH_CHANNEL', 'GUILD', btn.guildId);
+  const audited = await logGuildSetupAudit(btn.user.id, 'CLEAR_GUILD_MATCH_CHANNEL', btn.guildId);
   const container = embedService.createChannelResetSuccessContainer(btn.guild.name);
-  await safeEditReply(btn, { components: [container] });
+  if (audited) await safeEditReply(btn, { components: [container] });
+  else await safeEditReply(btn, { components: [container, new ContainerBuilder().setAccentColor(COLORS.WARNING).addTextDisplayComponents(new TextDisplayBuilder().setContent('The portal was cleared, but the audit log could not be written. Notify a platform owner.'))] });
 }
 
 /**
