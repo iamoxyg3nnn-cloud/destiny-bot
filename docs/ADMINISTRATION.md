@@ -29,7 +29,15 @@ The portal and moderation channels are separate settings. The portal can be conf
 
 A guild opting out of cross-server discovery can still match members from its own guild, but its queue tickets cannot be paired with tickets from another guild. Cross-server pairing is allowed only when both participating guilds have not opted out. A missing guild setting retains the existing default-allow behavior.
 
-## 4. Operational notes
+## 4. Moderation boundaries
+
+- Platform owners in `BOT_OWNER_IDS` can use `/owner status` and perform the platform-owner verification override.
+- Trusted Eclairs moderation staff can review verification only when they have Discord `Moderate Members` or `Administrator` permission in a configured trusted staff guild. `Manage Server` alone does not grant this global moderation capability.
+- Dashboard moderation (user bans, reports, room termination and private chat review) remains a platform-owner function. A guild Administrator does not automatically receive dashboard access.
+- Report actions support a real 24-hour temporary ban or a permanent ban. Temporary bans expire automatically when user profiles are read; a new temporary ban extends an existing active temporary ban and never shortens a permanent ban.
+- Verification evidence is cleared after an approval or rejection to reduce sensitive-data retention.
+
+## 5. Operational notes
 
 - Keep `API_SECRET_KEY`, `DASHBOARD_ADMIN_PASSWORD`, `DASHBOARD_SESSION_SECRET`, and `DISCORD_CLIENT_SECRET` in deployment secrets, never in source control.
 - For individually attributable dashboard owners, set `DASHBOARD_OWNER_OAUTH_ENABLED=true`, configure a stable HTTPS `NEXTAUTH_URL`, and register `${NEXTAUTH_URL}/api/auth/callback/discord` in Discord Developer Portal. Do not use a rotating quick tunnel in OAuth mode.
