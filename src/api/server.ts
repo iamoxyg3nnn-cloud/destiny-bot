@@ -67,24 +67,6 @@ function requireApiKey(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
-function wrapAsyncRoutes(app: express.Express): void {
-  for (const method of ['get', 'post', 'put', 'patch', 'delete'] as const) {
-    const original = (app as any)[method].bind(app);
-    (app as any)[method] = (path: any, ...handlers: any[]) => original(
-      path,
-      ...handlers.map((handler) => {
-        if (typeof handler !== 'function') return handler;
-        return (req: Request, res: Response, next: NextFunction) => {
-          try {
-            Promise.resolve(handler(req, res, next)).catch(next);
-          } catch (error) {
-            next(error);
-          }
-        };
-      })
-    );
-  }
-}
 
 async function botCanSendToChannel(rest: REST, guildId: string, channel: any): Promise<boolean> {
   const [roles, member] = await Promise.all([
@@ -168,7 +150,6 @@ function requireDashboardOwner(req: Request, res: Response, next: NextFunction) 
 export function createApiServer(): express.Express {
   const app = express();
   app.use(express.json({ limit: '256kb' }));
-  wrapAsyncRoutes(app);
 
   // Every admin route requires the shared secret.
   app.use('/api', requireApiKey);
