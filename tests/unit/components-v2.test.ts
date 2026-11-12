@@ -16,11 +16,8 @@ describe('Discord Components V2 ContainerBuilder Tests', () => {
     maxAgePref: 99,
     interests: ['gaming', 'music'],
     languages: ['en'],
-    destinyCoins: 250,
-    streakCount: 5,
     reputationScore: 95,
     isBanned: false,
-    connectionTier: 'Strangers',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -39,13 +36,12 @@ describe('Discord Components V2 ContainerBuilder Tests', () => {
     expect(actionRows.length).toBeGreaterThanOrEqual(1);
 
     const buttons = actionRows[0].components.filter((c: any) => c.type === 2);
-    expect(buttons.length).toBe(5);
+    expect(buttons.length).toBe(4);
 
     const buttonIds = buttons.map((b: any) => b.custom_id);
     expect(buttonIds).toContain('destiny_btn_start');
     expect(buttonIds).toContain('destiny_btn_profile');
     expect(buttonIds).toContain('destiny_btn_verify');
-    expect(buttonIds).toContain('destiny_btn_wallet');
     expect(buttonIds).toContain('destiny_btn_icebreaker');
   });
 
@@ -106,17 +102,6 @@ describe('Discord Components V2 ContainerBuilder Tests', () => {
     expect(actionRows[0].components[0].custom_id).toBe('destiny_btn_cancel_queue');
   });
 
-  it('should generate Wallet container with Claim Daily and Icebreaker buttons nested inside', () => {
-    const container = embedService.createWalletContainer(mockUser);
-    const json: any = container.toJSON();
-
-    expect(json.type).toBe(17);
-    const actionRows = json.components.filter((c: any) => c.type === 1);
-    expect(actionRows.length).toBe(1);
-    const ids = actionRows[0].components.map((b: any) => b.custom_id);
-    expect(ids).toContain('destiny_btn_claim_daily');
-    expect(ids).toContain('destiny_btn_icebreaker');
-  });
 
   it('should generate Icebreaker container with a conversation prompt and follow-up action', () => {
     const container = embedService.createIcebreakerContainer('What is your favourite late-night snack?');
@@ -288,7 +273,6 @@ describe('Discord Components V2 ContainerBuilder Tests', () => {
     expect(ids).toContain('destiny_btn_start');
     expect(ids).toContain('destiny_btn_setup_profile');
     expect(ids).toContain('destiny_btn_verify_prompt');
-    expect(ids).toContain('destiny_btn_wallet_daily');
   });
 
   it('should generate Channel Set Success container with lobby and setup buttons', () => {
