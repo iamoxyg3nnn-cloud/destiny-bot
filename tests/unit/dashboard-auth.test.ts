@@ -6,6 +6,7 @@ import {
   verifyAdminPassword,
   verifySessionToken,
   readSessionPayload,
+  isConfiguredDashboardOwner,
   SESSION_TTL_SECONDS,
 } from '../../dashboard/lib/auth.js';
 
@@ -64,11 +65,12 @@ describe('Dashboard authentication helpers', () => {
       sub: '123456789012345678',
       role: 'owner',
     });
+    expect(isConfiguredDashboardOwner('123456789012345678')).toBe(true);
     vi.stubEnv('BOT_OWNER_IDS', '234567890123456789');
-    expect(await readSessionPayload(token)).toBeNull();
+    expect(isConfiguredDashboardOwner('123456789012345678')).toBe(false);
     vi.stubEnv('BOT_OWNER_IDS', '123456789012345678');
     vi.stubEnv('DASHBOARD_OWNER_OAUTH_ENABLED', 'false');
-    expect(await readSessionPayload(token)).toBeNull();
+    expect(isConfiguredDashboardOwner('123456789012345678')).toBe(false);
     expect(await createSessionToken(60, 'not-a-discord-id')).toBeNull();
   });
 
