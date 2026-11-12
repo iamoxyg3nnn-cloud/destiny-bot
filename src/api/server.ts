@@ -5,6 +5,7 @@ import { db } from '../database/supabase.js';
 import { redis } from '../redis/client.js';
 import { matchmakingManager } from '../core/matchmaking/manager.js';
 import { verificationService } from '../core/moderation/verification.js';
+import { ECLAIRS_GUILD_IDS } from '../core/moderation/reputation.js';
 import { queueManager } from '../redis/queues.js';
 import os from 'os';
 import { REST, Routes } from 'discord.js';
