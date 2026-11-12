@@ -280,13 +280,13 @@ if (!process.env.API_SECRET_KEY || process.env.API_SECRET_KEY.length < 32) {
  * `/api/health` is protected by the `x-api-key` header, so it must be sent —
  * a plain request returns 401 and would look like the API never came up.
  */
-async function waitForHttp(url, { timeoutMs = 45000, apiKey = '', expectedStatus = 200 } = {}) {
+async function waitForHttp(url, { timeoutMs = 45000, apiKey = '', expectedStatus = 200, allowDegraded = false } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
       const headers = apiKey ? { 'x-api-key': apiKey } : {};
       const res = await fetch(url, { redirect: 'manual', headers });
-      if (res.status === expectedStatus) return true;
+      if (res.status === expectedStatus || (allowDegraded && res.status === 503)) return true;
     } catch {}
     await new Promise((r) => setTimeout(r, 750));
   }
@@ -328,6 +328,7 @@ async function main() {
 
   const apiUp = await waitForHttp(`http://127.0.0.1:${API_PORT}/api/health`, {
     apiKey: process.env.API_SECRET_KEY || '',
+    allowDegraded: true,
   });
   if (!apiUp) {
     console.error(`${C.red}✖ Admin API did not come up on 127.0.0.1:${API_PORT}.${C.reset}`);
