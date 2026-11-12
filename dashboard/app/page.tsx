@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { 
   Users, 
   MessagesSquare, 
-  Coins, 
   Zap, 
   RefreshCw, 
   Cpu, 
@@ -38,11 +37,10 @@ import { Button } from '../components/ui/button';
 
 export default function OverviewPage() {
   const [metrics, setMetrics] = useState<any>({
-    activeUsers: 0,
+    totalUsers: 0,
     activeRoomsCount: 0,
     queuedUsersCount: 0,
     pendingReportsCount: 0,
-    totalCoinsInCirculation: 0,
     messagesLast24h: 0,
     hourlyThroughput: [],
     supabaseConnected: true,
@@ -106,7 +104,7 @@ export default function OverviewPage() {
             </Badge>
           </div>
           <p className="text-xs text-zinc-400 mt-1">
-            Real-time pipeline metrics, Gateway activity, and idempotent financial ledgers.
+            Real-time matchmaking, anonymous chat activity and platform health.
           </p>
         </div>
 
@@ -138,7 +136,7 @@ export default function OverviewPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title="Registered Accounts"
-          value={Number(metrics.activeUsers).toLocaleString()}
+          value={Number(metrics.totalUsers).toLocaleString()}
           subtext="Profiles in Supabase"
           icon={Users}
           badge={{ text: 'Realtime Sync', variant: 'zinc' }}
@@ -161,14 +159,6 @@ export default function OverviewPage() {
           badge={{ text: 'Zero Leaks', variant: 'blue' }}
         />
 
-        <MetricCard
-          title="Destiny Coins In Circulation"
-          value={Number(metrics.totalCoinsInCirculation).toLocaleString()}
-          unit="DC"
-          subtext="Total user wallet sum"
-          icon={Coins}
-          badge={{ text: 'Idempotent Ledger', variant: 'amber' }}
-        />
       </div>
 
       {/* Main Visual Telemetry Cards */}
@@ -351,10 +341,6 @@ export default function OverviewPage() {
           </Link>
           <Link href="/users" className="p-3 rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.06] transition-colors flex items-center justify-between group">
             <span className="text-xs text-zinc-300 group-hover:text-white">User Accounts</span>
-            <ArrowUpRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-300" />
-          </Link>
-          <Link href="/economy" className="p-3 rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.06] transition-colors flex items-center justify-between group">
-            <span className="text-xs text-zinc-300 group-hover:text-white">Currency Ledger</span>
             <ArrowUpRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-300" />
           </Link>
           <Link href="/moderation" className="p-3 rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.06] transition-colors flex items-center justify-between group">
