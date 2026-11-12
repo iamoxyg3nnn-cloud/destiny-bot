@@ -518,6 +518,12 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       await respond({ content: '⚠️ The `/setup` command can only be executed inside a Discord server.', ephemeral: true });
       return;
     }
+    // Discord command permission overrides can be broader than the default
+    // command visibility. Enforce Administrator again at execution time.
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+      await respond({ content: '⛔ Only a Discord server Administrator can change Destiny server settings.', ephemeral: true });
+      return;
+    }
 
     const sub = interaction.options.getSubcommand();
 
@@ -525,6 +531,12 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       const channel = interaction.options.getChannel('channel', true) as any;
       if (!channel.isTextBased()) {
         await respond({ content: '⚠️ The designated portal channel must be a text channel.', ephemeral: true });
+        return;
+      }
+      const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
+      const botPermissions = botMember ? channel.permissionsFor(botMember) : null;
+      if (!botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
+        await respond({ content: '⚠️ Destiny needs View Channel and Send Messages permissions in the portal channel.', ephemeral: true });
         return;
       }
 
@@ -552,6 +564,21 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
     if (sub === 'modlog') {
       const channel = interaction.options.getChannel('channel', true) as any;
+      if (!channel.isTextBased()) {
+        await respond({ content: '⚠️ The moderation log must be a text channel.', ephemeral: true });
+        return;
+      }
+      const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
+      const botPermissions = botMember ? channel.permissionsFor(botMember) : null;
+      const everyoneCanView = channel.permissionsFor(interaction.guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel);
+      if (!botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
+        await respond({ content: '⚠️ Destiny needs View Channel and Send Messages permissions in the moderation channel.', ephemeral: true });
+        return;
+      }
+      if (everyoneCanView !== false) {
+        await respond({ content: '🔒 The moderation channel must be private: @everyone must not have View Channel permission.', ephemeral: true });
+        return;
+      }
       const saved = await db.setGuildModLogChannel(interaction.guild.id, channel.id, interaction.guild.name);
       if (!saved) {
         await respond({ content: '⚠️ Could not save the moderation channel. Please try again.', ephemeral: true });
