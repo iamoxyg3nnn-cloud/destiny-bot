@@ -8,13 +8,13 @@ const API_KEY = process.env.API_SECRET_KEY || '';
  * The backend admin API is protected by a shared secret. We attach it
  * server-side so the key is never exposed to the browser bundle.
  */
-async function backendHeaders(req: NextRequest, extra: Record<string, string> = {}): Promise<Record<string, string>> {
+async function backendHeaders(req: NextRequest, extra: Record<string, string> = {}): Promise<Record<string, string> | null> {
   const session = await readSessionPayload(req.cookies.get(SESSION_COOKIE)?.value);
-  if (!session) throw new Error('Dashboard session is invalid or expired.');
+  if (!session) return null;
   if (process.env.DASHBOARD_OWNER_OAUTH_ENABLED === 'true') {
-    if (!session.sub || !isConfiguredDashboardOwner(session.sub)) throw new Error('Dashboard owner access has been revoked.');
+    if (!session.sub || !isConfiguredDashboardOwner(session.sub)) return null;
   } else if (session.sub) {
-    throw new Error('Discord owner OAuth is disabled for this dashboard.');
+    return null;
   }
   return {
     Accept: 'application/json',
@@ -31,9 +31,11 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
   const targetUrl = `${BACKEND_URL}/api/${path}${search}`;
 
   try {
+    const headers = await backendHeaders(req);
+    if (!headers) return NextResponse.json({ error: 'Dashboard owner session is invalid, expired or revoked.' }, { status: 401 });
     const res = await fetch(targetUrl, {
       cache: 'no-store',
-      headers: await backendHeaders(req),
+      headers,
     });
 
     const data = await res.json();
@@ -50,12 +52,14 @@ export async function POST(req: NextRequest, { params }: { params: { path: strin
   const body = await req.json().catch(() => ({}));
 
   try {
+    const headers = await backendHeaders(req, {
+      'Content-Type': 'application/json',
+      ...(req.headers.get('idempotency-key') ? { 'Idempotency-Key': req.headers.get('idempotency-key')! } : {}),
+    });
+    if (!headers) return NextResponse.json({ error: 'Dashboard owner session is invalid, expired or revoked.' }, { status: 401 });
     const res = await fetch(targetUrl, {
       method: 'POST',
-      headers: await backendHeaders(req, {
-        'Content-Type': 'application/json',
-        ...(req.headers.get('idempotency-key') ? { 'Idempotency-Key': req.headers.get('idempotency-key')! } : {}),
-      }),
+      headers,
       body: JSON.stringify(body),
     });
 
