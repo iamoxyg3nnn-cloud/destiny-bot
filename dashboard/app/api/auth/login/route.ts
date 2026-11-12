@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     const configuredOwners = (process.env.BOT_OWNER_IDS || '').split(',').map((id) => id.trim()).filter((id) => /^[0-9]{17,20}$/.test(id));
     let validOrigin = false;
     try {
-      const publicOrigin = new URL(process.env.NEXTAUTH_URL || '');
+      const publicOrigin = new URL(process.env.NEXTAUTH_URL || 'http://localhost:3000');
       validOrigin = process.env.NODE_ENV !== 'production' || publicOrigin.protocol === 'https:';
     } catch {
       validOrigin = false;
