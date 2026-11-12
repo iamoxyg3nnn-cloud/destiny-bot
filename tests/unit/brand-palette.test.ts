@@ -102,7 +102,7 @@ describe('Destiny Brand Colour Palette', () => {
 
   it('should only emit approved embed colours on legacy embeds', () => {
     const embeds: any[] = [
-      embedService.createMatchFoundEmbed(mockRoom, true, 'Favourite movie?'),
+      embedService.createMatchFoundEmbed(mockRoom, true),
       embedService.createProfileEmbed(mockUser),
       embedService.createRelayMessageEmbed('Starlit', '🌌', 'Hello!'),
     ];
