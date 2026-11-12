@@ -1561,7 +1561,7 @@ export async function postStaffReportAlert(client: any, reportId: string): Promi
         `A new report is waiting for moderator review.\n\n` +
         `• **Report ID:** \`${report.id}\`\n` +
         `• **Status:** ${report.status || 'pending'}\n\n` +
-        `Open the protected Destiny moderation dashboard to review the report details and chat evidence. This channel alert intentionally excludes user identities and conversation content.`
+        `This report was recorded for staff review. The channel alert intentionally excludes user identities and conversation content.`
       )
     );
 

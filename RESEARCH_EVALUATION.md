@@ -2,14 +2,14 @@
 
 ## 1. Executive Summary
 
-Before building the production **Destiny** bot and admin dashboard, four reference repositories were inspected to evaluate reusable functionality, code quality, security posture, dependencies, and licensing:
+Before building the production **Destiny** bot, four reference repositories were inspected to evaluate reusable functionality, code quality, security posture, dependencies, and licensing:
 
 1. **`D3rise/anonymous-chats-discord`** (Apache-2.0)
 2. **`DMONINK/Spark-Discord-Bot`** (No explicit license / All Rights Reserved)
 3. **`Finite-Loop-Club-NMAMIT/stealth-bot`** (Apache-2.0)
 4. **`warrensteph/discord-economy-bot`** (Repository unavailable / not found on GitHub)
 
-In compliance with open-source licensing rules, **zero proprietary code was blindly copied**. Where permissible under Apache-2.0, concepts were completely modernized to **TypeScript**, **Discord.js v14 (with Slash Commands, Buttons, Select Menus, Modals)**, **Supabase PostgreSQL (Source of Truth)**, **Redis (Locking & Caching)**, **BullMQ (Distributed Workers)**, and **Next.js (Admin Dashboard)**.
+In compliance with open-source licensing rules, **zero proprietary code was blindly copied**. Where permissible under Apache-2.0, concepts were completely modernized to **TypeScript**, **Discord.js v14 (with Slash Commands, Buttons, Select Menus, Modals)**, **Supabase PostgreSQL (Source of Truth)**, **Redis (Locking & Caching)**, and **BullMQ (Distributed Workers)**.
 
 ---
 
@@ -23,7 +23,6 @@ In compliance with open-source licensing rules, **zero proprietary code was blin
 | **Matchmaking Model** | Basic 1-on-1 text queue | Interest overlap, Daily 9 AM | Single channel public relay | N/A |
 | **Anonymity Guarantee** | Partial (leaks user tags on deanon) | **None** (publicly tags `@user1 <-> @user2`) | **Broken** (posts usernames to mod log) | N/A |
 | **Scalability** | Single server / basic sharding | Single node / SQLite bottleneck | Single server / in-memory | N/A |
-| **Web Dashboard** | None | None | None | N/A |
 | **Economy & Rewards** | None | None | None | N/A |
 
 ---
@@ -70,5 +69,3 @@ In compliance with open-source licensing rules, **zero proprietary code was blin
    - Global cross-server block lists preventing matched encounters.
 4. **BullMQ Background Workers**:
    - Separate worker processes for matchmaking, notifications (7:30 PM IST cron), moderation triage, and session cleanup.
-5. **Modern Next.js Admin Dashboard**:
-   - Real-time telemetry, user management, room inspection, gender verification queue, moderation desk and system audit logs.

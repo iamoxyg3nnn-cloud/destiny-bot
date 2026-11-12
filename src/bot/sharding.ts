@@ -1,5 +1,4 @@
 import { ShardingManager } from 'discord.js';
-import '../api/server.js'; // Starts the protected API when RUN_API=true (Docker deployment).
 import { config } from '../config/index.js';
 import { db } from '../database/supabase.js';
 import { redis } from '../redis/client.js';
@@ -18,8 +17,8 @@ export class ShardCoordinator {
       console.log('ℹ️ Sharding Coordinator running in mock development mode.');
       return;
     }
-    if (!config.DISCORD_CLIENT_ID || config.API_SECRET_KEY.length < 32 || config.API_SECRET_KEY === 'destiny_internal_secret_32bytes_min_key!') {
-      throw new Error('DISCORD_CLIENT_ID and a 32+ character API_SECRET_KEY are required in production.');
+    if (!config.DISCORD_CLIENT_ID) {
+      throw new Error('DISCORD_CLIENT_ID is required in production.');
     }
 
     await db.assertConnection();

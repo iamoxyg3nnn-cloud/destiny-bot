@@ -28,23 +28,13 @@ Destiny is a focused, distributed anonymous-chat system for matchmaking compatib
           |                              |                                  |
           +------------------------------+----------------------------------+
                                          |
-     +-----------------------------------+-----------------------------------+
-     |                                                                       |
-+----v-----------------------------+                   +---------------------v-------------+
++----------------------------------+                   +-----------------------------------+
 |    Redis Coordination & Cache    |                   |    Supabase PostgreSQL (Permanent)|
 | • Redlock (Reveal, Match)        |                   | • Users & Profiles (Destiny ID)   |
 | • Sliding-Window Rate Limiting   |                   | • Rooms & Message Audit Trails    |
 | • Active Room State & Pub/Sub    |                   | • Reports, Blocks & Verifications |
-| • BullMQ Durable Job Queues      |                   | • Reports, Blocks & Verifications |
+| • BullMQ Durable Job Queues      |                   | • Audit & Server Settings         |
 +----------------------------------+                   +-----------------------------------+
-                                         ^
-                                         |
-                       +-----------------+-----------------+
-                       |                                   |
-         +-------------+-------------+       +-------------+-------------+
-         |    Express Admin API      | <---> | Next.js Modern Admin      |
-         |    (Port 4000)            |       | Dashboard (Port 3000)     |
-         +---------------------------+       +---------------------------+
 ```
 
 ---

@@ -26,8 +26,6 @@ services:
       NODE_ENV: production
       RUN_SHARDS: "true"
       RUN_BOT: "true"
-      RUN_API: "true"
-      API_HOST: "0.0.0.0"
       REDIS_HOST: redis
     depends_on:
       redis:
@@ -49,22 +47,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-
-  dashboard:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.dashboard
-    container_name: destiny-dashboard
-    restart: unless-stopped
-    env_file:
-      - ../.env
-    environment:
-      NODE_ENV: production
-      BACKEND_API_URL: http://bot:4000
-    ports:
-      - "3000:3000"
-    depends_on:
-      - bot
 
 volumes:
   redis_data:

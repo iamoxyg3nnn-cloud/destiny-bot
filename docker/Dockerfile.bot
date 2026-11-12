@@ -16,5 +16,4 @@ RUN npm install -g pnpm@9.15.9 && pnpm install --prod
 
 COPY --from=builder /app/dist ./dist
 COPY assets ./assets
-EXPOSE 4000
 CMD ["node", "dist/src/bot/sharding.js"]

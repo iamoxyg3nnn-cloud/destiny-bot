@@ -410,73 +410,6 @@ export class DatabaseService {
     return cleared;
   }
 
-  async searchUsers(query = '', limit = 200): Promise<UserProfile[]> {
-    const safeLimit = Number.isFinite(limit) ? Math.min(200, Math.max(1, Math.trunc(limit))) : 200;
-    const normalized = query.trim().slice(0, 64);
-    if (this.isMockMode || !this.client) {
-      const users = Array.from(this.mockUsers.values());
-      const filtered = normalized
-        ? users.filter((user) => String(user.destinyId || '').toLowerCase().includes(normalized.toLowerCase()) ||
-            String(user.discordUserId || '').includes(normalized))
-        : users;
-      return filtered.slice(0, safeLimit).map((user) => this.normalizeUserBan(user));
-    }
-
-    const baseQuery = () => this.client!.from('users').select('*').order('created_at', { ascending: false }).limit(safeLimit);
-    if (!normalized) {
-      const { data, error } = await baseQuery();
-      if (error) throw new Error(`Failed to search users: ${error.message}`);
-      return (data || []).map((row: any) => this.mapUser(row));
-    }
-
-    const escaped = normalized.replace(/[\\%_]/g, (character) => '\\' + character);
-    if (/^[0-9]{17,20}$/.test(normalized)) {
-      const { data, error } = await baseQuery().eq('discord_user_id', normalized);
-      if (error) throw new Error(`Failed to search users: ${error.message}`);
-      return (data || []).map((row: any) => this.mapUser(row));
-    }
-
-    const [destinyResult, discordResult] = await Promise.all([
-      baseQuery().ilike('destiny_id', '%' + escaped + '%'),
-      /^[0-9]+$/.test(normalized)
-        ? baseQuery().ilike('discord_user_id', '%' + escaped + '%')
-        : Promise.resolve({ data: [], error: null }),
-    ]);
-    if (destinyResult.error || discordResult.error) {
-      throw new Error('Failed to search users: ' + (destinyResult.error?.message || discordResult.error?.message));
-    }
-    const unique = new Map<string, any>();
-    for (const row of [...(destinyResult.data || []), ...(discordResult.data || [])]) unique.set(row.id, row);
-    return Array.from(unique.values()).slice(0, safeLimit).map((row: any) => this.mapUser(row));
-  }
-
-  async getUsersByVerificationStatus(
-    status: GenderVerificationStatus | 'all',
-    limit = 500,
-    offset = 0
-  ): Promise<UserProfile[]> {
-    const safeLimit = Number.isFinite(limit) ? Math.min(1000, Math.max(1, Math.trunc(limit))) : 500;
-    const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 0;
-    if (this.isMockMode || !this.client) {
-      const users = Array.from(this.mockUsers.values()).filter((user) =>
-        status === 'all'
-          ? Boolean(user.genderVerificationStatus && user.genderVerificationStatus !== 'unverified')
-          : user.genderVerificationStatus === status
-      );
-      return users.slice(safeOffset, safeOffset + safeLimit).map((user) => this.normalizeUserBan(user));
-    }
-
-    let request = this.client.from('users').select('*').order('created_at', { ascending: false });
-    if (status === 'all') {
-      request = request.not('gender_verification_status', 'is', null).neq('gender_verification_status', 'unverified');
-    } else {
-      request = request.eq('gender_verification_status', status);
-    }
-    const { data, error } = await request.range(safeOffset, safeOffset + safeLimit - 1);
-    if (error) throw new Error(`Failed to load verification queue: ${error.message}`);
-    return (data || []).map((row: any) => this.mapUser(row));
-  }
-
   async getAllUsers(limit: number = 100, offset: number = 0): Promise<UserProfile[]> {
     if (this.isMockMode || !this.client) {
       return Array.from(this.mockUsers.values()).slice(offset, offset + limit).map((user) => this.normalizeUserBan(user));
@@ -1038,32 +971,6 @@ export class DatabaseService {
     return newReport;
   }
 
-  async getReports(status?: ReportItem['status']): Promise<ReportItem[]> {
-    if (this.isMockMode || !this.client) {
-      const all = Array.from(this.mockReports.values());
-      return status ? all.filter((r) => r.status === status) : all;
-    }
-    let query = this.client.from('reports').select('*');
-    if (status) query = query.eq('status', status);
-    const { data, error } = await query.order('created_at', { ascending: false });
-    if (error) throw new Error(`Failed to load reports: ${error.message}`);
-    return (data || []).map((r: any) => ({
-      id: r.id,
-      reporterId: r.reporter_id,
-      reportedId: r.reported_id,
-      roomId: r.room_id,
-      category: r.category,
-      description: r.description,
-      chatExcerpt: r.chat_excerpt,
-      status: r.status,
-      actionTaken: r.action_taken,
-      moderatorNotes: r.moderator_notes,
-      resolvedBy: r.resolved_by,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-    }));
-  }
-
   async getReportById(id: string): Promise<ReportItem | null> {
     if (this.isMockMode || !this.client) {
       return this.mockReports.get(id) || null;
@@ -1131,7 +1038,7 @@ export class DatabaseService {
       p_report_id: id,
       p_action: action,
       p_notes: notes ?? null,
-      p_admin_id: adminId || 'dashboard_owner',
+      p_admin_id: adminId || 'discord_moderator',
     });
     if (error) throw new Error(`Failed to resolve report: ${error.message}`);
     return Boolean(data);
@@ -1165,71 +1072,6 @@ export class DatabaseService {
       ip_address: log.ipAddress,
     });
     if (error) throw new Error(`Failed to persist admin audit log: ${error.message}`);
-  }
-
-  async getAdminLogs(limit: number = 100): Promise<AdminAuditLog[]> {
-    if (this.isMockMode || !this.client) {
-      return [...this.mockAuditLogs].reverse().slice(0, limit);
-    }
-    const { data, error } = await this.client
-      .from('admin_audit_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    if (error) throw new Error(`Failed to load admin audit logs: ${error.message}`);
-    return (data || []).map((l: any) => ({
-      id: l.id,
-      adminId: l.admin_id,
-      action: l.action,
-      targetType: l.target_type,
-      targetId: l.target_id,
-      changes: l.changes || {},
-      ipAddress: l.ip_address,
-      createdAt: l.created_at,
-    }));
-  }
-
-  async getMessageCountLast24h(): Promise<number> {
-    if (this.isMockMode || !this.client) {
-      return this.mockMessages.length;
-    }
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { count, error } = await this.client
-      .from('messages')
-      .select('*', { count: 'exact', head: true })
-      .gte('created_at', since);
-    if (error) throw new Error(`Failed to count recent messages: ${error.message}`);
-    return count || 0;
-  }
-
-  async getHourlyActivity(hours = 24): Promise<Array<{ hour: string; messages: number; matches: number }>> {
-    const safeHours = Number.isSafeInteger(hours) ? Math.min(168, Math.max(1, hours)) : 24;
-    if (this.isMockMode || !this.client) {
-      const currentHour = new Date();
-      currentHour.setMinutes(0, 0, 0);
-      const firstHour = currentHour.getTime() - (safeHours - 1) * 60 * 60 * 1000;
-      return Array.from({ length: safeHours }, (_, index) => {
-        const start = firstHour + index * 60 * 60 * 1000;
-        const end = start + 60 * 60 * 1000;
-        const messages = this.mockMessages.filter((message) => {
-          const created = Date.parse(message.createdAt);
-          return created >= start && created < end;
-        }).length;
-        const matches = Array.from(this.mockRooms.values()).filter((room) => {
-          const started = Date.parse(room.startedAt);
-          return started >= start && started < end;
-        }).length;
-        return { hour: new Date(start).toISOString(), messages, matches };
-      });
-    }
-
-    const { data, error } = await this.client.rpc('get_hourly_activity', { p_hours: safeHours });
-    if (error) throw new Error(`Failed to load hourly activity: ${error.message}`);
-    return (data || []).map((row: any) => ({
-      hour: row.hour,
-      messages: Number(row.messages || 0),
-      matches: Number(row.matches || 0),
-    }));
   }
 
   async getUserCount(): Promise<number> {

@@ -1,12 +1,11 @@
 # 🌌 Destiny — Anonymous Chat & Matchmaking Discord Bot
 
-> A scalable, production-grade anonymous social connection and matchmaking Discord bot powered by **TypeScript**, **Discord.js v14**, **Supabase PostgreSQL**, **Redis**, **BullMQ**, and a **Next.js Web Admin Dashboard**.
+> A scalable, production-grade anonymous social connection and matchmaking Discord bot powered by **TypeScript**, **Discord.js v14**, **Supabase PostgreSQL**, **Redis**, and **BullMQ**.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![Discord.js](https://img.shields.io/badge/Discord.js-v14.18-5865F2.svg)](https://discord.js.org/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E.svg)](https://supabase.com/)
 [![Redis](https://img.shields.io/badge/Redis-Redlock-DC382D.svg)](https://redis.io/)
-[![Next.js](https://img.shields.io/badge/Next.js-14-black.svg)](https://nextjs.org/)
 
 ---
 
@@ -25,17 +24,7 @@
 - **Session Controls**: Either participant can leave at any time; the partner is notified without exposing Discord identities.
 - **Safety Controls**: Global blocking, abuse reports, moderation restrictions and mutual-consent profile reveal.
 
-### 📊 Step 4 — Modern Web Admin Dashboard
-- **Built with Next.js 14, Tailwind CSS, and Recharts**.
-- **Live System Telemetry**: CPU, Memory, Shard health, Redis, and Supabase status.
-- **User Registry**: Search by Destiny ID or Discord ID, view profile verification, and ban/unban.
-- **Live Room Inspector**: View active rooms, inspect sanitized message feeds, and force-terminate malicious sessions.
-- **Safety Desk**: Moderate reports with automated chat excerpts attached.
-- **Gender Verification Desk**: Review submitted verification claims and award verified badges.
-- **7:30 PM IST Reminders**: Configure automated daily notifications with timezone support, quiet hours, and user opt-out.
-- **Admin Audit Trail**: Immutable logging of all moderator actions.
-
-### 🌌 Step 5 — Dynamic Rotating Presence
+### 🌌 Step 4 — Dynamic Rotating Presence
 - **Rotating Twitch Streaming activity** (`ActivityType.Streaming`) with curated Destiny messages. The default Twitch destination is a third-party channel (`ninja`); configure `DESTINY_STREAM_URL` to use another supported Twitch or YouTube channel.
 - **102 curated statuses** with live `{members}` and `{servers}` counts computed in real time.
 - **Uninterrupted rotation**: matchmaking queue depth and active conversations
@@ -63,24 +52,15 @@ Fill in your credentials and generate unique secrets (never leave these blank in
 ```env
 DISCORD_TOKEN=your_bot_token_here
 DISCORD_CLIENT_ID=your_client_id_here
-DISCORD_CLIENT_SECRET=your_discord_oauth_client_secret
 BOT_OWNER_IDS=123456789012345678,234567890123456789
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_secret
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
-PORT=4000
-API_HOST=127.0.0.1
-API_SECRET_KEY=<at least 32 random characters>
 DESTINY_STREAM_URL=https://www.twitch.tv/ninja
-DASHBOARD_OWNER_OAUTH_ENABLED=false
-NEXTAUTH_URL=http://localhost:3000
-DASHBOARD_ADMIN_PASSWORD=<at least 12 characters; bootstrap/quick-tunnel mode>
-DASHBOARD_SESSION_SECRET=<at least 32 random characters>
-NEXTAUTH_SECRET=<a separate random secret>
 ```
 
-`BOT_OWNER_IDS` is a comma-separated allowlist of Discord IDs with global bot-owner authority; it supports multiple owners. For a stable HTTPS dashboard hostname, set `DASHBOARD_OWNER_OAUTH_ENABLED=true`, set `NEXTAUTH_URL` to that exact origin, and register `https://your-host/api/auth/callback/discord` in the Discord Developer Portal. The rotating quick-tunnel scripts require `DASHBOARD_OWNER_OAUTH_ENABLED=false` and the bootstrap password. Generate API/session secrets with `openssl rand -hex 32`; the bootstrap password must be at least 12 characters. The API binds to loopback by default; Docker Compose exposes it only on the private container network. See [Administration setup](docs/ADMINISTRATION.md) for owner, server-admin and moderator boundaries.
+`BOT_OWNER_IDS` is a comma-separated allowlist of Discord IDs with global bot-owner authority; it supports multiple owners. See [Administration setup](docs/ADMINISTRATION.md) for bot-owner, server-admin and moderator boundaries.
 
 #### Connecting Redis
 
@@ -103,7 +83,7 @@ credentials in repository Actions secrets. The runner intentionally does not sta
 a temporary local Redis service, because that would make `PING` pass while losing
 queue, lock, rate-limit and reminder state when the job ends. Before startup,
 `redis:check` verifies `PING` and a real `SET`/`GET`/`DEL` round trip using the
-same logical database and `destiny:` key prefix as the application. Redis dashboards
+same logical database and `destiny:` key prefix as the application. Redis monitoring tools
 usually show keys within a logical database, not a separately created database object.
 
 ### 3. Database Schema Setup
@@ -117,7 +97,7 @@ Execute the SQL migrations located in `supabase/migrations/` in order. Migration
 7. `007_atomic_wallet_and_idempotency.sql` — Legacy economy schema (unused by the chat application).
 8. `008_atomic_rooms_and_inventory.sql` — Atomic room lifecycle and consumable inventory quantities.
 9. `009_atomic_room_xp.sql` — Legacy progression schema (unused by the chat application).
-10. `010_dashboard_aggregates.sql` — Legacy aggregates plus activity buckets.
+10. `010_dashboard_aggregates.sql` — Legacy aggregate and activity schema retained in migration history.
 11. `011_transfer_ledger_types.sql` — Legacy ledger types.
 12. `012_welcome_bonus_ledger.sql` — Legacy welcome-bonus ledger.
 13. `013_atomic_daily_claim.sql` — Legacy daily-claim procedure.
@@ -134,7 +114,6 @@ Execute the SQL migrations located in `supabase/migrations/` in order. Migration
 ```bash
 # Install dependencies
 pnpm install
-pnpm --prefix dashboard install
 
 # Run unit & integration tests
 pnpm test
@@ -142,13 +121,10 @@ pnpm test
 # Run concurrent user load benchmarks (100 -> 10,000+ users)
 pnpm test:load
 
-# Start backend (API + Workers + Discord Bot)
+# Start workers and Discord bot
 pnpm start
-
-# Start Admin Dashboard
-pnpm dashboard:dev
 ```
-Open **http://localhost:3000** to access the Admin Dashboard. For Docker, copy `.env.example` to `.env`, fill all production credentials, then run `docker compose -f docker/docker-compose.yml up --build -d`. Redis and the internal API are not published on host ports.
+For Docker, copy `.env.example` to `.env`, fill the bot and database credentials, then run `docker compose -f docker/docker-compose.yml up --build -d`.
 
 ---
 

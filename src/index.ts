@@ -2,7 +2,6 @@ import { config } from './config/index.js';
 import { db } from './database/supabase.js';
 import { redis } from './redis/client.js';
 import { startAllWorkers, stopAllWorkers } from './workers/index.js';
-import { apiApp } from './api/server.js';
 import { bot } from './bot/index.js';
 import { stopPresence } from './bot/presence-manager.js';
 
@@ -10,9 +9,6 @@ async function bootstrap() {
   if (config.NODE_ENV === 'production') {
     if (!config.DISCORD_TOKEN || config.DISCORD_TOKEN.startsWith('mock_') || !config.DISCORD_CLIENT_ID) {
       throw new Error('DISCORD_TOKEN and DISCORD_CLIENT_ID are required in production.');
-    }
-    if (config.API_SECRET_KEY.length < 32 || config.API_SECRET_KEY === 'destiny_internal_secret_32bytes_min_key!') {
-      throw new Error('API_SECRET_KEY must be a unique secret of at least 32 characters in production.');
     }
   }
   console.log('================================================================');
@@ -24,13 +20,7 @@ async function bootstrap() {
   await startAllWorkers({ includeMatchmaking: true });
   console.log(`[Cache/Locks] Redis Mode: ${redis.isHealthy() ? 'Connected' : 'High-Speed Memory Fallback'}`);
 
-  // 2. Start API Server (loopback only — never exposed directly)
-  const port = config.PORT || 4000;
-  const server = apiApp.listen(port, config.API_HOST, () => {
-    console.log(`🌐 [API] Admin Backend listening on http://${config.API_HOST}:${port}`);
-  });
-
-  // 3. Start Discord Bot
+  // 2. Start Discord Bot
   if (config.DISCORD_TOKEN && !config.DISCORD_TOKEN.startsWith('mock_')) {
     await bot.start();
   } else {
@@ -54,15 +44,7 @@ async function bootstrap() {
     try {
       stopPresence(bot.client);
 
-      const serverClosed = new Promise<void>((resolve) => {
-        server.close(() => resolve());
-        // close() stops new connections; explicitly drop keep-alive sockets
-        // so an idle dashboard client cannot hold the runner open.
-        server.closeAllConnections?.();
-      });
-
       const results = await Promise.allSettled([
-        serverClosed,
         stopAllWorkers(),
         Promise.resolve().then(() => bot.client?.destroy()),
       ]);

@@ -86,7 +86,7 @@ export class VerificationService {
     if (!outcome.success) return outcome;
 
     // Notification delivery is secondary; it must not roll back a recorded
-    // moderation decision or make the dashboard report a failed review.
+    // moderation decision or make the verification review report a failure.
     try {
       const { bot } = await import('../../bot/index.js');
       if (bot.client?.isReady() && outcome.user.discordUserId) {

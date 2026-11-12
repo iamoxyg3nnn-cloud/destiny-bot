@@ -28,40 +28,12 @@ jobs:
           cache: pnpm
       - name: Install root dependencies
         run: pnpm install --frozen-lockfile --prod=false
-      - name: Validate deployment and migration scripts
-        run: |
-          bash -n scripts/start-admin-tunnel.sh
-          sh -n scripts/apply-migrations.sh
-          node --check scripts/tunnel-admin.mjs
+      - name: Validate migration script
+        run: sh -n scripts/apply-migrations.sh
       - name: TypeScript build
         run: pnpm run build
       - name: Unit and integration tests
         run: pnpm test
-
-  dashboard:
-    name: Dashboard production build
-    runs-on: ubuntu-latest
-    env:
-      NODE_ENV: production
-      API_SECRET_KEY: ci-only-api-secret-key-0123456789abcdef
-      DASHBOARD_ADMIN_PASSWORD: ci-only-dashboard-password
-      DASHBOARD_SESSION_SECRET: ci-only-session-secret-0123456789abcdef
-      NEXTAUTH_SECRET: ci-only-nextauth-secret-0123456789abcdef
-      NEXTAUTH_URL: http://localhost:3000
-      BACKEND_API_URL: http://127.0.0.1:4000
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - name: Install dashboard dependencies
-        run: pnpm --dir dashboard install --frozen-lockfile --prod=false
-      - name: Build dashboard
-        run: pnpm --dir dashboard build
 
   migrations:
     name: Supabase migration smoke test
@@ -122,8 +94,6 @@ jobs:
         run: docker build -f docker/Dockerfile.bot -t destiny-bot:ci .
       - name: Build worker image
         run: docker build -f docker/Dockerfile.worker -t destiny-workers:ci .
-      - name: Build dashboard image
-        run: docker build -f docker/Dockerfile.dashboard -t destiny-dashboard:ci .
       - name: Validate Docker Compose configuration
         run: |
           cp .env.example .env

@@ -10,9 +10,7 @@ The platform owner is configured out-of-band in the bot runtime environment:
 BOT_OWNER_IDS=123456789012345678,234567890123456789
 ```
 
-Use Discord user IDs (17–20 digits), comma-separated. These identities can run `/owner status` for global service diagnostics and perform platform-owner verification overrides. An empty list disables all platform-owner command and verification overrides. Never put this list in a public dashboard form or allow a guild administrator to modify it.
-
-The web dashboard can use individual Discord OAuth sessions (`DASHBOARD_OWNER_OAUTH_ENABLED=true`). Each login is checked against `BOT_OWNER_IDS` and the Discord user ID is written to the audit log. OAuth requires `NEXTAUTH_URL` to be the stable public HTTPS dashboard origin and the exact callback URL `/api/auth/callback/discord` to be registered in the Discord Developer Portal. Rotating quick-tunnel URLs cannot be used for OAuth. If OAuth is disabled, the dashboard falls back to the shared `DASHBOARD_ADMIN_PASSWORD`; that fallback is owner-only by operational policy but audit entries use the generic `dashboard_owner` actor. It is distinct from Discord server administration.
+Use Discord user IDs (17–20 digits), comma-separated. These identities can run `/owner status` for global service diagnostics and perform platform-owner verification overrides. An empty list disables all platform-owner command and verification overrides. Never allow a guild administrator to modify this allowlist.
 
 ## 2. Discord server setup
 
@@ -33,15 +31,11 @@ A guild opting out of cross-server discovery can still match members from its ow
 
 - Platform owners in `BOT_OWNER_IDS` can use `/owner status` and perform the platform-owner verification override.
 - Trusted Eclairs moderation staff can review verification only when they have Discord `Moderate Members` or `Administrator` permission in a configured trusted staff guild. `Manage Server` alone does not grant this global moderation capability.
-- Dashboard moderation (user bans, reports, room termination and private chat review) remains a platform-owner function. A guild Administrator does not automatically receive dashboard access.
 - Report actions support a real 24-hour temporary ban or a permanent ban. Temporary bans expire automatically when user profiles are read; a new temporary ban extends an existing active temporary ban and never shortens a permanent ban.
 - Verification evidence is cleared after an approval or rejection to reduce sensitive-data retention.
 
 ## 5. Operational notes
 
-- Keep `API_SECRET_KEY`, `DASHBOARD_ADMIN_PASSWORD`, `DASHBOARD_SESSION_SECRET`, and `DISCORD_CLIENT_SECRET` in deployment secrets, never in source control.
-- For individually attributable dashboard owners, set `DASHBOARD_OWNER_OAUTH_ENABLED=true`, configure a stable HTTPS `NEXTAUTH_URL`, and register `${NEXTAUTH_URL}/api/auth/callback/discord` in Discord Developer Portal. Do not use a rotating quick tunnel in OAuth mode.
 - Set `BOT_OWNER_IDS` in the environment for every bot/shard process.
 - The GitHub deployment runner tracks applied SQL in the private `destiny_internal.schema_migrations` table and skips completed migrations. The existing database was baselined after checking its live schema; do not run `supabase db push` against it until the separate Supabase CLI migration history has been reconciled.
 - Re-deploy slash commands after changing command definitions so Discord publishes `/owner`.
-- Do not grant the dashboard credential to guild administrators. They should use Discord's `/setup` command.

@@ -1,12 +1,9 @@
 # Dependencies
 node_modules/
-dashboard/node_modules/
 .pnpm-store/
 
 # Production builds & artifacts
 dist/
-dashboard/.next/
-dashboard/out/
 
 # Environment configurations & secrets (CRITICAL: NEVER COMMIT)
 .env
@@ -41,9 +38,6 @@ data/assets/
 # Temporary scratch test scripts
 scratch/
 coverage/
-
-# Local admin tunnel runtime logs
-logs/
 
 # Downloaded tooling (e.g. the cloudflared binary)
 .tools/

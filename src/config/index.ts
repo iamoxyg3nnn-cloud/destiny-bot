@@ -10,7 +10,6 @@ const envSchema = z.object({
   // Discord
   DISCORD_TOKEN: z.string().default(''),
   DISCORD_CLIENT_ID: z.string().default(''),
-  DISCORD_CLIENT_SECRET: z.string().default(''),
   DISCORD_PUBLIC_KEY: z.string().default(''),
   // Comma-separated Discord user IDs allowed to operate the bot globally.
   BOT_OWNER_IDS: z.string().default('').transform((value) => value.split(',').map((id) => id.trim()).filter(Boolean)).refine((ids) => ids.every((id) => /^[0-9]{17,20}$/.test(id)), 'BOT_OWNER_IDS must contain only valid 17–20 digit Discord user IDs.').transform((ids) => Array.from(new Set(ids))),
@@ -51,12 +50,6 @@ const envSchema = z.object({
   REMINDER_CRON_SCHEDULE: z.string().default('30 19 * * *'), // 7:30 PM
   REMINDER_DEFAULT_TIMEZONE: z.string().default('Asia/Kolkata'), // IST
   BULLMQ_CONCURRENCY: z.coerce.number().int().min(1).max(1000).default(50),
-
-  // API & Dashboard
-  PORT: z.coerce.number().int().min(1).max(65535).default(4000),
-  API_HOST: z.string().default('127.0.0.1'),
-  API_SECRET_KEY: z.string().default(''),
-  NEXTAUTH_SECRET: z.string().default(''),
 
   // Moderation & Anonymity
   ENCRYPTION_KEY: z.string().default(''),

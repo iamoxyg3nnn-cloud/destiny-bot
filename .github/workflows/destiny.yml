@@ -31,7 +31,6 @@ jobs:
     env:
       DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
       DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
-      DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
       DISCORD_PUBLIC_KEY: ${{ secrets.DISCORD_PUBLIC_KEY }}
       BOT_OWNER_IDS: ${{ secrets.BOT_OWNER_IDS }}
       DISCORD_SHARDS_TOTAL: ${{ secrets.DISCORD_SHARDS_TOTAL }}
@@ -52,12 +51,6 @@ jobs:
       REMINDER_CRON_SCHEDULE: "30 19 * * *"
       REMINDER_DEFAULT_TIMEZONE: "Asia/Kolkata"
       BULLMQ_CONCURRENCY: "50"
-      PORT: "4000"
-      API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
-      DASHBOARD_ADMIN_PASSWORD: ${{ secrets.DASHBOARD_ADMIN_PASSWORD }}
-      DASHBOARD_SESSION_SECRET: ${{ secrets.DASHBOARD_SESSION_SECRET }}
-      DASHBOARD_OWNER_OAUTH_ENABLED: ${{ secrets.DASHBOARD_OWNER_OAUTH_ENABLED || 'false' }}
-      NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL }}
       ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
       AUTO_MOD_ENABLED: "true"
       MAX_MESSAGE_RATE_PER_3S: "5"
@@ -192,8 +185,7 @@ jobs:
           bot_pid=$!
           set -e
 
-          # The admin dashboard and Cloudflare tunnel are intentionally disabled.
-          # The API continues to bind to loopback and is not publicly exposed.
+            # No web dashboard or admin API is started in this bot workflow.
 
           # Wait for the bot session to finish, then honour its exit status.
           set +e
@@ -226,4 +218,3 @@ jobs:
             echo "- **Redis connectivity check:** ${REDIS_CHECK_OUTCOME:-not-run}"
             echo "- **Supabase:** Connected"
           } >> "${GITHUB_STEP_SUMMARY}"
-          echo "- **Admin dashboard:** Disabled (not published)" >> "${GITHUB_STEP_SUMMARY}"
