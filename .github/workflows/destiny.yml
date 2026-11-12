@@ -144,25 +144,7 @@ jobs:
           docker run --rm --network host \
             -e DATABASE_URL="${DATABASE_URL}" \
             -v "${GITHUB_WORKSPACE}:/workspace" \
-            -w /workspace postgres:16-alpine sh -ec '
-              # Keep migration history outside the exposed public schema. The
-              # existing database has no reliable Supabase CLI history because
-              # earlier runner sessions applied SQL files directly with psql.
-              psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -c "CREATE SCHEMA IF NOT EXISTS destiny_internal"
-              psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -c "REVOKE ALL ON SCHEMA destiny_internal FROM PUBLIC, anon, authenticated"
-              psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -c "CREATE TABLE IF NOT EXISTS destiny_internal.schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())"
-              for migration in supabase/migrations/*.sql; do
-                version="$(basename "${migration}")"
-                applied="$(psql "${DATABASE_URL}" -Atqc "SELECT 1 FROM destiny_internal.schema_migrations WHERE version = \$\${version}\$\$")"
-                if [ "${applied}" = "1" ]; then
-                  echo "Skipping already applied migration ${version}"
-                  continue
-                fi
-                echo "Applying ${version}"
-                psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -1 -f "${migration}"
-                psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -c "INSERT INTO destiny_internal.schema_migrations (version) VALUES (\$\${version}\$\$) ON CONFLICT (version) DO NOTHING"
-              done
-            '
+            -w /workspace postgres:16-alpine sh /workspace/scripts/apply-migrations.sh
 
       - name: Prepare Environment Configuration
         env:
