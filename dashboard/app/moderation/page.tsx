@@ -14,6 +14,7 @@ export default function ModerationPage() {
   const [lastSync, setLastSync] = useState('');
   const [statusFilter, setStatusFilter] = useState('pending');
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const fetchReports = async () => {
@@ -37,9 +38,10 @@ export default function ModerationPage() {
     return () => clearInterval(interval);
   }, [statusFilter]);
 
-  const handleResolve = async (reportId: string, action: 'none' | 'warned' | 'perma_ban') => {
+  const handleResolve = async (reportId: string, action: 'none' | 'warned' | 'temp_ban' | 'perma_ban') => {
     setActionLoading(reportId);
     setError('');
+    setWarning('');
     try {
       const res = await fetch(`/api/reports/${reportId}/resolve`, {
         method: 'POST',
@@ -49,6 +51,8 @@ export default function ModerationPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) throw new Error(data.error || 'The moderation action could not be saved.');
       setModNotes('');
+      const warnings = [data.auditWarning ? 'The action was saved, but its audit log could not be written.' : '', data.cleanupWarning ? 'The ban was saved, but queue or room cleanup needs owner attention.' : ''].filter(Boolean);
+      setWarning(warnings.join(' '));
       await fetchReports();
     } catch (err: any) {
       console.error('Failed to resolve report:', err);
@@ -93,6 +97,7 @@ export default function ModerationPage() {
       </div>
 
       {error && <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">{error}</div>}
+      {warning && <div role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">{warning}</div>}
       {reports.length === 0 ? (
         <EmptyState
           icon={ShieldCheck}
@@ -167,15 +172,23 @@ export default function ModerationPage() {
                     size="sm"
                     variant="amber"
                     onClick={() => handleResolve(r.id, 'warned')}
-                    disabled={actionLoading === r.id}
+                    disabled={actionLoading === r.id || r.status !== 'pending'}
                   >
                     Record Warning
                   </Button>
                   <Button
                     size="sm"
+                    variant="amber"
+                    onClick={() => handleResolve(r.id, 'temp_ban')}
+                    disabled={actionLoading === r.id || r.status !== 'pending'}
+                  >
+                    Ban 24h
+                  </Button>
+                  <Button
+                    size="sm"
                     variant="danger"
                     onClick={() => handleResolve(r.id, 'perma_ban')}
-                    disabled={actionLoading === r.id}
+                    disabled={actionLoading === r.id || r.status !== 'pending'}
                   >
                     Permanently Ban
                   </Button>
