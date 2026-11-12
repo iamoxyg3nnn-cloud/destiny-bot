@@ -1276,7 +1276,6 @@ async function handleAdminVerifyAction(btn: ButtonInteraction, approve: boolean,
   const trustedGuild = Boolean(btn.guildId && ECLAIRS_GUILD_IDS.includes(btn.guildId));
   const isStaff = trustedGuild && Boolean(
     btn.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
-    btn.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ||
     btn.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)
   );
 
