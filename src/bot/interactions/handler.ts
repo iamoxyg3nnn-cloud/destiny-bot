@@ -123,26 +123,7 @@ async function safeEditReply(interaction: ButtonInteraction | StringSelectMenuIn
 }
 
 export async function handleInteraction(interaction: Interaction): Promise<void> {
-  // Gracefully acknowledge buttons and menus posted by older bot versions.
-  // These component IDs remain in already-published Discord messages.
-  const retiredButtonIds = new Set([
-    'destiny_btn_wallet',
-    'destiny_btn_wallet_daily',
-    'destiny_btn_claim_daily',
-    'destiny_btn_shop',
-    'destiny_btn_wardrobe',
-    'destiny_btn_icebreaker',
-  ]);
-  const retiredSelectIds = new Set(['destiny_select_theme', 'destiny_select_badges']);
   const retiredMessage = 'This control is no longer available. Use /match to start an anonymous chat or /profile to manage your profile.';
-  if (interaction.isButton() && retiredButtonIds.has(interaction.customId)) {
-    await interaction.reply({ content: retiredMessage, flags: MessageFlags.Ephemeral }).catch(() => {});
-    return;
-  }
-  if (interaction.isStringSelectMenu() && retiredSelectIds.has(interaction.customId)) {
-    await interaction.reply({ content: retiredMessage, flags: MessageFlags.Ephemeral }).catch(() => {});
-    return;
-  }
 
   // Slash commands are routed to the command controller.
   if (interaction.isChatInputCommand()) {
@@ -969,6 +950,17 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       await safeEditReply(btn, { components: [successContainer] });
       return;
     }
+  }
+
+  // A generic fallback safely acknowledges stale controls from removed features
+  // without keeping feature-specific economy or Icebreaker handlers in source.
+  if (interaction.isRepliable() && (
+    interaction.isButton() ||
+    interaction.isStringSelectMenu() ||
+    interaction.isChannelSelectMenu() ||
+    interaction.isModalSubmit()
+  )) {
+    await safeEditReply(interaction as any, { content: retiredMessage });
   }
 }
 
