@@ -338,7 +338,11 @@ export function createApiServer(): express.Express {
       if (!resolved) return { notFound: false as const, resolved: false as const };
       let cleanupWarning = false;
       if (action === 'perma_ban' || action === 'temp_ban') {
-        const reportedUser = await db.getUserById(report.reportedId, true);
+        const reportedUser = await db.getUserById(report.reportedId, true).catch((error: any) => {
+          cleanupWarning = true;
+          console.error('[API] Could not load banned user for cleanup:', error?.message || error);
+          return null;
+        });
         const cleanup = await Promise.allSettled([
           matchmakingManager.removeQueueTicketUnderLock(report.reportedId),
           ...(reportedUser?.activeRoomId
