@@ -62,7 +62,11 @@ export default function SettingsPage() {
       setSuccess(guild.name + (payload.auditWarning ? ': setting saved, but the audit log could not be written.' : ': setting saved.'));
       await fetchGuilds();
     } catch (err: any) {
-      setError(err?.message || 'The server setting could not be saved.');
+      const message = err?.message || 'The server setting could not be saved.';
+      // Restore server truth after a failed save so an unsaved local selection
+      // is not mistaken for the active guild policy.
+      await fetchGuilds();
+      setError(message);
     } finally {
       setSaving(null);
     }
