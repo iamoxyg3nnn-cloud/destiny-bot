@@ -26,6 +26,7 @@ export class DatabaseService {
   private blockListCache: Map<string, { ids: Set<string>; expires: number }> = new Map();
   private discordUserCache: Map<string, { user: UserProfile; expires: number }> = new Map();
   private guildSettingsCache: Map<string, { settings: GuildSettings | null; expires: number }> = new Map();
+  private mockGuildSettings: Map<string, GuildSettings> = new Map();
 
   // In-memory fallbacks for testing and offline resilience
   public mockUsers: Map<string, UserProfile> = new Map();
