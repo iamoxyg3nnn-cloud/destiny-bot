@@ -63,6 +63,8 @@ Fill in your credentials and generate unique secrets (never leave these blank in
 ```env
 DISCORD_TOKEN=your_bot_token_here
 DISCORD_CLIENT_ID=your_client_id_here
+DISCORD_CLIENT_SECRET=your_discord_oauth_client_secret
+BOT_OWNER_IDS=123456789012345678,234567890123456789
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_secret
 REDIS_HOST=127.0.0.1
@@ -71,12 +73,14 @@ PORT=4000
 API_HOST=127.0.0.1
 API_SECRET_KEY=<at least 32 random characters>
 DESTINY_STREAM_URL=https://www.twitch.tv/ninja
-DASHBOARD_ADMIN_PASSWORD=<at least 12 characters>
+DASHBOARD_OWNER_OAUTH_ENABLED=false
+NEXTAUTH_URL=http://localhost:3000
+DASHBOARD_ADMIN_PASSWORD=<at least 12 characters; bootstrap/quick-tunnel mode>
 DASHBOARD_SESSION_SECRET=<at least 32 random characters>
 NEXTAUTH_SECRET=<a separate random secret>
 ```
 
-Generate secrets with `openssl rand -hex 32`. The dashboard password must be at least 12 characters. The API binds to loopback by default; Docker Compose exposes it only on the private container network.
+`BOT_OWNER_IDS` is a comma-separated allowlist of Discord IDs with global bot-owner authority; it supports multiple owners. For a stable HTTPS dashboard hostname, set `DASHBOARD_OWNER_OAUTH_ENABLED=true`, set `NEXTAUTH_URL` to that exact origin, and register `https://your-host/api/auth/callback/discord` in the Discord Developer Portal. The rotating quick-tunnel scripts require `DASHBOARD_OWNER_OAUTH_ENABLED=false` and the bootstrap password. Generate API/session secrets with `openssl rand -hex 32`; the bootstrap password must be at least 12 characters. The API binds to loopback by default; Docker Compose exposes it only on the private container network. See [Administration setup](docs/ADMINISTRATION.md) for owner, server-admin and moderator boundaries.
 
 #### Connecting Redis
 
