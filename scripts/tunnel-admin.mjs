@@ -12,8 +12,9 @@
  *   node scripts/tunnel-admin.mjs [--port 3000] [--api-port 4000]
  *                                 [--log <file>] [--url-file <file>]
  *
- * Requires DASHBOARD_ADMIN_PASSWORD and DASHBOARD_SESSION_SECRET in the
- * environment (or dashboard/.env.local).
+ * Requires DASHBOARD_SESSION_SECRET and API_SECRET_KEY. The quick tunnel uses
+ * DASHBOARD_ADMIN_PASSWORD; individual Discord OAuth requires a stable named
+ * tunnel and is intentionally rejected by this rotating quick-tunnel launcher.
  *
  * `--log` / `--url-file` are for detached (daemonised) launches, where the
  * tunnel must keep running after the parent shell exits.
