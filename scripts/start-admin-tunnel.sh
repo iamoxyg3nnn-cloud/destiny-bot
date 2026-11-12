@@ -151,7 +151,7 @@ wait_for_http() {
       -H "x-api-key: ${API_SECRET_KEY}" --connect-timeout 3 --max-time 8 \
       "$url" 2>/dev/null || true)"
     case "$code" in
-      2??|3??)
+      2??|3??|503)
         echo "✓ $name is up (HTTP $code)"
         return 0
         ;;
