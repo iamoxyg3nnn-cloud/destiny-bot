@@ -18,11 +18,8 @@ async function main() {
     }
     console.log(`Found ${users.length} users in database:`);
     for (const u of users) {
-      console.log(`- ${u.destiny_id} (Discord: ${u.discord_user_id}): Age ${u.age}, Gender ${u.gender}, Coins: ${u.destiny_coins}, Streak: ${u.streak_count}, Tier: ${u.connection_tier}, Interests: ${u.interests?.join(',')}`);
+      console.log(`- ${u.destiny_id} (Discord: ${u.discord_user_id}): Age ${u.age}, Gender ${u.gender}, Interests: ${u.interests?.join(',')}`);
     }
-
-    const { data: items } = await supabase.from('shop_items').select('*').limit(5);
-    console.log(`Found ${items?.length || 0} shop items:`, items?.map(i => i.name).join(', '));
   } catch (err: any) {
     console.error('Catch error:', err?.message || err);
   }
