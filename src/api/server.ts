@@ -30,6 +30,11 @@ function safeEqual(a: string, b: string): boolean {
  * configured the API refuses every request rather than defaulting to open —
  * this API can manage users, moderate rooms and read private anonymous chat messages.
  */
+function dashboardActor(req: Request): string {
+  const actor = req.header('x-admin-id') || '';
+  return /^[0-9]{17,20}$/.test(actor) ? actor : dashboardActor(req);
+}
+
 function requireApiKey(req: Request, res: Response, next: NextFunction) {
   const expected = config.API_SECRET_KEY;
   if (expected.length < 32 || expected === 'destiny_internal_secret_32bytes_min_key!') {
@@ -263,7 +268,7 @@ export function createApiServer(): express.Express {
     });
 
     if (result.notFound) return res.status(404).json({ error: 'User not found' });
-    await db.logAdminAction('dashboard_owner', banned ? 'BAN_USER' : 'UNBAN_USER', 'USER', id, { reason });
+    await db.logAdminAction(dashboardActor(req), banned ? 'BAN_USER' : 'UNBAN_USER', 'USER', id, { reason });
     res.json({ success: true, user: result.user });
   });
 
@@ -282,7 +287,7 @@ export function createApiServer(): express.Express {
     }
 
     const success = await db.endRoom(id, 'moderated');
-    await db.logAdminAction('dashboard_owner', 'TERMINATE_ROOM', 'ROOM', id, { reason });
+    await db.logAdminAction(dashboardActor(req), 'TERMINATE_ROOM', 'ROOM', id, { reason });
     res.json({ success });
   });
 
@@ -317,7 +322,7 @@ export function createApiServer(): express.Express {
     const resolve = async () => {
       const report = await db.getReportById(id);
       if (!report) return { notFound: true as const, resolved: false as const };
-      const resolved = await db.resolveReport(id, action, notes, 'dashboard_owner');
+      const resolved = await db.resolveReport(id, action, notes, dashboardActor(req));
       if (!resolved) return { notFound: false as const, resolved: false as const };
       if (action === 'perma_ban') {
         await matchmakingManager.removeQueueTicketUnderLock(report.reportedId);
@@ -334,7 +339,7 @@ export function createApiServer(): express.Express {
     if (outcome.notFound) return res.status(404).json({ error: 'Report not found' });
     if (!outcome.resolved) return res.status(409).json({ error: 'Report could not be resolved.' });
 
-    await db.logAdminAction('dashboard_owner', 'RESOLVE_REPORT', 'REPORT', id, { action, notes });
+    await db.logAdminAction(dashboardActor(req), 'RESOLVE_REPORT', 'REPORT', id, { action, notes });
     res.json({ success: true, report: { ...outcome.report, status: 'resolved', actionTaken: action } });
   });
 
@@ -356,7 +361,7 @@ export function createApiServer(): express.Express {
       return res.status(400).json({ error: 'notes must be a string of at most 1000 characters.' });
     }
 
-    const result = await verificationService.reviewVerification('dashboard_owner', id, approved, notes);
+    const result = await verificationService.reviewVerification(dashboardActor(req), id, approved, notes);
     res.json(result);
   });
 
@@ -452,7 +457,7 @@ export function createApiServer(): express.Express {
       if (results.some((saved) => !saved)) {
         return res.status(500).json({ error: 'One or more server settings could not be saved. Refresh the page before retrying.' });
       }
-      await db.logAdminAction('dashboard_owner', 'UPDATE_GUILD_SETTINGS', 'GUILD', guildId, {
+      await db.logAdminAction(dashboardActor(req), 'UPDATE_GUILD_SETTINGS', 'GUILD', guildId, {
         ...(hasMatch ? { matchChannelId: matchChannelId ?? null } : {}),
         ...(hasModLog ? { modLogChannelId: modLogChannelId ?? null } : {}),
         ...(hasCrossServer ? { crossServerEnabled } : {}),
