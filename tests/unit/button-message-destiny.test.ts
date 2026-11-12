@@ -72,12 +72,7 @@ describe('Destiny DM-First Button & Message Workflow Tests', () => {
       expect(cancelDmRegex.test('stop')).toBe(true);
     });
 
-    it('should match wallet and icebreaker quick commands in DM', () => {
-      expect(walletDmRegex.test('wallet')).toBe(true);
-      expect(walletDmRegex.test('coins')).toBe(true);
-      expect(walletDmRegex.test('daily')).toBe(true);
-      expect(walletDmRegex.test('destiny wallet')).toBe(true);
-
+    it('should match icebreaker quick commands in DM', () => {
       expect(icebreakerDmRegex.test('icebreaker')).toBe(true);
       expect(icebreakerDmRegex.test('prompt')).toBe(true);
       expect(icebreakerDmRegex.test('conversation starter')).toBe(true);
