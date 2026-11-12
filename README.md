@@ -22,7 +22,6 @@
 
 ### 💬 Step 3 — Anonymous Conversation Experience
 - **Private 1-on-1 Chat**: Messages are relayed through the bot's DMs using per-room pseudonyms.
-- **Conversation Prompts**: Optional icebreakers help partners start or continue a conversation.
 - **Session Controls**: Either participant can leave at any time; the partner is notified without exposing Discord identities.
 - **Safety Controls**: Global blocking, abuse reports, moderation restrictions and mutual-consent profile reveal.
 
@@ -104,7 +103,7 @@ same logical database and `destiny:` key prefix as the application. Redis dashbo
 usually show keys within a logical database, not a separately created database object.
 
 ### 3. Database Schema Setup
-Execute the SQL migrations located in `supabase/migrations/` in order. Economy/progression migrations are retained only for compatibility with existing databases; the current application does not use those features or write economy records:
+Execute the SQL migrations located in `supabase/migrations/` in order. Migrations `001`–`015` contain the original economy and progression schema for historical compatibility; migration `016` permanently removes those tables, records, columns, functions and triggers. The active application is anonymous chat and matchmaking only:
 1. `001_initial_schema.sql` — Tables, indexes, and Row Level Security.
 2. `002_functions_triggers.sql` — Core stored procedures and legacy schema helpers.
 3. `003_seed_data.sql` — Initial reference data.
@@ -120,6 +119,7 @@ Execute the SQL migrations located in `supabase/migrations/` in order. Economy/p
 13. `013_atomic_daily_claim.sql` — Legacy daily-claim procedure.
 14. `014_atomic_report_resolution.sql` — Resolve moderation reports and apply permanent bans in one transaction.
 15. `015_conditional_room_inactivity.sql` — Close rooms only when they remain inactive at the transactionally rechecked cutoff.
+16. `016_remove_economy_and_progression.sql` — Drop all legacy economy/progression data and schema while preserving user profiles, rooms, chat, safety and moderation data.
 
 ### 4. Running Destiny
 ```bash
@@ -151,7 +151,6 @@ Open **http://localhost:3000** to access the Admin Dashboard. For Docker, copy `
 | `/leave` | Exit current room session or queue |
 | `/reveal` | Request mutual profile reveal with field selection |
 | `/profile [age] [gender] [bio] [interests] [languages] [looking_for]` | Auto-setup or edit your anonymous profile and render your card |
-| `/icebreaker` | Get a curated conversation starter for your room or DMs |
 | `/report <category> <description>` | Safely report user with automated chat excerpt |
 | `/block [destiny_id]` | Globally block user across all servers |
 | `/settings` | Configure 7:30 PM IST daily reminders, timezone, and quiet hours |
