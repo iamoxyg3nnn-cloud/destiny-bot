@@ -1397,7 +1397,7 @@ async function handleSetCurrentAdminChannel(btn: ButtonInteraction): Promise<voi
   const audited = await logGuildSetupAudit(btn.user.id, 'SET_GUILD_MATCH_CHANNEL', btn.guildId, { channelId: btn.channelId });
   const successContainer = embedService.createChannelSetSuccessContainer(btn.channelId, btn.guild?.name || 'Server');
   if (audited) await safeEditReply(btn, { components: [successContainer] });
-  else await safeEditReply(btn, { components: [successContainer, new ContainerBuilder().setAccentColor(COLORS.WARNING).addTextDisplayComponents(new TextDisplayBuilder().setContent('The portal was saved, but the audit log could not be written. Notify a platform owner.'))] });
+  else await safeEditReply(btn, { components: [successContainer, new ContainerBuilder().setAccentColor(COLORS.GOLD).addTextDisplayComponents(new TextDisplayBuilder().setContent('The portal was saved, but the audit log could not be written. Notify a platform owner.'))] });
 }
 
 /**
@@ -1438,7 +1438,7 @@ async function handleSelectAdminChannel(select: ChannelSelectMenuInteraction): P
   const audited = await logGuildSetupAudit(select.user.id, 'SET_GUILD_MATCH_CHANNEL', select.guildId, { channelId: selectedChannelId });
   const successContainer = embedService.createChannelSetSuccessContainer(selectedChannelId, select.guild?.name || 'Server');
   if (audited) await safeEditReply(select, { components: [successContainer] });
-  else await safeEditReply(select, { components: [successContainer, new ContainerBuilder().setAccentColor(COLORS.WARNING).addTextDisplayComponents(new TextDisplayBuilder().setContent('The portal was saved, but the audit log could not be written. Notify a platform owner.'))] });
+  else await safeEditReply(select, { components: [successContainer, new ContainerBuilder().setAccentColor(COLORS.GOLD).addTextDisplayComponents(new TextDisplayBuilder().setContent('The portal was saved, but the audit log could not be written. Notify a platform owner.'))] });
 }
 
 /**
@@ -1538,7 +1538,7 @@ async function handleResetSetup(btn: ButtonInteraction): Promise<void> {
   const audited = await logGuildSetupAudit(btn.user.id, 'CLEAR_GUILD_MATCH_CHANNEL', btn.guildId);
   const container = embedService.createChannelResetSuccessContainer(btn.guild.name);
   if (audited) await safeEditReply(btn, { components: [container] });
-  else await safeEditReply(btn, { components: [container, new ContainerBuilder().setAccentColor(COLORS.WARNING).addTextDisplayComponents(new TextDisplayBuilder().setContent('The portal was cleared, but the audit log could not be written. Notify a platform owner.'))] });
+  else await safeEditReply(btn, { components: [container, new ContainerBuilder().setAccentColor(COLORS.GOLD).addTextDisplayComponents(new TextDisplayBuilder().setContent('The portal was cleared, but the audit log could not be written. Notify a platform owner.'))] });
 }
 
 /**
