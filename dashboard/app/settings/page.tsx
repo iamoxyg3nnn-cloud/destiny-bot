@@ -14,6 +14,7 @@ type Guild = {
   matchChannelId: string | null;
   modLogChannelId: string | null;
   crossServerEnabled: boolean;
+  isTrustedStaffGuild: boolean;
 };
 
 export default function SettingsPage() {
@@ -72,7 +73,7 @@ export default function SettingsPage() {
       <div className="pb-4 border-b border-white/[0.07]">
         <h1 className="text-xl font-medium tracking-tight text-zinc-100">Server Administration</h1>
         <p className="text-xs text-zinc-400 mt-1">
-          Each Discord server has independent portal, private moderation-log and cross-server matchmaking settings.
+          Each Discord server has its own portal and cross-server policy. Global moderation alerts are configured only in trusted staff servers.
           Platform-wide bot-owner settings are managed separately.
         </p>
       </div>
@@ -130,22 +131,28 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label htmlFor={'modlog-' + guild.id} className="text-xs text-zinc-300 flex items-center gap-2"><ShieldCheck className="w-3.5 h-3.5" />Private moderation log</label>
-                  <select id={'modlog-' + guild.id} value={modLogChannels[guild.id] ?? ''} onChange={(event) => setModLogChannels((state) => ({ ...state, [guild.id]: event.target.value }))} className="w-full bg-[#18191e] border border-white/[0.08] rounded-md px-2.5 py-2 text-xs text-zinc-200">
-                    <option value="">No moderation channel</option>
-                    {guild.channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
-                  </select>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => void save(guild, 'modlog', { modLogChannelId: modLogChannels[guild.id] || null })} disabled={saving !== null}>
-                      {saving === guild.id + ':modlog' ? 'Saving…' : 'Save mod log'}
-                    </Button>
-                    <Button size="sm" variant="secondary" onClick={() => { setModLogChannels((state) => ({ ...state, [guild.id]: '' })); void save(guild, 'modlog', { modLogChannelId: null }); }} disabled={!guild.modLogChannelId || saving !== null} title="Clear moderation channel">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                {guild.isTrustedStaffGuild ? (
+                  <div className="space-y-2">
+                    <label htmlFor={'modlog-' + guild.id} className="text-xs text-zinc-300 flex items-center gap-2"><ShieldCheck className="w-3.5 h-3.5" />Global moderation alert channel</label>
+                    <select id={'modlog-' + guild.id} value={modLogChannels[guild.id] ?? ''} onChange={(event) => setModLogChannels((state) => ({ ...state, [guild.id]: event.target.value }))} className="w-full bg-[#18191e] border border-white/[0.08] rounded-md px-2.5 py-2 text-xs text-zinc-200">
+                      <option value="">No moderation channel</option>
+                      {guild.channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+                    </select>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => void save(guild, 'modlog', { modLogChannelId: modLogChannels[guild.id] || null })} disabled={saving !== null}>
+                        {saving === guild.id + ':modlog' ? 'Saving…' : 'Save mod log'}
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => { setModLogChannels((state) => ({ ...state, [guild.id]: '' })); void save(guild, 'modlog', { modLogChannelId: null }); }} disabled={!guild.modLogChannelId || saving !== null} title="Clear moderation channel">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-zinc-500">Private staff alerts only. The channel must deny @everyone View Channel access.</p>
                   </div>
-                  <p className="text-[10px] text-zinc-500">The channel must deny @everyone View Channel access.</p>
-                </div>
+                ) : (
+                  <div className="flex items-center text-[11px] text-zinc-500">
+                    Global moderation alerts are configured in a trusted Destiny staff server, not in this community.
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/[0.06]">
