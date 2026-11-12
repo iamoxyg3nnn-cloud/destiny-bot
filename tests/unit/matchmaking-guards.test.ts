@@ -209,6 +209,29 @@ describe('Matchmaking edge-case guards', () => {
     }
   });
 
+
+  it('allows cross-server matches only when both servers allow discovery', async () => {
+    const settings = vi.spyOn(db, 'getGuildSettings').mockImplementation(async (guildId: string) => ({
+      guildId,
+      crossServerEnabled: true,
+    } as any));
+    const blocks = new Map<string, ReadonlySet<string>>([
+      ['user-a', new Set<string>()],
+      ['user-b', new Set<string>()],
+    ]);
+    try {
+      const match = await matchmakingEngine.findRandomMatch(
+        ticket({ guildId: 'guild-a' }),
+        [ticket({ userId: 'user-b', destinyId: 'DEST-B', discordUserId: 'discord-b', guildId: 'guild-b' })],
+        blocks
+      );
+      expect(match?.partner.userId).toBe('user-b');
+      expect(settings).toHaveBeenCalledTimes(2);
+    } finally {
+      settings.mockRestore();
+    }
+  });
+
   it('does not pair a guild-scoped ticket with a ticket lacking guild attribution', async () => {
     const blocks = new Map<string, ReadonlySet<string>>([
       ['user-a', new Set<string>()],
@@ -238,6 +261,7 @@ describe('Matchmaking edge-case guards', () => {
         blocks
       );
       expect(match?.partner.userId).toBe('user-b');
+      expect(settings).not.toHaveBeenCalled();
     } finally {
       settings.mockRestore();
     }
