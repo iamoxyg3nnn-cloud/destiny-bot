@@ -36,13 +36,12 @@ describe('Discord Components V2 ContainerBuilder Tests', () => {
     expect(actionRows.length).toBeGreaterThanOrEqual(1);
 
     const buttons = actionRows[0].components.filter((c: any) => c.type === 2);
-    expect(buttons.length).toBe(4);
+    expect(buttons.length).toBe(3);
 
     const buttonIds = buttons.map((b: any) => b.custom_id);
     expect(buttonIds).toContain('destiny_btn_start');
     expect(buttonIds).toContain('destiny_btn_profile');
     expect(buttonIds).toContain('destiny_btn_verify');
-    expect(buttonIds).toContain('destiny_btn_icebreaker');
   });
 
   it('should generate Verification Prompt container with Submit Verification button', () => {
@@ -103,21 +102,6 @@ describe('Discord Components V2 ContainerBuilder Tests', () => {
   });
 
 
-  it('should generate Icebreaker container with a conversation prompt and follow-up action', () => {
-    const container = embedService.createIcebreakerContainer('What is your favourite late-night snack?');
-    const json: any = container.toJSON();
-
-    expect(json.type).toBe(17);
-    const textComponents = json.components.filter((c: any) => c.type === 10);
-    expect(textComponents[0].content).toContain('favourite late-night snack');
-
-    const actionRows = json.components.filter((c: any) => c.type === 1);
-    expect(actionRows.length).toBe(1);
-    const ids = actionRows[0].components.map((b: any) => b.custom_id);
-    expect(ids).toContain('destiny_btn_icebreaker');
-    expect(ids).toContain('destiny_btn_start');
-  });
-
   it('should generate Match Connection container with Reveal and Leave buttons inside the container', () => {
     const mockRoom: RoomSession = {
       id: 'room_test_1',
@@ -138,7 +122,7 @@ describe('Discord Components V2 ContainerBuilder Tests', () => {
       updatedAt: new Date().toISOString(),
     };
 
-    const container = embedService.createMatchFoundContainer(mockRoom, true, 'Favorite movie?');
+    const container = embedService.createMatchFoundContainer(mockRoom, true);
     const json: any = container.toJSON();
 
     expect(json.type).toBe(17);
