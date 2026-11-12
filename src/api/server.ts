@@ -444,7 +444,7 @@ export function createApiServer(): express.Express {
         matchChannelId: settings?.matchChannelId || null,
         modLogChannelId: settings?.modLogChannelId || null,
         crossServerEnabled: settings?.crossServerEnabled !== false,
-        isTrustedStaffGuild: config.ECLAIRS_GUILD_IDS.includes(guild.id),
+        isTrustedStaffGuild: ECLAIRS_GUILD_IDS.includes(guild.id),
       };
     }));
     res.json(enriched);
@@ -461,7 +461,7 @@ export function createApiServer(): express.Express {
       }
       const hasMatch = Object.prototype.hasOwnProperty.call(body, 'matchChannelId');
       const hasModLog = Object.prototype.hasOwnProperty.call(body, 'modLogChannelId');
-      if (hasModLog && !config.ECLAIRS_GUILD_IDS.includes(guildId)) {
+      if (hasModLog && !ECLAIRS_GUILD_IDS.includes(guildId)) {
         return res.status(403).json({ error: 'The global moderation alert channel can only be configured in a trusted staff guild.' });
       }
       const hasCrossServer = Object.prototype.hasOwnProperty.call(body, 'crossServerEnabled');
