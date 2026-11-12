@@ -19,7 +19,7 @@ DECLARE
     v_reported_id UUID;
     v_category VARCHAR(64);
 BEGIN
-    IF p_report_id IS NULL OR p_action NOT IN ('none', 'warned', 'temp_ban', 'perma_ban') THEN
+    IF p_report_id IS NULL OR p_action IS NULL OR p_action NOT IN ('none', 'warned', 'temp_ban', 'perma_ban') THEN
         RETURN FALSE;
     END IF;
 
