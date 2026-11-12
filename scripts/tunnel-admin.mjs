@@ -196,7 +196,7 @@ function startDashboard() {
       ...process.env,
       BACKEND_API_URL: `http://127.0.0.1:${API_PORT}`,
       API_SECRET_KEY: process.env.API_SECRET_KEY,
-      DASHBOARD_ADMIN_PASSWORD: process.env.DASHBOARD_ADMIN_PASSWORD,
+      DASHBOARD_ADMIN_PASSWORD: process.env.DASHBOARD_ADMIN_PASSWORD || '',
       DASHBOARD_SESSION_SECRET: process.env.DASHBOARD_SESSION_SECRET,
     },
     stdio: ['ignore', 'inherit', 'inherit'],
@@ -227,7 +227,9 @@ function startTunnel(cloudflared) {
       recordUrl(url);
       console.log(`\n${C.rose}${C.bold}  ▸▸  ADMIN CONSOLE IS LIVE${C.reset}`);
       console.log(`${C.rose}${C.bold}${url}${C.reset}\n`);
-      console.log(`${C.dim}  Password: DASHBOARD_ADMIN_PASSWORD (from .env).${C.reset}`);
+      console.log(OWNER_OAUTH_ENABLED
+        ? `${C.dim}  Access: Discord owners listed in BOT_OWNER_IDS.${C.reset}`
+        : `${C.dim}  Password: DASHBOARD_ADMIN_PASSWORD (from .env).${C.reset}`);
       console.log(`${C.dim}  Press Ctrl+C to tear down the tunnel.${C.reset}\n`);
     }
   };
@@ -252,34 +254,42 @@ if (!cloudflared) {
   process.exit(1);
 }
 
-if (!process.env.DASHBOARD_ADMIN_PASSWORD) {
-  console.error(`${C.red}✖ DASHBOARD_ADMIN_PASSWORD is not set.${C.reset}`);
-  console.error(`  Create dashboard/.env.local with:`);
-  console.error(`      DASHBOARD_ADMIN_PASSWORD=<a strong password>`);
-  console.error(`      DASHBOARD_SESSION_SECRET=<a long random string>`);
-  console.error(`      API_SECRET_KEY=<shared with the API server>`);
+const OWNER_OAUTH_ENABLED = process.env.DASHBOARD_OWNER_OAUTH_ENABLED === 'true';
+if (OWNER_OAUTH_ENABLED) {
+  const ownerIds = (process.env.BOT_OWNER_IDS || '').split(',').map((id) => id.trim()).filter((id) => /^[0-9]{17,20}$/.test(id));
+  const origin = (() => { try { return new URL(process.env.NEXTAUTH_URL || ''); } catch { return null; } })();
+  if (ownerIds.length === 0 || !process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_CLIENT_SECRET ||
+      !origin || (process.env.NODE_ENV === 'production' && origin.protocol !== 'https:')) {
+    console.error('✖ Discord owner OAuth requires BOT_OWNER_IDS, Discord OAuth credentials and a stable HTTPS NEXTAUTH_URL.');
+    process.exit(1);
+  }
+} else if (!process.env.DASHBOARD_ADMIN_PASSWORD) {
+  console.error('✖ DASHBOARD_ADMIN_PASSWORD is not set and Discord owner OAuth is disabled.');
+  console.error('  Configure a bootstrap password or enable DASHBOARD_OWNER_OAUTH_ENABLED with a stable owner OAuth origin.');
   process.exit(1);
 }
 
-if (!process.env.DASHBOARD_SESSION_SECRET) {
-  console.error(`${C.red}✖ DASHBOARD_SESSION_SECRET is not set.${C.reset}`);
+if (!process.env.DASHBOARD_SESSION_SECRET || process.env.DASHBOARD_SESSION_SECRET.length < 32) {
+  console.error('✖ DASHBOARD_SESSION_SECRET must contain at least 32 characters.');
   process.exit(1);
 }
-
+if (!process.env.API_SECRET_KEY || process.env.API_SECRET_KEY.length < 32) {
+  console.error('✖ API_SECRET_KEY must contain at least 32 characters.');
+  process.exit(1);
+}
 /**
  * Waits for an HTTP endpoint to become reachable.
  *
  * `/api/health` is protected by the `x-api-key` header, so it must be sent —
  * a plain request returns 401 and would look like the API never came up.
  */
-async function waitForHttp(url, { timeoutMs = 45000, apiKey = '' } = {}) {
+async function waitForHttp(url, { timeoutMs = 45000, apiKey = '', expectedStatus = 200 } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
       const headers = apiKey ? { 'x-api-key': apiKey } : {};
       const res = await fetch(url, { redirect: 'manual', headers });
-      // Any HTTP response means the server is listening.
-      if (res.status > 0) return true;
+      if (res.status === expectedStatus) return true;
     } catch {}
     await new Promise((r) => setTimeout(r, 750));
   }
