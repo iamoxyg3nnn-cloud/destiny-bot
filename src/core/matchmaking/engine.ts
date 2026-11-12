@@ -195,12 +195,14 @@ export class MatchmakingEngine {
     const blockLists = preloadedBlockLists ?? await this.preloadBlockLists([ticket, ...candidates]);
     // A guild may opt out of cross-server discovery. Load each involved guild
     // once per selection cycle rather than issuing a query for every candidate.
-    const distinctGuildIds = Array.from(new Set([ticket, ...candidates]
-      .map((entry) => entry.guildId)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0)));
-    // Same-guild cycles do not depend on guild configuration. Avoid needless
-    // database reads (and avoid blocking local matches during a settings outage).
-    const guildIds = distinctGuildIds.length > 1 ? distinctGuildIds : [];
+    const otherGuildIds = ticket.guildId
+      ? Array.from(new Set(candidates
+          .map((candidate) => candidate.guildId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0 && id !== ticket.guildId)))
+      : [];
+    // Only cross-server candidates need configuration. A ticket without guild
+    // attribution cannot cross a guild boundary, so it never triggers reads.
+    const guildIds = otherGuildIds.length > 0 ? [ticket.guildId!, ...otherGuildIds] : [];
     const guildSettings = new Map<string, Awaited<ReturnType<typeof db.getGuildSettings>>>();
     const settings = await Promise.all(guildIds.map(async (guildId) =>
       [guildId, await db.getGuildSettings(guildId)] as const
