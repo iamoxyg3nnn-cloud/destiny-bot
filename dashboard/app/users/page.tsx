@@ -16,6 +16,7 @@ type UserRow = {
   genderVerified: boolean;
   isBanned: boolean;
   banReason?: string;
+  banExpiresAt?: string | null;
 };
 
 export default function UsersPage() {
@@ -25,6 +26,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState('');
+  const [notice, setNotice] = useState('');
 
   const fetchUsers = async () => {
     try {
@@ -65,10 +67,13 @@ export default function UsersPage() {
           adminId: 'admin_console',
         }),
       });
-      if (!response.ok) throw new Error('Moderation action failed.');
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.error || 'Moderation action failed.');
+      setNotice(result.auditWarning ? 'Ban status saved, but the audit log could not be written.' : 'Moderation status updated.');
       await fetchUsers();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      setNotice(error?.message || 'Moderation action failed.');
     } finally {
       setLoading(false);
     }
@@ -97,6 +102,8 @@ export default function UsersPage() {
           <span>Refresh</span>
         </Button>
       </div>
+
+      {notice && <div role="status" className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-xs text-zinc-300">{notice}</div>}
 
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div className="relative flex-1 max-w-md">
@@ -151,7 +158,7 @@ export default function UsersPage() {
                   <td className="px-5 py-3.5 font-mono text-zinc-500 text-[11px]">{user.discordUserId}</td>
                   <td className="px-5 py-3.5 capitalize">{user.age} · {user.gender}</td>
                   <td className="px-5 py-3.5">{user.genderVerified ? <Badge variant="emerald">Verified</Badge> : <span className="text-zinc-500">Unverified</span>}</td>
-                  <td className="px-5 py-3.5">{user.isBanned ? <Badge variant="rose">Banned</Badge> : <Badge variant="zinc">Active</Badge>}</td>
+                  <td className="px-5 py-3.5">{user.isBanned ? (user.banExpiresAt ? <Badge variant="amber">Temporary until {new Date(user.banExpiresAt).toLocaleString()}</Badge> : <Badge variant="rose">Permanent ban</Badge>) : <Badge variant="zinc">Active</Badge>}</td>
                   <td className="px-5 py-3.5 text-right">
                     <Button size="sm" variant={user.isBanned ? 'amber' : 'danger'} onClick={() => void toggleBan(user)} disabled={loading}>
                       {user.isBanned ? 'Unban' : 'Ban'}
