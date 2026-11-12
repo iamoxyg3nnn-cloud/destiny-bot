@@ -64,6 +64,11 @@ describe('Dashboard authentication helpers', () => {
       sub: '123456789012345678',
       role: 'owner',
     });
+    vi.stubEnv('BOT_OWNER_IDS', '234567890123456789');
+    expect(await readSessionPayload(token)).toBeNull();
+    vi.stubEnv('BOT_OWNER_IDS', '123456789012345678');
+    vi.stubEnv('DASHBOARD_OWNER_OAUTH_ENABLED', 'false');
+    expect(await readSessionPayload(token)).toBeNull();
     expect(await createSessionToken(60, 'not-a-discord-id')).toBeNull();
   });
 
