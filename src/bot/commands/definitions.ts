@@ -24,7 +24,7 @@ import { UserProfile } from '../../core/types.js';
 import { buildProfileCard, createProfileActionRow, isProfileComplete } from '../profile-view.js';
 import { buildProfileModal, normalizeGender, parseList } from '../profile-modal.js';
 import { sendCleanDmPanel } from '../dm-cleanup.js';
-import { handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
+import { ECLAIRS_GUILD_IDS, handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
 
 export const slashCommands = [
   // 1. /match
