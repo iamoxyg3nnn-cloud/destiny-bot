@@ -596,6 +596,10 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     }
 
     if (sub === 'modlog') {
+      if (!config.ECLAIRS_GUILD_IDS.includes(interaction.guild.id)) {
+        await respond({ content: '⛔ The moderation alert channel can only be configured in a trusted Destiny staff server. Server-specific setup remains available through /setup portal and /setup cross_server.', ephemeral: true });
+        return;
+      }
       const channel = interaction.options.getChannel('channel', true) as any;
       if (![0, 5].includes(Number(channel.type))) {
         await respond({ content: '⚠️ The moderation log must be a text or announcement channel.', ephemeral: true });
