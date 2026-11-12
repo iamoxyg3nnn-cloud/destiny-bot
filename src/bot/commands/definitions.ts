@@ -151,7 +151,7 @@ export const slashCommands = [
   new SlashCommandBuilder()
     .setName('setup')
     .setDescription('Server administrator onboarding and matchmaking portal configuration')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild | PermissionFlagsBits.Administrator)
     .addSubcommand((sub) =>
       sub
         .setName('portal')
@@ -540,10 +540,11 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       await respond({ content: '⚠️ The `/setup` command can only be executed inside a Discord server.', ephemeral: true });
       return;
     }
-    // Discord command permission overrides can be broader than the default
-    // command visibility. Enforce Administrator again at execution time.
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-      await respond({ content: '⛔ Only a Discord server Administrator can change Destiny server settings.', ephemeral: true });
+    // Enforce server-scoped management permission at execution time as well.
+    // Manage Server does not grant platform-owner or global moderation access.
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) &&
+        !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+      await respond({ content: '⛔ You need Discord Manage Server or Administrator permission to change this server’s Destiny settings.', ephemeral: true });
       return;
     }
 
