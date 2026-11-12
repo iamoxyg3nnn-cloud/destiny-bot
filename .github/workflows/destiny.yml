@@ -202,16 +202,15 @@ jobs:
           set -e
 
           if [ "${rc}" -eq 124 ]; then
-            echo "::notice::Session window ended cleanly after ${SESSION_MINUTES}m; chaining next session..."
+            echo "::notice::Session window ended cleanly after ${SESSION_MINUTES}m; completion watcher will start the next session."
             exit 0
           fi
           if [ "${rc}" -eq 0 ]; then
-            echo "::notice::Destiny bot process stopped cleanly; chaining next session..."
+            echo "::notice::Destiny bot process stopped cleanly; completion watcher will start the next session."
             exit 0
           fi
 
-          echo "::error::Destiny bot exited with status ${rc}; waiting 3m before the completion watcher starts a recovery session..."
-          sleep 180
+          echo "::error::Destiny bot exited with status ${rc}; the completion watcher will start a recovery session."
           exit "${rc}"
 
       - name: Session Summary
