@@ -16,7 +16,7 @@ export async function GET() {
   } catch {
     return NextResponse.json({ error: 'NEXTAUTH_URL must be a valid absolute URL.' }, { status: 503 });
   }
-  if (!clientId || !process.env.DISCORD_CLIENT_SECRET || owners.length === 0 ||
+  if (process.env.DASHBOARD_OWNER_OAUTH_ENABLED !== 'true' || !clientId || !process.env.DISCORD_CLIENT_SECRET || owners.length === 0 ||
       (process.env.NODE_ENV === 'production' && publicOrigin.protocol !== 'https:')) {
     return NextResponse.json({ error: 'Discord owner sign-in requires BOT_OWNER_IDS, Discord OAuth credentials and a public HTTPS NEXTAUTH_URL in production.' }, { status: 503 });
   }
