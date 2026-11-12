@@ -27,7 +27,7 @@ The portal and moderation channels are separate settings. The portal can be conf
 
 ## 3. Cross-server matchmaking
 
-A guild opting out of cross-server discovery can still match members from its own guild, but its queue tickets cannot be paired with tickets from another guild. Cross-server pairing is allowed only when both participating guilds have not opted out. A missing guild setting retains the existing default-allow behavior.
+A guild opting out of cross-server discovery can still match members from its own guild, but its queue tickets cannot be paired with tickets from another guild. Cross-server pairing is allowed only when both participating guilds have not opted out. A missing guild setting retains the existing default-allow behavior. The originating guild is retained for 30 days so DM re-match buttons continue to respect the same policy. A user who starts entirely from DMs has no source guild and enters the unscoped DM pool; unscoped tickets are never paired with guild-scoped tickets. To apply a server's opt-out, start matchmaking from that server or its portal.
 
 ## 4. Moderation boundaries
 
