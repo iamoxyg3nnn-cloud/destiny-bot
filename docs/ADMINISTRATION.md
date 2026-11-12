@@ -18,10 +18,10 @@ The web dashboard can use individual Discord OAuth sessions (`DASHBOARD_OWNER_OA
 
 A Discord server owner or member with the native Discord `Administrator` permission can configure only the guild in which the command is run. `Manage Server` alone is not sufficient for setup.
 
-- `/setup portal channel:#channel` sets the matchmaking portal.
-- `/setup modlog channel:#channel` sets the moderation-alert channel independently.
-- `/setup cross_server enabled:true|false` sets that guild's cross-server matchmaking policy.
-- `/setup view` displays that guild's stored configuration.
+- `/setup portal channel:#channel` sets this guild's matchmaking portal.
+- `/setup cross_server enabled:true|false` sets this guild's cross-server matchmaking policy.
+- `/setup view` displays this guild's stored configuration.
+- `/setup modlog channel:#channel` is available only inside a trusted staff guild listed in `ECLAIRS_GUILD_IDS`. It configures the global private moderation-alert destination because reports are submitted in DMs and rooms do not currently carry a source-guild identity.
 
 The portal and moderation channels are separate settings. The portal can be configured from the setup panel or `/setup portal`; moderation logs require `/setup modlog` and a channel hidden from `@everyone`. The bot persists them to `guild_settings` and records the acting Discord user ID in `admin_audit_logs`.
 
