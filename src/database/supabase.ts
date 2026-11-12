@@ -1081,13 +1081,22 @@ export class DatabaseService {
       if (action === 'perma_ban' || action === 'temp_ban') {
         const reportedUser = this.mockUsers.get(report.reportedId);
         if (!reportedUser) return false;
-        reportedUser.isBanned = true;
-        reportedUser.banReason = action === 'temp_ban'
-          ? `Temporarily banned via safety report: ${report.category}`
-          : `Banned via safety report: ${report.category}`;
-        reportedUser.banExpiresAt = action === 'temp_ban'
-          ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-          : null;
+        const alreadyPermanent = reportedUser.isBanned && !reportedUser.banExpiresAt;
+        if (action === 'perma_ban') {
+          reportedUser.isBanned = true;
+          reportedUser.banReason = `Banned via safety report: ${report.category}`;
+          reportedUser.banExpiresAt = null;
+        } else if (!alreadyPermanent) {
+          const existingExpiry = reportedUser.isBanned && reportedUser.banExpiresAt
+            ? Date.parse(reportedUser.banExpiresAt)
+            : NaN;
+          const nextExpiry = Number.isFinite(existingExpiry) && existingExpiry > Date.now()
+            ? existingExpiry + 24 * 60 * 60 * 1000
+            : Date.now() + 24 * 60 * 60 * 1000;
+          reportedUser.isBanned = true;
+          reportedUser.banReason = `Temporarily banned via safety report: ${report.category}`;
+          reportedUser.banExpiresAt = new Date(nextExpiry).toISOString();
+        }
         reportedUser.updatedAt = new Date().toISOString();
       }
 
