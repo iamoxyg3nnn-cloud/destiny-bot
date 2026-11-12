@@ -16,9 +16,6 @@ import { db } from '../../database/supabase.js';
 import { redis } from '../../redis/client.js';
 import { matchmakingManager } from '../../core/matchmaking/manager.js';
 import { embedService, COLORS } from '../embeds/index.js';
-import { streakService } from '../../core/economy/streaks.js';
-import { walletService } from '../../core/economy/wallet.js';
-import { shopService } from '../../core/economy/shop.js';
 import { reporterService } from '../../core/moderation/reporter.js';
 import { blockerService } from '../../core/moderation/blocker.js';
 import { revealService } from '../../core/moderation/reveal.js';
@@ -101,25 +98,7 @@ export const slashCommands = [
         .setMaxLength(50)
     ),
 
-  // 5. /coins
-  new SlashCommandBuilder()
-    .setName('coins')
-    .setDescription('Check your Destiny Coins balance and recent transaction history'),
-
-  // 6. /daily
-  new SlashCommandBuilder()
-    .setName('daily')
-    .setDescription('Claim your 24h daily Destiny Coins streak reward'),
-
-  // 7. /shop
-  new SlashCommandBuilder()
-    .setName('shop')
-    .setDescription('Browse and purchase cosmetic titles, badges, and reveal tokens')
-    .addStringOption((opt) =>
-      opt.setName('buy').setDescription('Item ID to purchase').setRequired(false)
-    ),
-
-  // 9. /report
+  // 5. /report
   new SlashCommandBuilder()
     .setName('report')
     .setDescription('Report harassment, spam, or identity leaks in your current session')
@@ -162,12 +141,7 @@ export const slashCommands = [
       opt.setName('opt_out').setDescription('Opt out of all automated prompts').setRequired(false)
     ),
 
-  // 12. /wardrobe
-  new SlashCommandBuilder()
-    .setName('wardrobe')
-    .setDescription('Equip unlocked profile card themes and customize your 5-slot insignia rack'),
-
-  // 13. /icebreaker
+  // 12. /icebreaker
   new SlashCommandBuilder()
     .setName('icebreaker')
     .setDescription('Get a curated thought-provoking conversation starter in your current chat room'),
@@ -404,39 +378,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     return;
   }
 
-  // 3. COINS
-  if (commandName === 'coins') {
-    const balance = await walletService.getBalance(user.id);
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.GOLD)
-      .setTitle('🪙 Destiny Coins (DC) Vault')
-      .setDescription(`Your current available balance: **${balance.toLocaleString()} DC**`)
-      .addFields(
-        { name: '💡 Earn More', value: 'Use `/daily` for streak rewards and keep conversations going to unlock bonuses!', inline: false },
-        { name: '🛍️ Cosmetic Shop', value: 'Use `/shop` to purchase exclusive titles and badges.', inline: false }
-      );
-
-    await respond({ embeds: [embed], ephemeral: true });
-    return;
-  }
-
-    // 5. DAILY
-  if (commandName === 'daily') {
-    const result = await streakService.claimDaily(user.id);
-    const embed = new EmbedBuilder()
-      .setColor(result.success ? COLORS.SUCCESS : COLORS.GOLD)
-      .setTitle(result.success ? '🔥 Daily Reward Claimed!' : '⏳ Daily Cooldown Active')
-      .setDescription(result.message)
-      .addFields(
-        { name: 'Current Balance', value: `**${result.newBalance.toLocaleString()} DC**`, inline: true },
-        { name: 'Streak Level', value: `**${result.newStreak} Days** 🔥`, inline: true }
-      );
-
-    await respond({ embeds: [embed], ephemeral: true });
-    return;
-  }
-
-  // 6. REVEAL
+  // 3. REVEAL
   if (commandName === 'reveal') {
     if (!user.activeRoomId) {
       await respond({ content: '❌ You must be in an active chat room to request a profile reveal.', ephemeral: true });
@@ -501,23 +443,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     return;
   }
 
-  // 10. SHOP
-  if (commandName === 'shop') {
-    const buyItemId = interaction.options.getString('buy');
-
-    if (buyItemId) {
-      const res = await shopService.purchaseItem(user.id, buyItemId);
-      await respond({ content: res.message, ephemeral: true });
-      return;
-    }
-
-    const catalog = await shopService.getCatalog();
-    const container = embedService.createShopContainer(catalog);
-    await respond({ components: [container], ephemeral: true });
-    return;
-  }
-
-    // 11. SETTINGS
+  // 10. SETTINGS
   if (commandName === 'settings') {
     const reminder = interaction.options.getBoolean('daily_reminder');
     const tz = interaction.options.getString('timezone');
@@ -537,14 +463,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     return;
   }
 
-  // 12. WARDROBE
-  if (commandName === 'wardrobe') {
-    const container = embedService.createWardrobeContainer(user);
-    await respond({ components: [container], ephemeral: true });
-    return;
-  }
-
-  // 13. ICEBREAKER
+  // 11. ICEBREAKER
   if (commandName === 'icebreaker') {
     const picked = pickIcebreaker();
 
