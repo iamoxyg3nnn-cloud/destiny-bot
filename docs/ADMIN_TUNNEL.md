@@ -144,8 +144,12 @@ Required repository secrets:
 | Secret | Used by |
 |---|---|
 | `API_SECRET_KEY` | both jobs — shared by the API and the dashboard proxy |
-| `DASHBOARD_ADMIN_PASSWORD` | `admin-tunnel` — console login password |
+| `DASHBOARD_ADMIN_PASSWORD` | `admin-tunnel` — bootstrap password for rotating quick-tunnel mode |
 | `DASHBOARD_SESSION_SECRET` | `admin-tunnel` — HMAC key for session cookies |
+| `BOT_OWNER_IDS` | bot and owner dashboard — authorized Discord owner IDs |
+| `DASHBOARD_OWNER_OAUTH_ENABLED` | set true only for a stable named-tunnel/dashboard hostname |
+| `NEXTAUTH_URL` | stable public HTTPS dashboard origin for OAuth |
+| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | Discord OAuth credentials (client ID is also used by the bot) |
 
 ---
 
@@ -234,9 +238,10 @@ order, so the dashboard and the API always agree on the shared secret whether
 the dashboard is launched by the tunnel script or standalone via
 `npm run dashboard:start`.
 
-> `scripts/setup-env.js` (used by CI) now also emits `DASHBOARD_ADMIN_PASSWORD`
-> and `DASHBOARD_SESSION_SECRET`, so the workflow's `.env` keeps them.
-> Add them as repository secrets so CI runs the console with the same values.
+`scripts/setup-env.js` preserves `BOT_OWNER_IDS`, `DASHBOARD_OWNER_OAUTH_ENABLED`,
+`NEXTAUTH_URL`, and dashboard secrets in the generated `.env`. The scheduled
+runner currently keeps the dashboard tunnel disabled; these values are ready
+for a future stable-hostname owner console deployment.
 
 ---
 
