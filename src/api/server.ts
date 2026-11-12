@@ -148,6 +148,15 @@ function everyoneCanViewChannel(guildId: string, channel: any, roles: any[]): bo
   return (permissions & 1024n) === 1024n;
 }
 
+function requireDashboardOwner(req: Request, res: Response, next: NextFunction) {
+  if (process.env.DASHBOARD_OWNER_OAUTH_ENABLED !== 'true') return next();
+  const actor = req.header('x-admin-id') || '';
+  if (!config.BOT_OWNER_IDS.includes(actor)) {
+    return res.status(403).json({ error: 'A current, authorized platform-owner session is required.' });
+  }
+  return next();
+}
+
 export function createApiServer(): express.Express {
   const app = express();
   app.use(express.json({ limit: '256kb' }));
@@ -185,6 +194,10 @@ export function createApiServer(): express.Express {
       },
     });
   });
+
+  // Health stays available for authenticated infrastructure diagnostics. All
+  // user, room, report, verification and guild-management routes are owner-only.
+  app.use('/api', requireDashboardOwner);
 
   // 2. OVERVIEW METRICS
   app.get('/api/overview', async (_req: Request, res: Response) => {
