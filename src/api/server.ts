@@ -1,5 +1,4 @@
 import express, { Request, Response, NextFunction } from 'express';
-import cors from 'cors';
 import crypto from 'crypto';
 import { config } from '../config/index.js';
 import { db } from '../database/supabase.js';
@@ -33,7 +32,7 @@ function safeEqual(a: string, b: string): boolean {
  */
 function requireApiKey(req: Request, res: Response, next: NextFunction) {
   const expected = config.API_SECRET_KEY;
-  if (!expected) {
+  if (expected.length < 32 || expected === 'destiny_internal_secret_32bytes_min_key!') {
     return res.status(503).json({
       error: 'Admin API access is not configured (API_SECRET_KEY missing).',
     });
@@ -130,7 +129,6 @@ function everyoneCanViewChannel(guildId: string, channel: any, roles: any[]): bo
 
 export function createApiServer(): express.Express {
   const app = express();
-  app.use(cors());
   app.use(express.json({ limit: '256kb' }));
   wrapAsyncRoutes(app);
 
