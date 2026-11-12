@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { RefreshCw, Radio, Zap, Shield, Sparkles, LogOut } from 'lucide-react';
+import { RefreshCw, LogOut } from 'lucide-react';
 import { CommandMenu } from './ui/command-menu';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -11,7 +11,8 @@ export function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const [syncing, setSyncing] = useState(false);
-  const [pingMs, setPingMs] = useState(18);
+  const [pingMs, setPingMs] = useState<number | null>(null);
+  const [gatewayOk, setGatewayOk] = useState<boolean | null>(null);
 
   const getBreadcrumbs = () => {
     switch (pathname) {
@@ -25,8 +26,6 @@ export function Header() {
         return 'Moderation & Safety Desk';
       case '/verification':
         return 'Gender Verification Queue';
-      case '/economy':
-        return 'Economy & Currency Ledger';
       case '/settings':
         return 'System Settings & Automation';
       case '/logs':
@@ -40,10 +39,11 @@ export function Header() {
     setSyncing(true);
     const start = performance.now();
     try {
-      await fetch('/api/overview', { cache: 'no-store' });
-      setPingMs(Math.round(performance.now() - start));
-    } catch (e) {
-      // ignore
+      const response = await fetch('/api/overview', { cache: 'no-store' });
+      setGatewayOk(response.ok);
+      if (response.ok) setPingMs(Math.round(performance.now() - start));
+    } catch {
+      setGatewayOk(false);
     } finally {
       setTimeout(() => setSyncing(false), 500);
     }
@@ -77,9 +77,11 @@ export function Header() {
         {/* Live Latency Ping Meter */}
         <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.03] border border-white/[0.06] text-[11px] font-mono text-zinc-400">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span>{pingMs}ms</span>
+          <span>{pingMs === null ? '—' : `${pingMs}ms`}</span>
           <span className="text-zinc-600">·</span>
-          <span className="text-emerald-400">Gateway OK</span>
+          <span className={gatewayOk === false ? 'text-red-400' : gatewayOk === true ? 'text-emerald-400' : 'text-zinc-500'}>
+            {gatewayOk === false ? 'API unavailable' : gatewayOk === true ? 'API OK' : 'Not checked'}
+          </span>
         </div>
 
         {/* Sync Button */}

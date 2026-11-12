@@ -193,11 +193,36 @@ export class MatchmakingEngine {
     preloadedBlockLists?: ReadonlyMap<string, ReadonlySet<string>>
   ): Promise<{ partner: MatchTicket; matchResult: MatchCandidateResult } | null> {
     const blockLists = preloadedBlockLists ?? await this.preloadBlockLists([ticket, ...candidates]);
+    // A guild may opt out of cross-server discovery. Load each involved guild
+    // once per selection cycle rather than issuing a query for every candidate.
+    const otherGuildIds = ticket.guildId
+      ? Array.from(new Set(candidates
+          .map((candidate) => candidate.guildId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0 && id !== ticket.guildId)))
+      : [];
+    // Only cross-server candidates need configuration. A ticket without guild
+    // attribution cannot cross a guild boundary, so it never triggers reads.
+    const guildIds = otherGuildIds.length > 0 ? [ticket.guildId!, ...otherGuildIds] : [];
+    const guildSettings = new Map<string, Awaited<ReturnType<typeof db.getGuildSettings>>>();
+    const settings = await Promise.all(guildIds.map(async (guildId) =>
+      [guildId, await db.getGuildSettings(guildId)] as const
+    ));
+    for (const [guildId, value] of settings) guildSettings.set(guildId, value);
+
     let selected: { partner: MatchTicket; matchResult: MatchCandidateResult } | null = null;
     let eligibleCount = 0;
 
     for (const candidate of candidates) {
       if (candidate.userId === ticket.userId || candidate.discordUserId === ticket.discordUserId) continue;
+      if (ticket.guildId !== candidate.guildId) {
+        // A guild-scoped ticket must never be paired with an unattributed
+        // ticket: without both guild IDs we cannot prove both servers permit
+        // cross-server discovery. Two unattributed tickets remain compatible.
+        if (!ticket.guildId || !candidate.guildId) continue;
+        const sourceAllowsGlobal = guildSettings.get(ticket.guildId)?.crossServerEnabled !== false;
+        const candidateAllowsGlobal = guildSettings.get(candidate.guildId)?.crossServerEnabled !== false;
+        if (!sourceAllowsGlobal || !candidateAllowsGlobal) continue;
+      }
       const result = this.evaluateWithBlockLists(ticket, candidate, blockLists);
       if (!result.isEligible) continue;
 

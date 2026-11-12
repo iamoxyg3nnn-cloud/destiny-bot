@@ -12,6 +12,8 @@ const envSchema = z.object({
   DISCORD_CLIENT_ID: z.string().default(''),
   DISCORD_CLIENT_SECRET: z.string().default(''),
   DISCORD_PUBLIC_KEY: z.string().default(''),
+  // Comma-separated Discord user IDs allowed to operate the bot globally.
+  BOT_OWNER_IDS: z.string().default('').transform((value) => value.split(',').map((id) => id.trim()).filter(Boolean)).refine((ids) => ids.every((id) => /^[0-9]{17,20}$/.test(id)), 'BOT_OWNER_IDS must contain only valid 17–20 digit Discord user IDs.').transform((ids) => Array.from(new Set(ids))),
   DISCORD_SHARDS_TOTAL: z.string().default('1').refine((value) => value === 'auto' || (/^[1-9][0-9]*$/.test(value) && Number(value) <= 1000)),
   DISCORD_SHARDS_PER_CLUSTER: z.coerce.number().int().min(1).max(100).default(1),
   DESTINY_STREAM_URL: z.string().url().refine((value) => {

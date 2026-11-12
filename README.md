@@ -63,6 +63,8 @@ Fill in your credentials and generate unique secrets (never leave these blank in
 ```env
 DISCORD_TOKEN=your_bot_token_here
 DISCORD_CLIENT_ID=your_client_id_here
+DISCORD_CLIENT_SECRET=your_discord_oauth_client_secret
+BOT_OWNER_IDS=123456789012345678,234567890123456789
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_secret
 REDIS_HOST=127.0.0.1
@@ -71,12 +73,14 @@ PORT=4000
 API_HOST=127.0.0.1
 API_SECRET_KEY=<at least 32 random characters>
 DESTINY_STREAM_URL=https://www.twitch.tv/ninja
-DASHBOARD_ADMIN_PASSWORD=<at least 12 characters>
+DASHBOARD_OWNER_OAUTH_ENABLED=false
+NEXTAUTH_URL=http://localhost:3000
+DASHBOARD_ADMIN_PASSWORD=<at least 12 characters; bootstrap/quick-tunnel mode>
 DASHBOARD_SESSION_SECRET=<at least 32 random characters>
 NEXTAUTH_SECRET=<a separate random secret>
 ```
 
-Generate secrets with `openssl rand -hex 32`. The dashboard password must be at least 12 characters. The API binds to loopback by default; Docker Compose exposes it only on the private container network.
+`BOT_OWNER_IDS` is a comma-separated allowlist of Discord IDs with global bot-owner authority; it supports multiple owners. For a stable HTTPS dashboard hostname, set `DASHBOARD_OWNER_OAUTH_ENABLED=true`, set `NEXTAUTH_URL` to that exact origin, and register `https://your-host/api/auth/callback/discord` in the Discord Developer Portal. The rotating quick-tunnel scripts require `DASHBOARD_OWNER_OAUTH_ENABLED=false` and the bootstrap password. Generate API/session secrets with `openssl rand -hex 32`; the bootstrap password must be at least 12 characters. The API binds to loopback by default; Docker Compose exposes it only on the private container network. See [Administration setup](docs/ADMINISTRATION.md) for owner, server-admin and moderator boundaries.
 
 #### Connecting Redis
 
@@ -120,8 +124,11 @@ Execute the SQL migrations located in `supabase/migrations/` in order. Migration
 14. `014_atomic_report_resolution.sql` — Resolve moderation reports and apply permanent bans in one transaction.
 15. `015_conditional_room_inactivity.sql` — Close rooms only when they remain inactive at the transactionally rechecked cutoff.
 16. `016_remove_economy_and_progression.sql` — Drop all legacy economy/progression data and schema while preserving user profiles, rooms, chat, safety and moderation data.
+17. `017_admin_control_plane_security.sql` — Restrict the internal RLS event-trigger helper and add missing moderation foreign-key indexes.
+18. `018_deny_public_table_access.sql` — Explicitly deny direct `anon` and `authenticated` access to backend-only application tables.
+19. `019_temporary_safety_bans.sql` — Add 24-hour report suspensions while preserving permanent bans.
 
-**Deployment note:** Stop the bot and worker processes, apply the migrations through `016`, deploy the updated application, then restart the processes. Do not run the old bot version against the migrated schema because the room-creation RPC no longer accepts progression arguments.
+**Deployment note:** Fresh databases must apply all migrations `001`–`019` in order. Existing deployments use `scripts/apply-migrations.sh`, which tracks completed files in the private `destiny_internal.schema_migrations` schema and skips them on subsequent restarts. The connected production database has been baselined after verifying its final schema and all 19 migration versions. Do not run `supabase db push` until the separate Supabase CLI migration history is reconciled.
 
 ### 4. Running Destiny
 ```bash
@@ -156,6 +163,9 @@ Open **http://localhost:3000** to access the Admin Dashboard. For Docker, copy `
 | `/report <category> <description>` | Safely report user with automated chat excerpt |
 | `/block [destiny_id]` | Globally block user across all servers |
 | `/settings` | Configure 7:30 PM IST daily reminders, timezone, and quiet hours |
+| `/setup portal`, `/setup cross_server`, `/setup view` | Configure only the current Discord server (Manage Server or Administrator) |
+| `/setup modlog` | Configure the private moderation alert channel in a trusted staff guild |
+| `/owner status` | Global bot, database and worker diagnostics for IDs in `BOT_OWNER_IDS` only |
 
 ---
 

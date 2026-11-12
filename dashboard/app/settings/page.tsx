@@ -1,293 +1,183 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Settings, Clock, ShieldCheck, Server, AlertOctagon, Check, Bell, Sliders, Hash, RefreshCw, Trash2 } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/card';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Server, ShieldCheck, Hash, RefreshCw, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 
+type Guild = {
+  id: string;
+  name: string;
+  memberCount: number;
+  channels: Array<{ id: string; name: string }>;
+  matchChannelId: string | null;
+  modLogChannelId: string | null;
+  crossServerEnabled: boolean;
+  isTrustedStaffGuild: boolean;
+};
+
 export default function SettingsPage() {
-  const [saved, setSaved] = useState(false);
-  const [reminderEnabled, setReminderEnabled] = useState(true);
-  const [reminderTime, setReminderTime] = useState('19:30');
-  const [reminderTz, setReminderTz] = useState('Asia/Kolkata');
-  const [crossServerEnabled, setCrossServerEnabled] = useState(true);
-  const [rateLimitMsgs, setRateLimitMsgs] = useState('5');
+  const [guilds, setGuilds] = useState<Guild[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [portalChannels, setPortalChannels] = useState<Record<string, string>>({});
+  const [modLogChannels, setModLogChannels] = useState<Record<string, string>>({});
+  const [crossServer, setCrossServer] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  // Guilds state
-  const [guilds, setGuilds] = useState<any[]>([]);
-  const [guildsLoading, setGuildsLoading] = useState(false);
-  const [selectedChannels, setSelectedChannels] = useState<{ [guildId: string]: string }>({});
-  const [guildSuccess, setGuildSuccess] = useState<string | null>(null);
-
-  const fetchGuilds = async () => {
-    setGuildsLoading(true);
+  const fetchGuilds = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const res = await fetch('/api/guilds', { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        setGuilds(data);
-        const map: { [guildId: string]: string } = {};
-        data.forEach((g: any) => {
-          map[g.id] = g.matchChannelId || g.modLogChannelId || '';
-        });
-        setSelectedChannels(map);
-      }
-    } catch (err) {
-      console.error('Failed to fetch guilds:', err);
+      const response = await fetch('/api/guilds', { cache: 'no-store' });
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Could not load Discord servers.');
+      const data = await response.json() as Guild[];
+      setGuilds(data);
+      setPortalChannels(Object.fromEntries(data.map((guild) => [guild.id, guild.matchChannelId || ''])));
+      setModLogChannels(Object.fromEntries(data.map((guild) => [guild.id, guild.modLogChannelId || ''])));
+      setCrossServer(Object.fromEntries(data.map((guild) => [guild.id, guild.crossServerEnabled !== false])));
+    } catch (err: any) {
+      setError(err?.message || 'Could not load Discord servers.');
     } finally {
-      setGuildsLoading(false);
+      setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchGuilds();
   }, []);
 
-  const handleSaveGuildChannel = async (guildId: string, guildName: string) => {
-    const channelId = selectedChannels[guildId];
+  useEffect(() => { void fetchGuilds(); }, [fetchGuilds]);
+
+  const save = async (guild: Guild, key: string, changes: Record<string, unknown>) => {
+    setSaving(guild.id + ':' + key);
+    setError(null);
+    setSuccess(null);
     try {
-      const res = await fetch(`/api/guilds/${guildId}/settings`, {
+      const response = await fetch('/api/guilds/' + guild.id + '/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channelId, guildName }),
+        body: JSON.stringify({ guildName: guild.name, ...changes }),
       });
-      if (res.ok) {
-        setGuildSuccess(`Successfully updated channel for "${guildName}"!`);
-        setTimeout(() => setGuildSuccess(null), 3000);
-        fetchGuilds();
-      }
-    } catch (err) {
-      console.error(err);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'The server setting could not be saved.');
+      setSuccess(guild.name + (payload.auditWarning ? ': setting saved, but the audit log could not be written.' : ': setting saved.'));
+      await fetchGuilds();
+    } catch (err: any) {
+      const message = err?.message || 'The server setting could not be saved.';
+      // Restore server truth after a failed save so an unsaved local selection
+      // is not mistaken for the active guild policy.
+      await fetchGuilds();
+      setError(message);
+    } finally {
+      setSaving(null);
     }
-  };
-
-  const handleClearGuildChannel = async (guildId: string, guildName: string) => {
-    try {
-      const res = await fetch(`/api/guilds/${guildId}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channelId: null, guildName }),
-      });
-      if (res.ok) {
-        setGuildSuccess(`Cleared channel lock for "${guildName}"!`);
-        setTimeout(() => setGuildSuccess(null), 3000);
-        fetchGuilds();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
   };
 
   return (
     <div className="p-6 md:p-8 space-y-6 max-w-5xl mx-auto">
-      {/* Top Header */}
       <div className="pb-4 border-b border-white/[0.07]">
-        <h1 className="text-xl font-medium tracking-tight text-zinc-100 font-sans">
-          System Settings & Server Management
-        </h1>
+        <h1 className="text-xl font-medium tracking-tight text-zinc-100">Server Administration</h1>
         <p className="text-xs text-zinc-400 mt-1">
-          Configure designated server channels, background automation schedules, and cross-server matchmaking boundaries.
+          Each Discord server has its own portal and cross-server policy. Global moderation alerts are configured only in trusted staff servers.
+          Platform-wide bot-owner settings are managed separately.
         </p>
       </div>
 
-      {saved && (
-        <div className="p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono flex items-center gap-2 animate-in fade-in duration-150">
-          <Check className="w-4 h-4 shrink-0" />
-          <span>Settings saved and broadcast to all gateway workers.</span>
+      {error && (
+        <div role="alert" className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />{error}
+        </div>
+      )}
+      {success && (
+        <div role="status" className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />{success}
         </div>
       )}
 
-      {guildSuccess && (
-        <div className="p-3.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-300 text-xs font-mono flex items-center gap-2 animate-in fade-in duration-150">
-          <Check className="w-4 h-4 shrink-0" />
-          <span>{guildSuccess}</span>
-        </div>
-      )}
-
-      {/* Connected Servers & Dedicated Channel Management */}
-      <Card className="p-5 space-y-4 border border-white/[0.08] bg-[#14151a]">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center shrink-0">
-              <Server className="w-4 h-4 text-purple-400" />
-            </div>
-            <div>
-              <div className="text-xs font-medium text-zinc-200">Connected Discord Servers & Dedicated Channels</div>
-              <div className="text-[11px] text-zinc-400">Configure the server channel. DM-submitted reports route to the first configured mod-log in Destiny's trusted staff servers. Channel alerts contain no user identities or chat excerpts; full evidence stays in the protected moderation dashboard.</div>
-            </div>
+      <Card className="border border-white/[0.08] bg-[#14151a]">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-sm text-zinc-100 flex items-center gap-2"><Server className="w-4 h-4" />Connected Discord servers</CardTitle>
+            <CardDescription className="text-xs text-zinc-400">Changes are saved per server. They do not grant this dashboard account Discord permissions.</CardDescription>
           </div>
-          <Button size="sm" variant="secondary" onClick={fetchGuilds} disabled={guildsLoading}>
-            <RefreshCw className={`w-3.5 h-3.5 text-zinc-400 mr-1.5 ${guildsLoading ? 'animate-spin' : ''}`} />
-            <span>Refresh Servers</span>
+          <Button size="sm" variant="secondary" onClick={() => void fetchGuilds()} disabled={loading}>
+            <RefreshCw className={'w-3.5 h-3.5 mr-1.5 ' + (loading ? 'animate-spin' : '')} />Refresh
           </Button>
-        </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loading && <p className="text-xs text-zinc-400">Loading connected servers…</p>}
+          {!loading && guilds.length === 0 && (
+            <p className="text-xs text-zinc-400">No connected servers found. Check that the bot gateway is online.</p>
+          )}
+          {guilds.map((guild) => (
+            <section key={guild.id} className="p-4 rounded-lg bg-[#0e0f12] border border-white/[0.06] space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-medium text-zinc-100">{guild.name}</h2>
+                  <p className="text-[11px] text-zinc-500">{guild.memberCount} members · {guild.id}</p>
+                </div>
+                <Badge variant="purple">{crossServer[guild.id] === false ? 'Same server only' : 'Cross-server enabled'}</Badge>
+              </div>
 
-        {guilds.length === 0 ? (
-          <div className="p-4 rounded-lg bg-white/[0.02] border border-white/[0.05] text-xs text-zinc-400">
-            No connected guilds found yet, or the bot gateway is initializing.
-          </div>
-        ) : (
-          <div className="space-y-3 pt-2">
-            {guilds.map((g) => {
-              const activeChannel = g.matchChannelId || g.modLogChannelId;
-              const currentVal = selectedChannels[g.id] !== undefined ? selectedChannels[g.id] : (activeChannel || '');
-              return (
-                <div key={g.id} className="p-4 rounded-lg bg-[#0e0f12] border border-white/[0.06] flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-zinc-100">{g.name}</span>
-                      <Badge variant="purple" className="text-[10px]">
-                        {g.memberCount} members
-                      </Badge>
-                    </div>
-                    <div className="text-[11px] font-mono text-zinc-400 flex items-center gap-1.5">
-                      <span>Server ID: {g.id}</span>
-                      <span>·</span>
-                      <span>Status:</span>
-                      {activeChannel ? (
-                        <span className="text-emerald-400 font-medium">Locked to channel ({activeChannel})</span>
-                      ) : (
-                        <span className="text-zinc-400">Unrestricted</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <Hash className="w-3.5 h-3.5 text-zinc-400" />
-                      <select
-                        value={currentVal}
-                        onChange={(e) => setSelectedChannels({ ...selectedChannels, [g.id]: e.target.value })}
-                        className="bg-[#18191e] border border-white/[0.08] rounded-md px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-purple-500/50"
-                      >
-                        <option value="">-- No Channel Lock (Unrestricted) --</option>
-                        {g.channels.map((ch: any) => (
-                          <option key={ch.id} value={ch.id}>
-                            #{ch.name} ({ch.id})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      onClick={() => handleSaveGuildChannel(g.id, g.name)}
-                    >
-                      Save
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label htmlFor={'portal-' + guild.id} className="text-xs text-zinc-300 flex items-center gap-2"><Hash className="w-3.5 h-3.5" />Matchmaking portal</label>
+                  <select id={'portal-' + guild.id} value={portalChannels[guild.id] ?? ''} onChange={(event) => setPortalChannels((state) => ({ ...state, [guild.id]: event.target.value }))} className="w-full bg-[#18191e] border border-white/[0.08] rounded-md px-2.5 py-2 text-xs text-zinc-200">
+                    <option value="">No portal channel</option>
+                    {guild.channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+                  </select>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => void save(guild, 'portal', { matchChannelId: portalChannels[guild.id] || null })} disabled={saving !== null}>
+                      {saving === guild.id + ':portal' ? 'Saving…' : 'Save portal'}
                     </Button>
-
-                    {activeChannel && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleClearGuildChannel(g.id, g.name)}
-                        title="Remove channel lock"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-zinc-400" />
-                      </Button>
-                    )}
+                    <Button size="sm" variant="secondary" onClick={() => { setPortalChannels((state) => ({ ...state, [guild.id]: '' })); void save(guild, 'portal', { matchChannelId: null }); }} disabled={!guild.matchChannelId || saving !== null} title="Clear portal channel">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
+
+                {guild.isTrustedStaffGuild ? (
+                  <div className="space-y-2">
+                    <label htmlFor={'modlog-' + guild.id} className="text-xs text-zinc-300 flex items-center gap-2"><ShieldCheck className="w-3.5 h-3.5" />Global moderation alert channel</label>
+                    <select id={'modlog-' + guild.id} value={modLogChannels[guild.id] ?? ''} onChange={(event) => setModLogChannels((state) => ({ ...state, [guild.id]: event.target.value }))} className="w-full bg-[#18191e] border border-white/[0.08] rounded-md px-2.5 py-2 text-xs text-zinc-200">
+                      <option value="">No moderation channel</option>
+                      {guild.channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+                    </select>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => void save(guild, 'modlog', { modLogChannelId: modLogChannels[guild.id] || null })} disabled={saving !== null}>
+                        {saving === guild.id + ':modlog' ? 'Saving…' : 'Save mod log'}
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => { setModLogChannels((state) => ({ ...state, [guild.id]: '' })); void save(guild, 'modlog', { modLogChannelId: null }); }} disabled={!guild.modLogChannelId || saving !== null} title="Clear moderation channel">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-zinc-500">Private staff alerts only. The channel must deny @everyone View Channel access.</p>
+                  </div>
+                ) : (
+                  <div className="flex items-center text-[11px] text-zinc-500">
+                    Global moderation alerts are configured in a trusted Destiny staff server, not in this community.
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/[0.06]">
+                <div>
+                  <p className="text-xs text-zinc-300">Cross-server matchmaking</p>
+                  <p className="text-[10px] text-zinc-500">A match across two servers is allowed only if both servers enable it.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select value={crossServer[guild.id] === false ? 'disabled' : 'enabled'} onChange={(event) => setCrossServer((state) => ({ ...state, [guild.id]: event.target.value === 'enabled' }))} className="bg-[#18191e] border border-white/[0.08] rounded-md px-2.5 py-2 text-xs text-zinc-200">
+                    <option value="enabled">Enabled</option>
+                    <option value="disabled">Same server only</option>
+                  </select>
+                  <Button size="sm" onClick={() => void save(guild, 'cross-server', { crossServerEnabled: crossServer[guild.id] !== false })} disabled={saving !== null}>
+                    {saving === guild.id + ':cross-server' ? 'Saving…' : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </section>
+          ))}
+        </CardContent>
       </Card>
-
-      {/* 7:30 PM IST Reminders Section */}
-      <Card className="p-5 space-y-4 border border-white/[0.08] bg-[#14151a]">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0">
-            <Clock className="w-4 h-4 text-zinc-400" />
-          </div>
-          <div>
-            <div className="text-xs font-medium text-zinc-200">Daily Social Matchmaking Reminder (7:30 PM IST)</div>
-            <div className="text-[11px] text-zinc-400">Scheduled worker cron sending opt-in reminders to active guild members</div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
-          <div>
-            <label className="text-[11px] text-zinc-400 font-medium block mb-1">Status</label>
-            <select
-              value={reminderEnabled ? 'enabled' : 'disabled'}
-              onChange={(e) => setReminderEnabled(e.target.value === 'enabled')}
-              className="w-full bg-[#18191e] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-white/20"
-            >
-              <option value="enabled">Enabled (Active)</option>
-              <option value="disabled">Disabled</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-[11px] text-zinc-400 font-medium block mb-1">Time of Day (24-hour)</label>
-            <input
-              type="text"
-              value={reminderTime}
-              onChange={(e) => setReminderTime(e.target.value)}
-              className="w-full bg-[#18191e] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-white/20"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] text-zinc-400 font-medium block mb-1">Reference Timezone</label>
-            <input
-              type="text"
-              value={reminderTz}
-              onChange={(e) => setReminderTz(e.target.value)}
-              className="w-full bg-[#18191e] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-white/20"
-            />
-          </div>
-        </div>
-      </Card>
-
-      {/* Safety & Cross Server Matching */}
-      <Card className="p-5 space-y-4 border border-white/[0.08] bg-[#14151a]">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-4 h-4 text-zinc-400" />
-          </div>
-          <div>
-            <div className="text-xs font-medium text-zinc-200">Cross-Server Discovery & Rate Limiting</div>
-            <div className="text-[11px] text-zinc-400">Matchmaking boundaries and anti-flooding rate limiter window</div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-          <div>
-            <label className="text-[11px] text-zinc-400 font-medium block mb-1">Cross-Server Discovery</label>
-            <select
-              value={crossServerEnabled ? 'enabled' : 'disabled'}
-              onChange={(e) => setCrossServerEnabled(e.target.value === 'enabled')}
-              className="w-full bg-[#18191e] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-white/20"
-            >
-              <option value="enabled">Allow Global Cross-Server Matchmaking</option>
-              <option value="disabled">Restrict to Same-Server Only</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-[11px] text-zinc-400 font-medium block mb-1">Max Relay Messages (per 5s window)</label>
-            <input
-              type="number"
-              value={rateLimitMsgs}
-              onChange={(e) => setRateLimitMsgs(e.target.value)}
-              className="w-full bg-[#18191e] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-white/20"
-            />
-          </div>
-        </div>
-      </Card>
-
-      {/* Save Button */}
-      <div className="flex justify-end pt-2">
-        <Button variant="primary" size="md" onClick={handleSave}>
-          Save Configuration
-        </Button>
-      </div>
     </div>
   );
 }

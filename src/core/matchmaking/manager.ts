@@ -150,8 +150,10 @@ export class MatchmakingManager {
         .slice(0, 100);
 
       const ticketKey = `ticket:${latestProfile.id}`;
+      const guildContextKey = `user:origin_guild:${latestProfile.id}`;
       let queuedAt = Date.now();
       let ticketTtlSeconds = Math.ceil(TICKET_TTL_MS / 1000);
+      let effectiveGuildId = guildId;
 
       // Refresh profile compatibility data without resetting FIFO position or
       // extending the original 15-minute queue lease on duplicate start clicks.
@@ -166,10 +168,21 @@ export class MatchmakingManager {
           ) {
             queuedAt = existingTicket.queuedAt;
             ticketTtlSeconds = Math.ceil((queuedAt + TICKET_TTL_MS - Date.now()) / 1000);
+            if (!effectiveGuildId && existingTicket.guildId) effectiveGuildId = existingTicket.guildId;
           }
         } catch {
           // Replace malformed ticket data with a fresh, validated snapshot.
         }
+      }
+      if (!effectiveGuildId) {
+        effectiveGuildId = (await redis.get(guildContextKey)) || undefined;
+      }
+      if (effectiveGuildId) {
+        // DM buttons have no guildId. Preserve the user's last explicit server
+        // context so a re-match from DMs cannot silently escape that server's
+        // cross-server matchmaking policy. Starting /match in another guild
+        // explicitly replaces this context.
+        await redis.set(guildContextKey, effectiveGuildId, 30 * 24 * 60 * 60);
       }
       if (ticketTtlSeconds <= 0) {
         queuedAt = Date.now();
@@ -187,7 +200,7 @@ export class MatchmakingManager {
         maxAgePref,
         languages,
         interests,
-        guildId,
+        guildId: effectiveGuildId,
         queuedAt,
       };
 

@@ -13,6 +13,7 @@ import {
   MessageFlagsBitField
 } from 'discord.js';
 import { db } from '../../database/supabase.js';
+import { config } from '../../config/index.js';
 import { redis } from '../../redis/client.js';
 import { matchmakingManager } from '../../core/matchmaking/manager.js';
 import { embedService, COLORS } from '../embeds/index.js';
@@ -23,7 +24,7 @@ import { UserProfile } from '../../core/types.js';
 import { buildProfileCard, createProfileActionRow, isProfileComplete } from '../profile-view.js';
 import { buildProfileModal, normalizeGender, parseList } from '../profile-modal.js';
 import { sendCleanDmPanel } from '../dm-cleanup.js';
-import { handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
+import { ECLAIRS_GUILD_IDS, handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
 
 export const slashCommands = [
   // 1. /match
@@ -140,11 +141,17 @@ export const slashCommands = [
       opt.setName('opt_out').setDescription('Opt out of all automated prompts').setRequired(false)
     ),
 
-  // 14. /setup
+  // 13. /owner — platform-owner-only controls, separate from guild setup.
+  new SlashCommandBuilder()
+    .setName('owner')
+    .setDescription('Bot-owner-only platform diagnostics')
+    .addSubcommand((sub) => sub.setName('status').setDescription('Show global bot, database and worker status')),
+
+  // 14. /setup — scoped to the current Discord server.
   new SlashCommandBuilder()
     .setName('setup')
     .setDescription('Server administrator onboarding and matchmaking portal configuration')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild | PermissionFlagsBits.Administrator)
     .addSubcommand((sub) =>
       sub
         .setName('portal')
@@ -232,6 +239,21 @@ async function ensureSlashCommandAccess(interaction: ChatInputCommandInteraction
 /**
  * Main Interaction Handler for all Discord Slash Commands
  */
+async function logGuildSetupAudit(
+  actorId: string,
+  action: string,
+  guildId: string,
+  changes: Record<string, any> = {}
+): Promise<boolean> {
+  try {
+    await db.logAdminAction(actorId, action, 'GUILD', guildId, changes);
+    return true;
+  } catch (error: any) {
+    console.error('[Guild Setup] Setting saved but audit log failed:', error?.message || error);
+    return false;
+  }
+}
+
 export async function handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   const { commandName, user: discordUser } = interaction;
 
@@ -242,7 +264,62 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     return;
   }
 
-  // All other commands acknowledge immediately before DB-backed moderation checks.
+  // Platform-owner operations are authorized by the out-of-band owner allowlist,
+  // not by user profile/reputation state. Do not create a chat profile just to
+  // inspect service health, and never let a moderation ban disable owner recovery.
+  if (commandName === 'owner') {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    }
+    if (!config.BOT_OWNER_IDS.includes(interaction.user.id)) {
+      await interaction.editReply({ content: '⛔ This command is reserved for configured Destiny bot owners.' });
+      return;
+    }
+    let redisOnline = redis.isHealthy();
+    let shardCount = 'Unavailable';
+    let workerCount = 'Unavailable';
+    if (redisOnline) {
+      try {
+        const [shardIds, workerIds] = await Promise.all([
+          redis.sMembers('bot:guild-shards'),
+          redis.sMembers('worker:instances'),
+        ]);
+        const [shardSnapshots, workerHeartbeats] = await Promise.all([
+          Promise.all(shardIds.map((id) => redis.get('bot:guilds:' + id))),
+          Promise.all(workerIds.map((id) => redis.get('worker:heartbeat:' + id))),
+        ]);
+        const staleShards = shardIds.filter((_id, index) => !shardSnapshots[index]);
+        const staleWorkers = workerIds.filter((_id, index) => !workerHeartbeats[index]);
+        await Promise.all([
+          ...staleShards.map((id) => redis.sRem('bot:guild-shards', id)),
+          ...staleWorkers.map((id) => redis.sRem('worker:instances', id)),
+        ]);
+        shardCount = String(shardSnapshots.filter(Boolean).length);
+        workerCount = String(workerHeartbeats.filter(Boolean).length);
+      } catch (error: any) {
+        redisOnline = false;
+        console.error('[Owner] Redis diagnostics failed:', error?.message || error);
+      }
+    }
+    const dbOnline = !db.isUsingMock() && await db.assertConnection().then(() => true).catch(() => false);
+    const embed = new EmbedBuilder()
+      .setColor(COLORS.DARK)
+      .setTitle('Destiny — Platform Owner Controls')
+      .setDescription('Global diagnostics only. Per-server configuration remains under /setup and requires Discord Administrator permission.')
+      .addFields(
+        { name: 'Owner authorization', value: 'Verified', inline: true },
+        { name: 'Bot shards online', value: shardCount, inline: true },
+        { name: 'Workers online', value: workerCount, inline: true },
+        { name: 'Supabase', value: dbOnline ? 'Connected' : 'Unavailable', inline: true },
+        { name: 'Redis', value: redisOnline ? 'Connected' : 'Unavailable', inline: true },
+        { name: 'Configured owner IDs', value: String(config.BOT_OWNER_IDS.length), inline: true },
+      )
+      .setFooter({ text: 'Platform owner scope is separate from Discord server administration.' });
+    await interaction.editReply({ embeds: [embed] });
+    return;
+  }
+
+  // All user/server commands acknowledge immediately before DB-backed moderation checks.
   if (!interaction.deferred && !interaction.replied) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
   }
@@ -463,39 +540,92 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       await respond({ content: '⚠️ The `/setup` command can only be executed inside a Discord server.', ephemeral: true });
       return;
     }
+    // Enforce server-scoped management permission at execution time as well.
+    // Manage Server does not grant platform-owner or global moderation access.
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) &&
+        !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+      await respond({ content: '⛔ You need Discord Manage Server or Administrator permission to change this server’s Destiny settings.', ephemeral: true });
+      return;
+    }
 
     const sub = interaction.options.getSubcommand();
 
     if (sub === 'portal') {
       const channel = interaction.options.getChannel('channel', true) as any;
-      if (!channel.isTextBased()) {
-        await respond({ content: '⚠️ The designated portal channel must be a text channel.', ephemeral: true });
+      if (![0, 5].includes(Number(channel.type))) {
+        await respond({ content: '⚠️ The designated portal channel must be a text or announcement channel.', ephemeral: true });
+        return;
+      }
+      const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
+      const botPermissions = botMember ? channel.permissionsFor(botMember) : null;
+      if (!botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
+        await respond({ content: '⚠️ Destiny needs View Channel and Send Messages permissions in the portal channel.', ephemeral: true });
         return;
       }
 
-      await db.setGuildMatchChannel(interaction.guild.id, channel.id, interaction.guild.name);
+      const previousSettings = await db.getGuildSettings(interaction.guild.id);
+      const saved = await db.setGuildMatchChannel(interaction.guild.id, channel.id, interaction.guild.name);
+      if (!saved) {
+        await respond({ content: '⚠️ Could not save the matchmaking portal channel. Please try again.', ephemeral: true });
+        return;
+      }
 
       const portalContainer = embedService.createMatchmakingPortalContainer();
-      await channel.send({
-        components: [portalContainer],
-        flags: [MessageFlags.IsComponentsV2]
-      }).catch((err: any) => {
-        throw new Error(`Failed to send portal in #${channel.name}: ${err?.message}`);
-      });
+      try {
+        await channel.send({
+          components: [portalContainer],
+          flags: [MessageFlags.IsComponentsV2]
+        });
+      } catch (error: any) {
+        const rolledBack = await db.setGuildMatchChannel(interaction.guild.id, previousSettings?.matchChannelId ?? null, interaction.guild.name);
+        await respond({
+          content: rolledBack
+            ? `⚠️ Could not post the portal in <#${channel.id}>. The previous portal setting was restored.`
+            : `⚠️ Portal posting failed and the previous setting could not be restored. Please contact the bot owner.`,
+          ephemeral: true,
+        });
+        console.error('[Guild Setup] Portal post failed:', error?.message || error);
+        return;
+      }
+      const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_MATCH_CHANNEL', interaction.guild.id, { channelId: channel.id });
 
       await respond({
-        content: `✅ **Destiny Matchmaking Portal** deployed successfully in <#${channel.id}>! Members can now click "Find Match" to start chatting.`,
+        content: `✅ **Destiny Matchmaking Portal** deployed successfully in <#${channel.id}>! Members can now click "Find Match" to start chatting.${auditLogged ? '' : ' ⚠️ Audit logging failed; notify a platform owner.'}`,
         ephemeral: true
       });
       return;
     }
 
     if (sub === 'modlog') {
+      if (!ECLAIRS_GUILD_IDS.includes(interaction.guild.id)) {
+        await respond({ content: '⛔ The moderation alert channel can only be configured in a trusted Destiny staff server. Server-specific setup remains available through /setup portal and /setup cross_server.', ephemeral: true });
+        return;
+      }
       const channel = interaction.options.getChannel('channel', true) as any;
-      await db.setGuildAdminChannel(interaction.guild.id, channel.id, interaction.guild.name);
+      if (![0, 5].includes(Number(channel.type))) {
+        await respond({ content: '⚠️ The moderation log must be a text or announcement channel.', ephemeral: true });
+        return;
+      }
+      const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
+      const botPermissions = botMember ? channel.permissionsFor(botMember) : null;
+      const everyoneCanView = channel.permissionsFor(interaction.guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel);
+      if (!botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
+        await respond({ content: '⚠️ Destiny needs View Channel and Send Messages permissions in the moderation channel.', ephemeral: true });
+        return;
+      }
+      if (everyoneCanView !== false) {
+        await respond({ content: '🔒 The moderation channel must be private: @everyone must not have View Channel permission.', ephemeral: true });
+        return;
+      }
+      const saved = await db.setGuildModLogChannel(interaction.guild.id, channel.id, interaction.guild.name);
+      if (!saved) {
+        await respond({ content: '⚠️ Could not save the moderation channel. Please try again.', ephemeral: true });
+        return;
+      }
+      const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_MODLOG_CHANNEL', interaction.guild.id, { channelId: channel.id });
 
       await respond({
-        content: `✅ Moderation and verification alerts channel configured to <#${channel.id}>.`,
+        content: `✅ Moderation and verification alerts channel configured to <#${channel.id}>.${auditLogged ? '' : ' ⚠️ Audit logging failed; notify a platform owner.'}`,
         ephemeral: true
       });
       return;
@@ -503,12 +633,14 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
     if (sub === 'cross_server') {
       const enabled = interaction.options.getBoolean('enabled', true);
-      const settings = await db.getGuildSettings(interaction.guild.id);
-      if (settings) {
-        settings.crossServerEnabled = enabled;
+      const saved = await db.setGuildCrossServerEnabled(interaction.guild.id, enabled, interaction.guild.name);
+      if (!saved) {
+        await respond({ content: '⚠️ Could not save this server setting. Please try again; no success was reported.', ephemeral: true });
+        return;
       }
+      const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_CROSS_SERVER', interaction.guild.id, { enabled });
       await respond({
-        content: `✅ Cross-server matchmaking has been **${enabled ? 'ENABLED' : 'DISABLED'}** for ${interaction.guild.name}.`,
+        content: `✅ Cross-server matchmaking has been **${enabled ? 'ENABLED' : 'DISABLED'}** for ${interaction.guild.name}. This setting is saved.${auditLogged ? '' : ' ⚠️ Audit logging failed; notify a platform owner.'}`,
         ephemeral: true
       });
       return;

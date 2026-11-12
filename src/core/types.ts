@@ -14,7 +14,7 @@ export interface UserProfile {
   gender: Gender;
   genderVerified: boolean;
   genderVerificationStatus: GenderVerificationStatus;
-  genderVerificationEvidence?: string;
+  genderVerificationEvidence?: string | null;
   interests: string[];
   languages: string[];
   preferredGender: string[];
@@ -23,6 +23,7 @@ export interface UserProfile {
   activeRoomId?: string | null;
   isBanned: boolean;
   banReason?: string;
+  banExpiresAt?: string | null;
   reputationScore: number;
   bio?: string;
   matchIntent?: string;

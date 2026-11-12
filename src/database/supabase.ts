@@ -9,8 +9,10 @@ import {
   UserBlock, 
   NotificationSettings, 
   AdminAuditLog,
-  GuildSettings
+  GuildSettings,
+  GenderVerificationStatus
 } from '../core/types.js';
+import { isBanActive } from '../core/moderation/ban-policy.js';
 import { v4 as uuidv4 } from 'uuid';
 import { redis } from '../redis/client.js';
 import { lockManager } from '../redis/locks.js';
@@ -24,6 +26,7 @@ export class DatabaseService {
   private blockListCache: Map<string, { ids: Set<string>; expires: number }> = new Map();
   private discordUserCache: Map<string, { user: UserProfile; expires: number }> = new Map();
   private guildSettingsCache: Map<string, { settings: GuildSettings | null; expires: number }> = new Map();
+  private mockGuildSettings: Map<string, GuildSettings> = new Map();
 
   // In-memory fallbacks for testing and offline resilience
   public mockUsers: Map<string, UserProfile> = new Map();
@@ -92,13 +95,16 @@ export class DatabaseService {
     if (!forceFresh) {
       const cached = this.discordUserCache.get(discordUserId);
       if (cached && cached.expires > Date.now()) {
-        return await this.enrichProfileExtensions({ ...cached.user });
+        const user = this.normalizeUserBan(cached.user);
+        this.discordUserCache.set(discordUserId, { user, expires: cached.expires });
+        this.userCache.set(user.id, { user, expires: cached.expires });
+        return await this.enrichProfileExtensions(user);
       }
     }
 
     if (this.isMockMode || !this.client) {
       for (const user of this.mockUsers.values()) {
-        if (user.discordUserId === discordUserId) return await this.enrichProfileExtensions({ ...user });
+        if (user.discordUserId === discordUserId) return await this.enrichProfileExtensions(this.normalizeUserBan(user));
       }
       return null;
     }
@@ -121,13 +127,16 @@ export class DatabaseService {
     if (!forceFresh) {
       const cached = this.userCache.get(id);
       if (cached && cached.expires > Date.now()) {
-        return await this.enrichProfileExtensions({ ...cached.user });
+        const user = this.normalizeUserBan(cached.user);
+        this.userCache.set(id, { user, expires: cached.expires });
+        this.discordUserCache.set(user.discordUserId, { user, expires: cached.expires });
+        return await this.enrichProfileExtensions(user);
       }
     }
 
     if (this.isMockMode || !this.client) {
       const user = this.mockUsers.get(id);
-      return user ? await this.enrichProfileExtensions({ ...user }) : null;
+      return user ? await this.enrichProfileExtensions(this.normalizeUserBan(user)) : null;
     }
 
     const { data, error } = await this.client
@@ -159,7 +168,7 @@ export class DatabaseService {
       return uniqueIds
         .map((id) => this.mockUsers.get(id))
         .filter((user): user is UserProfile => Boolean(user))
-        .map((user) => ({ ...user }));
+        .map((user) => this.normalizeUserBan(user));
     }
 
     const users: UserProfile[] = [];
@@ -185,7 +194,7 @@ export class DatabaseService {
   async getUserByDestinyId(destinyId: string): Promise<UserProfile | null> {
     if (this.isMockMode || !this.client) {
       for (const user of this.mockUsers.values()) {
-        if (user.destinyId === destinyId) return await this.enrichProfileExtensions({ ...user });
+        if (user.destinyId === destinyId) return await this.enrichProfileExtensions(this.normalizeUserBan(user));
       }
       return null;
     }
@@ -241,14 +250,14 @@ export class DatabaseService {
       if (this.isMockMode || !this.client) {
         // Re-read the current map value immediately before merging. Two
         // simultaneous partial updates must not overwrite each other's fields.
-        const latest = this.mockUsers.get(existing.id) || existing;
-        const updated: UserProfile = {
+        const latest = this.normalizeUserBan(this.mockUsers.get(existing.id) || existing);
+        const updated: UserProfile = this.normalizeUserBan({
           ...latest,
           ...user,
           id: latest.id,
           createdAt: latest.createdAt,
           updatedAt: now,
-        };
+        });
         this.mockUsers.set(existing.id, updated);
         return updated;
       }
@@ -272,6 +281,7 @@ export class DatabaseService {
         ['activeRoomId', 'active_room_id'],
         ['isBanned', 'is_banned'],
         ['banReason', 'ban_reason'],
+        ['banExpiresAt', 'ban_expires_at'],
         ['reputationScore', 'reputation_score'],
         ['bio', 'bio'],
         ['matchIntent', 'match_intent'],
@@ -400,9 +410,76 @@ export class DatabaseService {
     return cleared;
   }
 
+  async searchUsers(query = '', limit = 200): Promise<UserProfile[]> {
+    const safeLimit = Number.isFinite(limit) ? Math.min(200, Math.max(1, Math.trunc(limit))) : 200;
+    const normalized = query.trim().slice(0, 64);
+    if (this.isMockMode || !this.client) {
+      const users = Array.from(this.mockUsers.values());
+      const filtered = normalized
+        ? users.filter((user) => String(user.destinyId || '').toLowerCase().includes(normalized.toLowerCase()) ||
+            String(user.discordUserId || '').includes(normalized))
+        : users;
+      return filtered.slice(0, safeLimit).map((user) => this.normalizeUserBan(user));
+    }
+
+    const baseQuery = () => this.client!.from('users').select('*').order('created_at', { ascending: false }).limit(safeLimit);
+    if (!normalized) {
+      const { data, error } = await baseQuery();
+      if (error) throw new Error(`Failed to search users: ${error.message}`);
+      return (data || []).map((row: any) => this.mapUser(row));
+    }
+
+    const escaped = normalized.replace(/[\\%_]/g, (character) => '\\' + character);
+    if (/^[0-9]{17,20}$/.test(normalized)) {
+      const { data, error } = await baseQuery().eq('discord_user_id', normalized);
+      if (error) throw new Error(`Failed to search users: ${error.message}`);
+      return (data || []).map((row: any) => this.mapUser(row));
+    }
+
+    const [destinyResult, discordResult] = await Promise.all([
+      baseQuery().ilike('destiny_id', '%' + escaped + '%'),
+      /^[0-9]+$/.test(normalized)
+        ? baseQuery().ilike('discord_user_id', '%' + escaped + '%')
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (destinyResult.error || discordResult.error) {
+      throw new Error('Failed to search users: ' + (destinyResult.error?.message || discordResult.error?.message));
+    }
+    const unique = new Map<string, any>();
+    for (const row of [...(destinyResult.data || []), ...(discordResult.data || [])]) unique.set(row.id, row);
+    return Array.from(unique.values()).slice(0, safeLimit).map((row: any) => this.mapUser(row));
+  }
+
+  async getUsersByVerificationStatus(
+    status: GenderVerificationStatus | 'all',
+    limit = 500,
+    offset = 0
+  ): Promise<UserProfile[]> {
+    const safeLimit = Number.isFinite(limit) ? Math.min(1000, Math.max(1, Math.trunc(limit))) : 500;
+    const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 0;
+    if (this.isMockMode || !this.client) {
+      const users = Array.from(this.mockUsers.values()).filter((user) =>
+        status === 'all'
+          ? Boolean(user.genderVerificationStatus && user.genderVerificationStatus !== 'unverified')
+          : user.genderVerificationStatus === status
+      );
+      return users.slice(safeOffset, safeOffset + safeLimit).map((user) => this.normalizeUserBan(user));
+    }
+
+    let request = this.client.from('users').select('*').order('created_at', { ascending: false });
+    if (status === 'all') {
+      request = request.not('gender_verification_status', 'is', null).neq('gender_verification_status', 'unverified');
+    } else {
+      request = request.eq('gender_verification_status', status);
+    }
+    const { data, error } = await request.range(safeOffset, safeOffset + safeLimit - 1);
+    if (error) throw new Error(`Failed to load verification queue: ${error.message}`);
+    return (data || []).map((row: any) => this.mapUser(row));
+  }
+
   async getAllUsers(limit: number = 100, offset: number = 0): Promise<UserProfile[]> {
     if (this.isMockMode || !this.client) {
-      return Array.from(this.mockUsers.values()).slice(offset, offset + limit);
+      return Array.from(this.mockUsers.values()).slice(offset, offset + limit).map((user) => this.normalizeUserBan(user));
     }
     const safeLimit = Number.isFinite(limit) ? Math.min(1000, Math.max(1, Math.trunc(limit))) : 100;
     const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 0;
@@ -1018,11 +1095,25 @@ export class DatabaseService {
       const report = this.mockReports.get(id);
       if (!report || report.status !== 'pending') return false;
 
-      if (action === 'perma_ban') {
+      if (action === 'perma_ban' || action === 'temp_ban') {
         const reportedUser = this.mockUsers.get(report.reportedId);
         if (!reportedUser) return false;
-        reportedUser.isBanned = true;
-        reportedUser.banReason = `Banned via safety report: ${report.category}`;
+        const alreadyPermanent = reportedUser.isBanned && !reportedUser.banExpiresAt;
+        if (action === 'perma_ban') {
+          reportedUser.isBanned = true;
+          reportedUser.banReason = `Banned via safety report: ${report.category}`;
+          reportedUser.banExpiresAt = null;
+        } else if (!alreadyPermanent) {
+          const existingExpiry = reportedUser.isBanned && reportedUser.banExpiresAt
+            ? Date.parse(reportedUser.banExpiresAt)
+            : NaN;
+          const nextExpiry = Number.isFinite(existingExpiry) && existingExpiry > Date.now()
+            ? existingExpiry + 24 * 60 * 60 * 1000
+            : Date.now() + 24 * 60 * 60 * 1000;
+          reportedUser.isBanned = true;
+          reportedUser.banReason = `Temporarily banned via safety report: ${report.category}`;
+          reportedUser.banExpiresAt = new Date(nextExpiry).toISOString();
+        }
         reportedUser.updatedAt = new Date().toISOString();
       }
 
@@ -1040,7 +1131,7 @@ export class DatabaseService {
       p_report_id: id,
       p_action: action,
       p_notes: notes ?? null,
-      p_admin_id: adminId || 'admin_web',
+      p_admin_id: adminId || 'dashboard_owner',
     });
     if (error) throw new Error(`Failed to resolve report: ${error.message}`);
     return Boolean(data);
@@ -1162,9 +1253,12 @@ export class DatabaseService {
       }
     }
 
-    if (this.isMockMode || !this.client) {
-      return null;
+    if (this.isMockMode) {
+      const settings = this.mockGuildSettings.get(guildId) || null;
+      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 5_000 });
+      return settings;
     }
+    if (!this.client) throw new Error('Supabase is unavailable; guild settings cannot be loaded.');
     const { data, error } = await this.client
       .from('guild_settings')
       .select('*')
@@ -1191,85 +1285,115 @@ export class DatabaseService {
       updatedAt: data.updated_at,
     };
 
-    this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 300_000 });
+    this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 5_000 });
     return settings;
   }
 
-  async setGuildMatchChannel(guildId: string, channelId: string, guildName?: string): Promise<boolean> {
-    const existing = this.guildSettingsCache.get(guildId)?.settings;
-    if (existing) {
-      existing.matchChannelId = channelId;
-      if (guildName) existing.guildName = guildName;
-      this.guildSettingsCache.set(guildId, { settings: existing, expires: Date.now() + 300_000 });
+  async setGuildCrossServerEnabled(guildId: string, enabled: boolean, guildName?: string): Promise<boolean> {
+    if (!/^[0-9]{17,20}$/.test(guildId)) return false;
+    if (this.isMockMode) {
+      const settings = this.mockGuildSettings.get(guildId) || { guildId, crossServerEnabled: true };
+      settings.crossServerEnabled = enabled;
+      if (guildName) settings.guildName = guildName;
+      settings.updatedAt = new Date().toISOString();
+      this.mockGuildSettings.set(guildId, settings);
+      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 5_000 });
+      return true;
+    }
+    if (!this.client) return false;
+    const { error } = await this.client.from('guild_settings').upsert({
+      guild_id: guildId,
+      ...(guildName ? { guild_name: guildName } : {}),
+      cross_server_enabled: enabled,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'guild_id' });
+    if (error) {
+      this.guildSettingsCache.delete(guildId);
+      console.error('[Database] Failed to persist guild matchmaking scope:', error.message);
+      return false;
+    }
+    const cached = this.guildSettingsCache.get(guildId)?.settings;
+    if (cached) {
+      cached.crossServerEnabled = enabled;
+      if (guildName) cached.guildName = guildName;
+      this.guildSettingsCache.set(guildId, { settings: cached, expires: Date.now() + 5_000 });
     } else {
       this.guildSettingsCache.delete(guildId);
     }
-
-    if (this.isMockMode || !this.client) {
-      return true;
-    }
-    const { error } = await this.client
-      .from('guild_settings')
-      .upsert({
-        guild_id: guildId,
-        guild_name: guildName || 'Discord Guild',
-        match_channel_id: channelId,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'guild_id' });
-
-    return !error;
+    return true;
   }
 
-  async setGuildAdminChannel(guildId: string, channelId: string, guildName?: string): Promise<boolean> {
-    const existing = this.guildSettingsCache.get(guildId)?.settings;
-    if (existing) {
-      existing.matchChannelId = channelId;
-      existing.modLogChannelId = channelId;
-      if (guildName) existing.guildName = guildName;
-      this.guildSettingsCache.set(guildId, { settings: existing, expires: Date.now() + 300_000 });
+  async setGuildMatchChannel(guildId: string, channelId: string | null, guildName?: string): Promise<boolean> {
+    if (!/^[0-9]{17,20}$/.test(guildId) || (channelId !== null && !/^[0-9]{17,20}$/.test(channelId))) return false;
+    if (this.isMockMode) {
+      const settings = this.mockGuildSettings.get(guildId) || { guildId, crossServerEnabled: true };
+      settings.matchChannelId = channelId;
+      if (guildName) settings.guildName = guildName;
+      settings.updatedAt = new Date().toISOString();
+      this.mockGuildSettings.set(guildId, settings);
+      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 5_000 });
+      return true;
+    }
+    if (!this.client) return false;
+    const { error } = await this.client.from('guild_settings').upsert({
+      guild_id: guildId,
+      ...(guildName ? { guild_name: guildName } : {}),
+      match_channel_id: channelId,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'guild_id' });
+    if (error) {
+      this.guildSettingsCache.delete(guildId);
+      console.error('[Database] Failed to persist guild portal channel:', error.message);
+      return false;
+    }
+    const cached = this.guildSettingsCache.get(guildId)?.settings;
+    if (cached) {
+      cached.matchChannelId = channelId;
+      if (guildName) cached.guildName = guildName;
+      this.guildSettingsCache.set(guildId, { settings: cached, expires: Date.now() + 5_000 });
     } else {
       this.guildSettingsCache.delete(guildId);
     }
-
-    if (this.isMockMode || !this.client) {
-      return true;
-    }
-    const { error } = await this.client
-      .from('guild_settings')
-      .upsert({
-        guild_id: guildId,
-        guild_name: guildName || 'Discord Guild',
-        match_channel_id: channelId,
-        mod_log_channel_id: channelId,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'guild_id' });
-
-    return !error;
+    return true;
   }
 
-  async clearGuildChannels(guildId: string): Promise<boolean> {
-    const existing = this.guildSettingsCache.get(guildId)?.settings;
-    if (existing) {
-      existing.matchChannelId = null;
-      existing.modLogChannelId = null;
-      this.guildSettingsCache.set(guildId, { settings: existing, expires: Date.now() + 300_000 });
+  async setGuildModLogChannel(guildId: string, channelId: string | null, guildName?: string): Promise<boolean> {
+    if (!/^[0-9]{17,20}$/.test(guildId) || (channelId !== null && !/^[0-9]{17,20}$/.test(channelId))) return false;
+    if (this.isMockMode) {
+      const settings = this.mockGuildSettings.get(guildId) || { guildId, crossServerEnabled: true };
+      settings.modLogChannelId = channelId;
+      if (guildName) settings.guildName = guildName;
+      settings.updatedAt = new Date().toISOString();
+      this.mockGuildSettings.set(guildId, settings);
+      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 5_000 });
+      return true;
+    }
+    if (!this.client) return false;
+    const { error } = await this.client.from('guild_settings').upsert({
+      guild_id: guildId,
+      ...(guildName ? { guild_name: guildName } : {}),
+      mod_log_channel_id: channelId,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'guild_id' });
+    if (error) {
+      this.guildSettingsCache.delete(guildId);
+      console.error('[Database] Failed to persist guild moderation channel:', error.message);
+      return false;
+    }
+    const cached = this.guildSettingsCache.get(guildId)?.settings;
+    if (cached) {
+      cached.modLogChannelId = channelId;
+      if (guildName) cached.guildName = guildName;
+      this.guildSettingsCache.set(guildId, { settings: cached, expires: Date.now() + 5_000 });
     } else {
       this.guildSettingsCache.delete(guildId);
     }
+    return true;
+  }
 
-    if (this.isMockMode || !this.client) {
-      return true;
-    }
-    const { error } = await this.client
-      .from('guild_settings')
-      .update({
-        match_channel_id: null,
-        mod_log_channel_id: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('guild_id', guildId);
-
-    return !error;
+  private normalizeUserBan(user: UserProfile): UserProfile {
+    if (isBanActive(user.isBanned, user.banExpiresAt)) return { ...user };
+    return { ...user, isBanned: false, banReason: undefined, banExpiresAt: null };
   }
 
   private mapUser(row: any): UserProfile {
@@ -1288,8 +1412,9 @@ export class DatabaseService {
       minAgePref: Number(row.min_age_pref || 18),
       maxAgePref: Number(row.max_age_pref || 99),
       activeRoomId: row.active_room_id,
-      isBanned: Boolean(row.is_banned),
-      banReason: row.ban_reason,
+      isBanned: isBanActive(Boolean(row.is_banned), row.ban_expires_at || null),
+      banReason: isBanActive(Boolean(row.is_banned), row.ban_expires_at || null) ? row.ban_reason : undefined,
+      banExpiresAt: isBanActive(Boolean(row.is_banned), row.ban_expires_at || null) ? (row.ban_expires_at || null) : null,
       reputationScore: Number(row.reputation_score || 100),
       bio: row.bio ?? undefined,
       matchIntent: row.match_intent ?? undefined,

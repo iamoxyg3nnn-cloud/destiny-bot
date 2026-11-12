@@ -60,7 +60,8 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Public endpoints: login page and auth handshake.
-  if (pathname === '/login' || pathname === '/api/auth/login' || pathname === '/api/auth/logout') {
+  if (pathname === '/login' || pathname === '/api/auth/login' || pathname === '/api/auth/logout' ||
+      pathname === '/api/auth/discord' || pathname === '/api/auth/callback/discord') {
     return NextResponse.next();
   }
 

@@ -1,11 +1,11 @@
-import express, { Request, Response, NextFunction } from 'express';
-import cors from 'cors';
+import express, { Request, Response, NextFunction, RequestHandler } from 'express';
 import crypto from 'crypto';
 import { config } from '../config/index.js';
 import { db } from '../database/supabase.js';
 import { redis } from '../redis/client.js';
 import { matchmakingManager } from '../core/matchmaking/manager.js';
 import { verificationService } from '../core/moderation/verification.js';
+import { ECLAIRS_GUILD_IDS } from '../core/moderation/reputation.js';
 import { queueManager } from '../redis/queues.js';
 import os from 'os';
 import { REST, Routes } from 'discord.js';
@@ -31,9 +31,34 @@ function safeEqual(a: string, b: string): boolean {
  * configured the API refuses every request rather than defaulting to open —
  * this API can manage users, moderate rooms and read private anonymous chat messages.
  */
+async function writeDashboardAudit(
+  req: Request,
+  action: string,
+  targetType: string,
+  targetId: string,
+  changes: Record<string, any> = {}
+): Promise<boolean> {
+  try {
+    await db.logAdminAction(dashboardActor(req), action, targetType, targetId, changes);
+    return true;
+  } catch (error: any) {
+    console.error('[API] Action completed but audit write failed:', error?.message || error);
+    return false;
+  }
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value);
+}
+
+function dashboardActor(req: Request): string {
+  const actor = req.header('x-admin-id') || '';
+  return /^[0-9]{17,20}$/.test(actor) ? actor : 'dashboard_owner';
+}
+
 function requireApiKey(req: Request, res: Response, next: NextFunction) {
   const expected = config.API_SECRET_KEY;
-  if (!expected) {
+  if (expected.length < 32 || expected === 'destiny_internal_secret_32bytes_min_key!') {
     return res.status(503).json({
       error: 'Admin API access is not configured (API_SECRET_KEY missing).',
     });
@@ -47,24 +72,6 @@ function requireApiKey(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
-function wrapAsyncRoutes(app: express.Express): void {
-  for (const method of ['get', 'post', 'put', 'patch', 'delete'] as const) {
-    const original = (app as any)[method].bind(app);
-    (app as any)[method] = (path: any, ...handlers: any[]) => original(
-      path,
-      ...handlers.map((handler) => {
-        if (typeof handler !== 'function') return handler;
-        return (req: Request, res: Response, next: NextFunction) => {
-          try {
-            Promise.resolve(handler(req, res, next)).catch(next);
-          } catch (error) {
-            next(error);
-          }
-        };
-      })
-    );
-  }
-}
 
 async function botCanSendToChannel(rest: REST, guildId: string, channel: any): Promise<boolean> {
   const [roles, member] = await Promise.all([
@@ -117,17 +124,43 @@ async function botCanSendToChannel(rest: REST, guildId: string, channel: any): P
     (permissions & sendMessages) === sendMessages;
 }
 
+function everyoneCanViewChannel(guildId: string, channel: any, roles: any[]): boolean {
+  const everyoneRole = roles.find((role) => role.id === guildId);
+  let permissions = BigInt(everyoneRole?.permissions || '0');
+  const overwrite = (Array.isArray(channel.permission_overwrites) ? channel.permission_overwrites : [])
+    .find((entry: any) => entry.id === guildId && Number(entry.type) === 0);
+  if (overwrite) {
+    permissions = (permissions & ~BigInt(overwrite.deny || '0')) | BigInt(overwrite.allow || '0');
+  }
+  return (permissions & 1024n) === 1024n;
+}
+
+function asyncRoute(
+  handler: (req: Request, res: Response, next: NextFunction) => Promise<unknown>
+): RequestHandler {
+  return (req, res, next) => {
+    void Promise.resolve(handler(req, res, next)).catch(next);
+  };
+}
+
+function requireDashboardOwner(req: Request, res: Response, next: NextFunction) {
+  if (process.env.DASHBOARD_OWNER_OAUTH_ENABLED !== 'true') return next();
+  const actor = req.header('x-admin-id') || '';
+  if (!config.BOT_OWNER_IDS.includes(actor)) {
+    return res.status(403).json({ error: 'A current, authorized platform-owner session is required.' });
+  }
+  return next();
+}
+
 export function createApiServer(): express.Express {
   const app = express();
-  app.use(cors());
   app.use(express.json({ limit: '256kb' }));
-  wrapAsyncRoutes(app);
 
   // Every admin route requires the shared secret.
   app.use('/api', requireApiKey);
 
   // 1. HEALTH & TELEMETRY
-  app.get('/api/health', async (_req: Request, res: Response) => {
+  app.get('/api/health', asyncRoute(async (_req: Request, res: Response) => {
     const mem = process.memoryUsage();
     const supabaseConnected = !db.isUsingMock() && await db.assertConnection().then(() => true).catch(() => false);
     const redisConnected = redis.isHealthy();
@@ -154,10 +187,14 @@ export function createApiServer(): express.Express {
         loadAverage: os.loadavg(),
       },
     });
-  });
+  }));
+
+  // Health stays available for authenticated infrastructure diagnostics. All
+  // user, room, report, verification and guild-management routes are owner-only.
+  app.use('/api', requireDashboardOwner);
 
   // 2. OVERVIEW METRICS
-  app.get('/api/overview', async (_req: Request, res: Response) => {
+  app.get('/api/overview', asyncRoute(async (_req: Request, res: Response) => {
     const [
       totalUsers,
       activeRooms,
@@ -209,25 +246,20 @@ export function createApiServer(): express.Express {
       queueStats,
       uptimeSeconds: Math.floor(process.uptime()),
     });
-  });
+  }));
 
   // 3. USERS MANAGEMENT
-  app.get('/api/users', async (req: Request, res: Response) => {
-    const query = (req.query.q as string || '').toLowerCase();
-    const allUsers = await db.getAllUsers(200);
+  app.get('/api/users', asyncRoute(async (req: Request, res: Response) => {
+    const query = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 64) : '';
+    const users = await db.searchUsers(query, 200);
+    // Verification evidence is private and belongs only in the dedicated
+    // verification workflow, never in the general user directory response.
+    res.json(users.map(({ genderVerificationEvidence: _evidence, ...user }) => user));
+  }));
 
-    let filtered = allUsers;
-    if (query) {
-      filtered = allUsers.filter(
-        (u) => u.destinyId.toLowerCase().includes(query) || u.discordUserId.includes(query)
-      );
-    }
-
-    res.json(filtered);
-  });
-
-  app.post('/api/users/:id/ban', async (req: Request, res: Response) => {
+  app.post('/api/users/:id/ban', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
+    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid user ID.' });
     const { banned, reason } = req.body || {};
     if (typeof banned !== 'boolean') return res.status(400).json({ error: 'banned must be a boolean.' });
     if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) {
@@ -244,54 +276,74 @@ export function createApiServer(): express.Express {
         discordUserId: user.discordUserId,
         isBanned: banned,
         banReason: banned ? (reason?.trim() || 'Admin moderation action') : '',
+        banExpiresAt: null,
       });
 
+      let cleanupWarning = false;
       if (banned) {
-        await matchmakingManager.removeQueueTicketUnderLock(id);
-        if (user.activeRoomId) await db.endRoom(user.activeRoomId, 'moderated');
+        const cleanup = await Promise.allSettled([
+          matchmakingManager.removeQueueTicketUnderLock(id),
+          ...(user.activeRoomId
+            ? [db.endRoom(user.activeRoomId, 'moderated').then(async (ended) => {
+                if (!ended) await db.clearActiveRoom(id, user.activeRoomId!);
+              })]
+            : []),
+        ]);
+        cleanupWarning = cleanup.some((result) => result.status === 'rejected');
+        if (cleanupWarning) {
+          console.error('[API] Ban was saved but queue/room cleanup needs attention:', cleanup.filter((result) => result.status === 'rejected'));
+        }
       }
-      return { notFound: false as const, user: updatedUser };
+      return { notFound: false as const, user: updatedUser, cleanupWarning };
     });
 
     if (result.notFound) return res.status(404).json({ error: 'User not found' });
-    await db.logAdminAction('admin_web', banned ? 'BAN_USER' : 'UNBAN_USER', 'USER', id, { reason });
-    res.json({ success: true, user: result.user });
-  });
+    const auditLogged = await writeDashboardAudit(req, banned ? 'BAN_USER' : 'UNBAN_USER', 'USER', id, { reason });
+    res.json({ success: true, user: result.user, auditWarning: !auditLogged, cleanupWarning: result.cleanupWarning });
+  }));
 
 
   // 4. LIVE ROOMS & CHAT INSPECTOR
-  app.get('/api/rooms', async (_req: Request, res: Response) => {
+  app.get('/api/rooms', asyncRoute(async (_req: Request, res: Response) => {
     const rooms = await db.getActiveRooms();
     res.json(rooms);
-  });
+  }));
 
-  app.post('/api/rooms/:id/terminate', async (req: Request, res: Response) => {
+  app.post('/api/rooms/:id/terminate', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
+    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid room ID.' });
     const { reason } = req.body || {};
     if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) {
       return res.status(400).json({ error: 'reason must be a string of at most 500 characters.' });
     }
 
     const success = await db.endRoom(id, 'moderated');
-    await db.logAdminAction('admin_web', 'TERMINATE_ROOM', 'ROOM', id, { reason });
-    res.json({ success });
-  });
+    if (!success) return res.status(409).json({ error: 'Room is missing or is no longer active.' });
+    const auditLogged = await writeDashboardAudit(req, 'TERMINATE_ROOM', 'ROOM', id, { reason });
+    res.json({ success: true, auditWarning: !auditLogged });
+  }));
 
-  app.get('/api/rooms/:id/messages', async (req: Request, res: Response) => {
+  app.get('/api/rooms/:id/messages', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
+    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid room ID.' });
     const messages = await db.getRoomMessages(id, 100);
     res.json(messages);
-  });
+  }));
 
   // 5. REPORTS DESK
-  app.get('/api/reports', async (req: Request, res: Response) => {
-    const status = req.query.status as any;
-    const reports = await db.getReports(status);
+  app.get('/api/reports', asyncRoute(async (req: Request, res: Response) => {
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const allowedStatuses = ['pending', 'resolved', 'dismissed'];
+    if (status && !allowedStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid report status filter.' });
+    }
+    const reports = await db.getReports(status as 'pending' | 'resolved' | 'dismissed' | undefined);
     res.json(reports);
-  });
+  }));
 
-  app.post('/api/reports/:id/resolve', async (req: Request, res: Response) => {
+  app.post('/api/reports/:id/resolve', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
+    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid report ID.' });
     const { action, notes } = req.body || {};
     const allowedActions = ['none', 'warned', 'temp_ban', 'perma_ban'];
     if (!allowedActions.includes(action)) return res.status(400).json({ error: 'Invalid report resolution action.' });
@@ -308,61 +360,87 @@ export function createApiServer(): express.Express {
     const resolve = async () => {
       const report = await db.getReportById(id);
       if (!report) return { notFound: true as const, resolved: false as const };
-      const resolved = await db.resolveReport(id, action, notes, 'admin_web');
+      const resolved = await db.resolveReport(id, action, notes, dashboardActor(req));
       if (!resolved) return { notFound: false as const, resolved: false as const };
-      if (action === 'perma_ban') {
-        await matchmakingManager.removeQueueTicketUnderLock(report.reportedId);
-        const reportedUser = await db.getUserById(report.reportedId, true);
-        if (reportedUser?.activeRoomId) await db.endRoom(reportedUser.activeRoomId, 'moderated');
+      let cleanupWarning = false;
+      if (action === 'perma_ban' || action === 'temp_ban') {
+        const reportedUser = await db.getUserById(report.reportedId, true).catch((error: any) => {
+          cleanupWarning = true;
+          console.error('[API] Could not load banned user for cleanup:', error?.message || error);
+          return null;
+        });
+        const cleanup = await Promise.allSettled([
+          matchmakingManager.removeQueueTicketUnderLock(report.reportedId),
+          ...(reportedUser?.activeRoomId
+            ? [db.endRoom(reportedUser.activeRoomId, 'moderated').then(async (ended) => {
+                if (!ended) await db.clearActiveRoom(report.reportedId, reportedUser.activeRoomId!);
+              })]
+            : []),
+        ]);
+        cleanupWarning = cleanupWarning || cleanup.some((result) => result.status === 'rejected');
+        if (cleanupWarning) {
+          console.error('[API] Ban was recorded but queue/room cleanup needs attention:', cleanup.filter((result) => result.status === 'rejected'));
+        }
       }
-      return { notFound: false as const, resolved: true as const, report };
+      return { notFound: false as const, resolved: true as const, report, cleanupWarning };
     };
 
-    const outcome = action === 'perma_ban'
+    const requiresBan = action === 'perma_ban' || action === 'temp_ban';
+    const outcome = requiresBan
       ? await matchmakingManager.withTicketLock(initialReport.reportedId, resolve)
       : await resolve();
 
     if (outcome.notFound) return res.status(404).json({ error: 'Report not found' });
     if (!outcome.resolved) return res.status(409).json({ error: 'Report could not be resolved.' });
 
-    await db.logAdminAction('admin_web', 'RESOLVE_REPORT', 'REPORT', id, { action, notes });
-    res.json({ success: true, report: { ...outcome.report, status: 'resolved', actionTaken: action } });
-  });
+    const auditLogged = await writeDashboardAudit(req, 'RESOLVE_REPORT', 'REPORT', id, { action, notes });
+    res.json({
+      success: true,
+      auditWarning: !auditLogged,
+      cleanupWarning: outcome.cleanupWarning,
+      report: { ...outcome.report, status: 'resolved', actionTaken: action },
+    });
+  }));
 
   // 6. GENDER VERIFICATIONS
-  app.get('/api/verifications', async (req: Request, res: Response) => {
-    const status = (req.query.status as string) || 'pending';
-    const users = await db.getAllUsers(500);
-    const filtered = status === 'all'
-      ? users.filter((u) => u.genderVerificationStatus && u.genderVerificationStatus !== 'unverified')
-      : users.filter((u) => u.genderVerificationStatus === status);
-    res.json(filtered);
-  });
+  app.get('/api/verifications', asyncRoute(async (req: Request, res: Response) => {
+    const status = typeof req.query.status === 'string' ? req.query.status : 'pending';
+    const allowedStatuses = ['pending', 'verified', 'rejected', 'unverified', 'all'];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid verification status filter.' });
+    }
+    const users = await db.getUsersByVerificationStatus(status as any, 1000, 0);
+    res.json(users);
+  }));
 
-  app.post('/api/verifications/:id/review', async (req: Request, res: Response) => {
+  app.post('/api/verifications/:id/review', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
+    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid user ID.' });
     const { approved, notes } = req.body || {};
     if (typeof approved !== 'boolean') return res.status(400).json({ error: 'approved must be a boolean.' });
     if (notes !== undefined && (typeof notes !== 'string' || notes.length > 1000)) {
       return res.status(400).json({ error: 'notes must be a string of at most 1000 characters.' });
     }
 
-    const result = await verificationService.reviewVerification('admin_web', id, approved, notes);
+    const result = await verificationService.reviewVerification(dashboardActor(req), id, approved, notes);
     res.json(result);
-  });
+  }));
 
   // 7. AUDIT LOGS
-  app.get('/api/logs', async (_req: Request, res: Response) => {
+  app.get('/api/logs', asyncRoute(async (_req: Request, res: Response) => {
     const logs = await db.getAdminLogs(100);
     res.json(logs);
-  });
+  }));
 
   // 9. GUILDS & SERVER DEDICATED CHANNELS
-  app.get('/api/guilds', async (_req: Request, res: Response) => {
+  app.get('/api/guilds', asyncRoute(async (_req: Request, res: Response) => {
     const shardIds = await redis.sMembers('bot:guild-shards');
     const snapshots = await Promise.all(shardIds.map(async (shardId) => {
       const raw = await redis.get(`bot:guilds:${shardId}`);
-      if (!raw) return [];
+      if (!raw) {
+        await redis.sRem('bot:guild-shards', shardId);
+        return [];
+      }
       try {
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [];
@@ -378,48 +456,84 @@ export function createApiServer(): express.Express {
         ...guild,
         matchChannelId: settings?.matchChannelId || null,
         modLogChannelId: settings?.modLogChannelId || null,
+        crossServerEnabled: settings?.crossServerEnabled !== false,
+        isTrustedStaffGuild: ECLAIRS_GUILD_IDS.includes(guild.id),
       };
     }));
     res.json(enriched);
-  });
+  }));
 
-  app.post('/api/guilds/:id/settings', async (req: Request, res: Response) => {
+  app.post('/api/guilds/:id/settings', asyncRoute(async (req: Request, res: Response) => {
     try {
       const guildId = req.params.id as string;
-      const { channelId, guildName } = req.body || {};
+      const body = req.body || {};
+      const { guildName, matchChannelId, modLogChannelId, crossServerEnabled } = body;
       if (!/^[0-9]{17,20}$/.test(guildId)) return res.status(400).json({ error: 'Invalid guild ID.' });
       if (guildName !== undefined && (typeof guildName !== 'string' || guildName.length > 100)) {
         return res.status(400).json({ error: 'Invalid guild name.' });
       }
+      const hasMatch = Object.prototype.hasOwnProperty.call(body, 'matchChannelId');
+      const hasModLog = Object.prototype.hasOwnProperty.call(body, 'modLogChannelId');
+      if (hasModLog && !ECLAIRS_GUILD_IDS.includes(guildId)) {
+        return res.status(403).json({ error: 'The global moderation alert channel can only be configured in a trusted staff guild.' });
+      }
+      const hasCrossServer = Object.prototype.hasOwnProperty.call(body, 'crossServerEnabled');
+      const settingCount = Number(hasMatch) + Number(hasModLog) + Number(hasCrossServer);
+      if (settingCount !== 1) {
+        return res.status(400).json({ error: 'Update exactly one server setting per request so a partial database failure cannot leave mixed configuration.' });
+      }
+      if (hasCrossServer && typeof crossServerEnabled !== 'boolean') {
+        return res.status(400).json({ error: 'crossServerEnabled must be a boolean.' });
+      }
 
-      if (channelId) {
-        if (typeof channelId !== 'string' || !/^[0-9]{17,20}$/.test(channelId)) {
-          return res.status(400).json({ error: 'Invalid channel ID.' });
-        }
+      const channelIds = [hasMatch ? matchChannelId : undefined, hasModLog ? modLogChannelId : undefined]
+        .filter((value) => value !== undefined && value !== null);
+      if (channelIds.some((value) => typeof value !== 'string' || !/^[0-9]{17,20}$/.test(value))) {
+        return res.status(400).json({ error: 'Channel IDs must be valid Discord snowflakes or null.' });
+      }
+
+      if (channelIds.length > 0) {
         if (!config.DISCORD_TOKEN || config.DISCORD_TOKEN.startsWith('mock_')) {
           return res.status(503).json({ error: 'Discord bot credentials are not configured.' });
         }
         const rest = new REST({ version: '10' }).setToken(config.DISCORD_TOKEN);
-        const channels = await rest.get(Routes.guildChannels(guildId)) as any[];
-        const channel = channels.find((entry) => entry.id === channelId);
-        if (!channel || ![0, 5].includes(Number(channel.type))) {
-          return res.status(400).json({ error: 'Channel must be a text or announcement channel in the selected server.' });
+        const [channels, roles] = await Promise.all([
+          rest.get(Routes.guildChannels(guildId)) as Promise<any[]>,
+          rest.get(Routes.guildRoles(guildId)) as Promise<any[]>,
+        ]);
+        for (const channelId of channelIds) {
+          const channel = channels.find((entry) => entry.id === channelId);
+          if (!channel || ![0, 5].includes(Number(channel.type))) {
+            return res.status(400).json({ error: 'Each channel must be a text or announcement channel in the selected server.' });
+          }
+          if (!(await botCanSendToChannel(rest, guildId, channel))) {
+            return res.status(403).json({ error: 'Destiny needs View Channel and Send Messages permissions in each selected channel.' });
+          }
+          if (hasModLog && modLogChannelId === channelId && everyoneCanViewChannel(guildId, channel, roles)) {
+            return res.status(403).json({ error: 'The moderation channel must be private from @everyone.' });
+          }
         }
-        if (!(await botCanSendToChannel(rest, guildId, channel))) {
-          return res.status(403).json({ error: 'Destiny needs View Channel and Send Messages permissions in that channel.' });
-        }
-        const saved = await db.setGuildAdminChannel(guildId, channelId, guildName);
-        if (!saved) return res.status(500).json({ error: 'Could not save guild channel settings.' });
-      } else {
-        const cleared = await db.clearGuildChannels(guildId);
-        if (!cleared) return res.status(500).json({ error: 'Could not clear guild channel settings.' });
       }
-      res.json({ success: true, guildId, channelId: channelId || null });
+
+      const results = await Promise.all([
+        hasMatch ? db.setGuildMatchChannel(guildId, matchChannelId ?? null, guildName) : Promise.resolve(true),
+        hasModLog ? db.setGuildModLogChannel(guildId, modLogChannelId ?? null, guildName) : Promise.resolve(true),
+        hasCrossServer ? db.setGuildCrossServerEnabled(guildId, crossServerEnabled, guildName) : Promise.resolve(true),
+      ]);
+      if (results.some((saved) => !saved)) {
+        return res.status(500).json({ error: 'One or more server settings could not be saved. Refresh the page before retrying.' });
+      }
+      const auditLogged = await writeDashboardAudit(req, 'UPDATE_GUILD_SETTINGS', 'GUILD', guildId, {
+        ...(hasMatch ? { matchChannelId: matchChannelId ?? null } : {}),
+        ...(hasModLog ? { modLogChannelId: modLogChannelId ?? null } : {}),
+        ...(hasCrossServer ? { crossServerEnabled } : {}),
+      });
+      res.json({ success: true, guildId, auditWarning: !auditLogged });
     } catch (err: any) {
-      console.error('[API] Failed to update guild channel settings:', err?.message || err);
+      console.error('[API] Failed to update guild settings:', err?.message || err);
       res.status(500).json({ error: 'Failed to update guild settings' });
     }
-  });
+  }));
 
   app.use((error: any, _req: Request, res: Response, next: NextFunction) => {
     console.error('[API] Unhandled request error:', error?.message || error);
@@ -434,8 +548,8 @@ export const apiApp: express.Express = createApiServer();
 
 if (process.env.RUN_API === 'true') {
   const port = config.PORT || 4000;
-  // Bind to loopback only — the admin API must never be directly reachable
-  // from outside the host. The dashboard proxies to it over localhost.
+  // Bind to the configured interface. Docker uses 0.0.0.0 for the private
+  // container network; the API port is not published to the host.
   apiApp.listen(port, config.API_HOST, () => {
     console.log(`🌐 Destiny Admin API Server listening on http://${config.API_HOST}:${port}`);
   });

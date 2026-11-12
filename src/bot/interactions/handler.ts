@@ -19,6 +19,7 @@ import {
   PermissionFlagsBits
 } from 'discord.js';
 import { db } from '../../database/supabase.js';
+import { config } from '../../config/index.js';
 import { redis } from '../../redis/client.js';
 import { matchmakingManager } from '../../core/matchmaking/manager.js';
 import { revealService } from '../../core/moderation/reveal.js';
@@ -122,26 +123,7 @@ async function safeEditReply(interaction: ButtonInteraction | StringSelectMenuIn
 }
 
 export async function handleInteraction(interaction: Interaction): Promise<void> {
-  // Gracefully acknowledge buttons and menus posted by older bot versions.
-  // These component IDs remain in already-published Discord messages.
-  const retiredButtonIds = new Set([
-    'destiny_btn_wallet',
-    'destiny_btn_wallet_daily',
-    'destiny_btn_claim_daily',
-    'destiny_btn_shop',
-    'destiny_btn_wardrobe',
-    'destiny_btn_icebreaker',
-  ]);
-  const retiredSelectIds = new Set(['destiny_select_theme', 'destiny_select_badges']);
   const retiredMessage = 'This control is no longer available. Use /match to start an anonymous chat or /profile to manage your profile.';
-  if (interaction.isButton() && retiredButtonIds.has(interaction.customId)) {
-    await interaction.reply({ content: retiredMessage, flags: MessageFlags.Ephemeral }).catch(() => {});
-    return;
-  }
-  if (interaction.isStringSelectMenu() && retiredSelectIds.has(interaction.customId)) {
-    await interaction.reply({ content: retiredMessage, flags: MessageFlags.Ephemeral }).catch(() => {});
-    return;
-  }
 
   // Slash commands are routed to the command controller.
   if (interaction.isChatInputCommand()) {
@@ -969,6 +951,16 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       return;
     }
   }
+
+  // A generic fallback safely acknowledges unknown or stale component controls.
+  if (interaction.isRepliable() && (
+    interaction.isButton() ||
+    interaction.isStringSelectMenu() ||
+    interaction.isChannelSelectMenu() ||
+    interaction.isModalSubmit()
+  )) {
+    await safeEditReply(interaction as any, { content: retiredMessage });
+  }
 }
 
 /**
@@ -1275,17 +1267,17 @@ async function handleAdminVerifyAction(btn: ButtonInteraction, approve: boolean,
   const trustedGuild = Boolean(btn.guildId && ECLAIRS_GUILD_IDS.includes(btn.guildId));
   const isStaff = trustedGuild && Boolean(
     btn.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
-    btn.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ||
     btn.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)
   );
 
-  if (!isStaff && btn.user.id !== '971251685773152326') {
+  const isPlatformOwner = config.BOT_OWNER_IDS.includes(btn.user.id);
+  if (!isStaff && !isPlatformOwner) {
     await safeEditReply(btn, { content: '⛔ Verification reviews are restricted to authorized Eclairs community moderators.' });
     return;
   }
 
   const review = await verificationService.reviewVerification(
-    btn.user.tag,
+    btn.user.id,
     userId,
     approve,
     approve ? `Approved by staff @${btn.user.tag}` : `Rejected by staff @${btn.user.tag}`
@@ -1295,10 +1287,11 @@ async function handleAdminVerifyAction(btn: ButtonInteraction, approve: boolean,
     return;
   }
 
-  const targetUser = await db.getUserById(userId);
-  const statusText = approve
+  const targetUser = review.user || null;
+  const auditWarning = review.auditWarning ? '\n⚠️ The decision was saved, but its audit log could not be written. Notify a platform owner.' : '';
+  const statusText = (approve
     ? `✅ **Approved by <@${btn.user.id}>** on ${new Date().toLocaleDateString()}`
-    : `❌ **Rejected by <@${btn.user.id}>** on ${new Date().toLocaleDateString()}`;
+    : `❌ **Rejected by <@${btn.user.id}>** on ${new Date().toLocaleDateString()}`) + auditWarning;
 
   const decisionEmbed = embedService.createStaffVerificationDecisionEmbed(targetUser, statusText, approve);
   try {
@@ -1325,27 +1318,44 @@ async function handleAdminVerifyAction(btn: ButtonInteraction, approve: boolean,
 /**
  * Check if an interaction or message author has admin/staff permissions in the guild
  */
+async function logGuildSetupAudit(
+  actorId: string,
+  action: string,
+  guildId: string,
+  changes: Record<string, any> = {}
+): Promise<boolean> {
+  try {
+    await db.logAdminAction(actorId, action, 'GUILD', guildId, changes);
+    return true;
+  } catch (error: any) {
+    console.error('[Guild Setup] Setting saved but audit log failed:', error?.message || error);
+    return false;
+  }
+}
+
 export function isGuildAdmin(interactionOrMessage: Interaction | Message): boolean {
-  const member = interactionOrMessage.member as any;
-  if (!member) return false;
+  const authorId = interactionOrMessage instanceof Message
+    ? interactionOrMessage.author.id
+    : interactionOrMessage.user.id;
 
-  const authorId = interactionOrMessage instanceof Message ? interactionOrMessage.author.id : interactionOrMessage.user.id;
-  // Bot Developer / Master Override
-  if (authorId === '971251685773152326') return true;
-
-  // Server Owner
+  // Server ownership, Manage Server, or Administrator authorize only this
+  // guild's setup. This never grants platform-owner or global moderation access.
   if (interactionOrMessage.guild?.ownerId === authorId) return true;
 
-  // Actual Discord permissions only. Role names are user-configurable and
-  // must never be treated as proof of administrator authority.
-  if (
-    member.permissions?.has?.(PermissionFlagsBits.Administrator) ||
-    member.permissions?.has?.(PermissionFlagsBits.ManageGuild)
-  ) {
-    return true;
+  if (interactionOrMessage instanceof Message) {
+    return Boolean(
+      interactionOrMessage.member?.permissions?.has(PermissionFlagsBits.ManageGuild) ||
+      interactionOrMessage.member?.permissions?.has(PermissionFlagsBits.Administrator)
+    );
   }
 
-  return false;
+  // Guild interactions expose memberPermissions as the authoritative
+  // resolved permission bitfield. interaction.member may be a raw API object
+  // whose permissions field is a string rather than a PermissionsBitField.
+  return Boolean(
+    interactionOrMessage.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ||
+    interactionOrMessage.memberPermissions?.has(PermissionFlagsBits.Administrator)
+  );
 }
 
 /**
@@ -1358,15 +1368,32 @@ async function handleSetCurrentAdminChannel(btn: ButtonInteraction): Promise<voi
     const errorContainer = new ContainerBuilder()
       .setAccentColor(COLORS.DANGER)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent('⚠️ Only server administrators with **Manage Server** or **Administrator** permissions can configure Destiny.')
+        new TextDisplayBuilder().setContent('⚠️ Only the server owner or a member with Discord **Manage Server** or **Administrator** permission can configure Destiny.')
       );
     await safeEditReply(btn, { components: [errorContainer] });
     return;
   }
 
-  await db.setGuildAdminChannel(btn.guildId, btn.channelId, btn.guild?.name);
+  const channel = btn.channel as any;
+  const botMember = btn.guild?.members.me || await btn.guild?.members.fetchMe().catch(() => null);
+  const botPermissions = botMember && channel?.permissionsFor ? channel.permissionsFor(botMember) : null;
+  if (!channel || ![0, 5].includes(Number(channel.type)) || !botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
+    const errorContainer = new ContainerBuilder().setAccentColor(COLORS.DANGER)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent('Destiny needs a text channel with View Channel and Send Messages permissions.'));
+    await safeEditReply(btn, { components: [errorContainer] });
+    return;
+  }
+  const saved = await db.setGuildMatchChannel(btn.guildId, btn.channelId, btn.guild?.name);
+  if (!saved) {
+    const errorContainer = new ContainerBuilder().setAccentColor(COLORS.DANGER)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent('Could not save the matchmaking portal channel. Please try again.'));
+    await safeEditReply(btn, { components: [errorContainer] });
+    return;
+  }
+  const audited = await logGuildSetupAudit(btn.user.id, 'SET_GUILD_MATCH_CHANNEL', btn.guildId, { channelId: btn.channelId });
   const successContainer = embedService.createChannelSetSuccessContainer(btn.channelId, btn.guild?.name || 'Server');
-  await safeEditReply(btn, { components: [successContainer] });
+  if (audited) await safeEditReply(btn, { components: [successContainer] });
+  else await safeEditReply(btn, { components: [successContainer, new ContainerBuilder().setAccentColor(COLORS.GOLD).addTextDisplayComponents(new TextDisplayBuilder().setContent('The portal was saved, but the audit log could not be written. Notify a platform owner.'))] });
 }
 
 /**
@@ -1379,7 +1406,7 @@ async function handleSelectAdminChannel(select: ChannelSelectMenuInteraction): P
     const errorContainer = new ContainerBuilder()
       .setAccentColor(COLORS.DANGER)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent('⚠️ Only server administrators with **Manage Server** or **Administrator** permissions can configure Destiny.')
+        new TextDisplayBuilder().setContent('⚠️ Only the server owner or a member with Discord **Administrator** permission can configure Destiny.')
       );
     await safeEditReply(select, { components: [errorContainer] });
     return;
@@ -1388,9 +1415,26 @@ async function handleSelectAdminChannel(select: ChannelSelectMenuInteraction): P
   const selectedChannelId = select.values[0];
   if (!selectedChannelId) return;
 
-  await db.setGuildAdminChannel(select.guildId, selectedChannelId, select.guild?.name);
+  const channel = select.guild?.channels.cache.get(selectedChannelId) || await select.guild?.channels.fetch(selectedChannelId).catch(() => null);
+  const botMember = select.guild?.members.me || await select.guild?.members.fetchMe().catch(() => null);
+  const botPermissions = botMember && channel && 'permissionsFor' in channel ? channel.permissionsFor(botMember) : null;
+  if (!channel || !channel.isTextBased() || !botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
+    const errorContainer = new ContainerBuilder().setAccentColor(COLORS.DANGER)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent('Choose a text channel where Destiny has View Channel and Send Messages permissions.'));
+    await safeEditReply(select, { components: [errorContainer] });
+    return;
+  }
+  const saved = await db.setGuildMatchChannel(select.guildId, selectedChannelId, select.guild?.name);
+  if (!saved) {
+    const errorContainer = new ContainerBuilder().setAccentColor(COLORS.DANGER)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent('Could not save the matchmaking portal channel. Please try again.'));
+    await safeEditReply(select, { components: [errorContainer] });
+    return;
+  }
+  const audited = await logGuildSetupAudit(select.user.id, 'SET_GUILD_MATCH_CHANNEL', select.guildId, { channelId: selectedChannelId });
   const successContainer = embedService.createChannelSetSuccessContainer(selectedChannelId, select.guild?.name || 'Server');
-  await safeEditReply(select, { components: [successContainer] });
+  if (audited) await safeEditReply(select, { components: [successContainer] });
+  else await safeEditReply(select, { components: [successContainer, new ContainerBuilder().setAccentColor(COLORS.GOLD).addTextDisplayComponents(new TextDisplayBuilder().setContent('The portal was saved, but the audit log could not be written. Notify a platform owner.'))] });
 }
 
 /**
@@ -1480,9 +1524,17 @@ async function handleResetSetup(btn: ButtonInteraction): Promise<void> {
     return;
   }
 
-  await db.clearGuildChannels(btn.guildId);
+  const saved = await db.setGuildMatchChannel(btn.guildId, null, btn.guild.name);
+  if (!saved) {
+    const errorContainer = new ContainerBuilder().setAccentColor(COLORS.DANGER)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent('Could not clear the matchmaking portal channel. Please try again.'));
+    await safeEditReply(btn, { components: [errorContainer] });
+    return;
+  }
+  const audited = await logGuildSetupAudit(btn.user.id, 'CLEAR_GUILD_MATCH_CHANNEL', btn.guildId);
   const container = embedService.createChannelResetSuccessContainer(btn.guild.name);
-  await safeEditReply(btn, { components: [container] });
+  if (audited) await safeEditReply(btn, { components: [container] });
+  else await safeEditReply(btn, { components: [container, new ContainerBuilder().setAccentColor(COLORS.GOLD).addTextDisplayComponents(new TextDisplayBuilder().setContent('The portal was cleared, but the audit log could not be written. Notify a platform owner.'))] });
 }
 
 /**

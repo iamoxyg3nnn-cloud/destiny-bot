@@ -40,6 +40,23 @@ function consumeLoginAttempt(key: string): { allowed: boolean; retryAfter: numbe
 }
 
 export async function POST(req: NextRequest) {
+  // Individual Discord owner sessions are enabled only when explicitly
+  // requested. This keeps quick-tunnel/bootstrap deployments usable without
+  // accidentally claiming OAuth identity verification is active.
+  if (process.env.DASHBOARD_OWNER_OAUTH_ENABLED === 'true') {
+    const configuredOwners = (process.env.BOT_OWNER_IDS || '').split(',').map((id) => id.trim()).filter((id) => /^[0-9]{17,20}$/.test(id));
+    let validOrigin = false;
+    try {
+      const publicOrigin = new URL(process.env.NEXTAUTH_URL || 'http://localhost:3000');
+      validOrigin = process.env.NODE_ENV !== 'production' || publicOrigin.protocol === 'https:';
+    } catch {
+      validOrigin = false;
+    }
+    if (configuredOwners.length === 0 || !process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_CLIENT_SECRET || !validOrigin) {
+      return NextResponse.json({ error: 'Discord owner OAuth is enabled but its owner IDs, OAuth credentials or public HTTPS NEXTAUTH_URL are incomplete.' }, { status: 503 });
+    }
+    return NextResponse.json({ error: 'Shared-password login is disabled. Sign in with an authorized Discord owner account.' }, { status: 403 });
+  }
   // Report a broken deployment as a configuration error, not as a wrong
   // password. This is safe to expose: it never reveals the configured value.
   if (!isAdminPasswordConfigured()) {

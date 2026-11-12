@@ -1,14 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Compass, Lock, Loader2 } from 'lucide-react';
+import { Compass, Lock, Loader2, ShieldCheck } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get('error');
+    const messages: Record<string, string> = {
+      oauth_disabled: 'Discord owner sign-in is not enabled for this deployment. Use the bootstrap password or ask the platform owner.',
+      not_owner: 'This Discord account is not listed in BOT_OWNER_IDS.',
+      oauth_state: 'The Discord sign-in expired or failed its security check. Please try again.',
+      oauth_config: 'Discord owner sign-in is not configured correctly.',
+      oauth_exchange: 'Discord could not complete the authorization exchange. Please try again.',
+      oauth_identity: 'Could not verify your Discord account.',
+      session_config: 'Dashboard session signing is not configured.',
+      oauth_failed: 'Discord sign-in failed. Please try again.',
+    };
+    if (code && messages[code]) setError(messages[code]);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,8 +60,20 @@ export default function LoginPage() {
             <Compass className="h-5 w-5 text-[#FE698E]" />
           </div>
           <h1 className="text-lg font-semibold tracking-tight">Destiny Administration Console</h1>
-          <p className="mt-1 text-sm text-zinc-500">Restricted access. Enter the admin password to continue.</p>
+          <p className="mt-1 text-sm text-zinc-500">Platform-owner access only. Sign in with an authorized Discord account.</p>
         </div>
+
+        <a
+          href="/api/auth/discord"
+          className="mb-4 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#5865F2]/40 bg-[#5865F2]/15 text-sm font-medium text-zinc-100 transition-colors hover:bg-[#5865F2]/25"
+        >
+          <ShieldCheck className="h-4 w-4" />
+          Sign in with Discord
+        </a>
+
+        <p className="mb-3 text-center text-[11px] text-zinc-600">
+          With owner OAuth enabled, only Discord IDs listed in BOT_OWNER_IDS can enter. Otherwise use the bootstrap password.
+        </p>
 
         <form
           onSubmit={handleSubmit}
@@ -54,7 +81,7 @@ export default function LoginPage() {
         >
           <div>
             <label htmlFor="password" className="mb-1.5 block text-xs font-medium text-zinc-400">
-              Admin password
+              Bootstrap password
             </label>
             <div className="relative">
               <Lock className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
@@ -83,12 +110,12 @@ export default function LoginPage() {
             className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#FE698E] text-sm font-medium text-[#1a0410] transition-colors hover:bg-[#FF4EA7] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {loading ? 'Authenticating…' : 'Unlock console'}
+            {loading ? 'Authenticating…' : 'Use bootstrap password'}
           </button>
         </form>
 
         <p className="mt-6 text-center text-[11px] leading-relaxed text-zinc-600">
-          Access is logged. Sessions expire after 12 hours of inactivity.
+          Each Discord owner is recorded separately in the audit log. Sessions expire after 12 hours.
         </p>
       </div>
     </main>

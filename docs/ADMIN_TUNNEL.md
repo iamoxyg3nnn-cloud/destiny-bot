@@ -52,9 +52,11 @@ truth for the bot, the API and the dashboard:
 
 ```bash
 # .env
+DASHBOARD_OWNER_OAUTH_ENABLED=false
 DASHBOARD_ADMIN_PASSWORD=<strong-password-of-at-least-12-characters>
 DASHBOARD_SESSION_SECRET=<32 random bytes>
 API_SECRET_KEY=<32 random bytes>
+NEXTAUTH_URL=http://localhost:3000
 ```
 
 Then build and launch:
@@ -71,7 +73,7 @@ The tunnel prints a public URL:
 https://example-abc-123.trycloudflare.com
 ```
 
-Log in with `DASHBOARD_ADMIN_PASSWORD` from `.env`.
+With `DASHBOARD_OWNER_OAUTH_ENABLED=false`, log in with `DASHBOARD_ADMIN_PASSWORD` from `.env`. Rotating quick tunnels do not support the individual Discord OAuth flow.
 
 Press `Ctrl+C` to tear everything down.
 
@@ -142,15 +144,18 @@ Required repository secrets:
 | Secret | Used by |
 |---|---|
 | `API_SECRET_KEY` | both jobs — shared by the API and the dashboard proxy |
-| `DASHBOARD_ADMIN_PASSWORD` | `admin-tunnel` — console login password |
+| `DASHBOARD_ADMIN_PASSWORD` | `admin-tunnel` — bootstrap password for rotating quick-tunnel mode |
 | `DASHBOARD_SESSION_SECRET` | `admin-tunnel` — HMAC key for session cookies |
+| `BOT_OWNER_IDS` | bot and owner dashboard — authorized Discord owner IDs |
+| `DASHBOARD_OWNER_OAUTH_ENABLED` | set true only for a stable named-tunnel/dashboard hostname |
+| `NEXTAUTH_URL` | stable public HTTPS dashboard origin for OAuth |
+| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | Discord OAuth credentials (client ID is also used by the bot) |
 
 ---
 
 ## Security model
 
-The admin console can ban users, adjust the coin economy, terminate rooms and
-read anonymous chat messages. It is therefore authenticated end to end.
+The admin console can ban users, terminate rooms, review reports and read private anonymous chat messages. It is therefore authenticated end to end.
 
 ### 1. Console session (`dashboard/middleware.ts`)
 
@@ -165,10 +170,21 @@ Every route — including `/api/*` — requires a valid session cookie.
 
 ### 2. Login (`dashboard/app/api/auth/login/route.ts`)
 
-POST `{ "password": "..." }` → compares against `DASHBOARD_ADMIN_PASSWORD`
-using a constant-time comparison → issues the signed cookie.
+Bootstrap mode (`DASHBOARD_OWNER_OAUTH_ENABLED=false`) uses the shared
+`DASHBOARD_ADMIN_PASSWORD` and issues a signed session. Use this mode for the
+rotating quick-tunnel script.
 
-Wrong password → `401`. Missing configuration → `503` (never fails open).
+Owner OAuth mode (`DASHBOARD_OWNER_OAUTH_ENABLED=true`) redirects to Discord,
+validates the OAuth state, fetches the authenticated Discord user, and checks
+that ID against `BOT_OWNER_IDS`. The session includes the verified Discord ID;
+backend audit entries record that ID rather than a generic dashboard actor.
+OAuth requires a stable HTTPS `NEXTAUTH_URL` and the exact callback URL
+`https://your-host/api/auth/callback/discord` registered in Discord Developer
+Portal. Use a named Cloudflare tunnel or a stable domain, not a `trycloudflare`
+quick tunnel.
+
+Wrong password → `401`. Non-owner Discord account → denied. Missing OAuth/session
+configuration → `503` (never fails open).
 
 ### 3. Backend API (`src/api/server.ts`)
 
@@ -184,7 +200,9 @@ the browser bundle.
 | `GET /` (no session) | `307` → public `/login` |
 | `GET /api/overview` (no session) | `401` |
 | `POST /api/auth/login` wrong password | `401` |
-| `POST /api/auth/login` correct password | `200` + signed `HttpOnly` cookie |
+| `POST /api/auth/login` correct bootstrap password | `200` + signed `HttpOnly` cookie |
+| Discord OAuth callback for a configured owner | `302` + owner-bound signed cookie |
+| Discord OAuth callback for a non-owner | Redirect to login with access denied |
 | `GET /` with valid session | `200` |
 | `GET /api/overview` with valid session | `200` + JSON |
 | Request with forged/tampered cookie | `401` |
@@ -200,7 +218,11 @@ The **project-root `.env`** is authoritative:
 
 | Variable | Purpose |
 |---|---|
-| `DASHBOARD_ADMIN_PASSWORD` | Password required to unlock the console |
+| `BOT_OWNER_IDS` | Comma-separated Discord IDs authorized as platform owners |
+| `DASHBOARD_OWNER_OAUTH_ENABLED` | Enables individually authenticated Discord owner sessions on a stable HTTPS host |
+| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | Discord OAuth client credentials |
+| `NEXTAUTH_URL` | Exact public dashboard origin used to build the OAuth callback |
+| `DASHBOARD_ADMIN_PASSWORD` | Bootstrap password when owner OAuth is disabled |
 | `DASHBOARD_SESSION_SECRET` | HMAC key for signing session cookies |
 | `API_SECRET_KEY` | Shared secret between the dashboard proxy and the backend API |
 
@@ -216,9 +238,10 @@ order, so the dashboard and the API always agree on the shared secret whether
 the dashboard is launched by the tunnel script or standalone via
 `npm run dashboard:start`.
 
-> `scripts/setup-env.js` (used by CI) now also emits `DASHBOARD_ADMIN_PASSWORD`
-> and `DASHBOARD_SESSION_SECRET`, so the workflow's `.env` keeps them.
-> Add them as repository secrets so CI runs the console with the same values.
+`scripts/setup-env.js` preserves `BOT_OWNER_IDS`, `DASHBOARD_OWNER_OAUTH_ENABLED`,
+`NEXTAUTH_URL`, and dashboard secrets in the generated `.env`. The scheduled
+runner currently keeps the dashboard tunnel disabled; these values are ready
+for a future stable-hostname owner console deployment.
 
 ---
 
@@ -232,7 +255,8 @@ npm run tunnel:admin -- --port 3100 --api-port 4100
 ```
 
 **`✖ DASHBOARD_ADMIN_PASSWORD is not set`** — create
-`dashboard/.env.local` as shown above.
+`dashboard/.env.local` as shown above, or use a named stable-hostname deployment
+with `DASHBOARD_OWNER_OAUTH_ENABLED=true`.
 
 **Tunnel returns 502** — the dashboard or API failed to start. The launcher
 waits for both to answer HTTP before opening the tunnel and prints the child
@@ -247,8 +271,9 @@ live data.
 ## Operational notes
 
 - Quick tunnels are **ephemeral**: the URL changes every run and dies with the
-  process. They are also unauthenticated at the Cloudflare layer — our
-  application-level auth is the only protection, so keep the password strong.
+  process. They are also unauthenticated at the Cloudflare layer — application
+  authentication is the only protection. The quick-tunnel launcher intentionally
+  rejects OAuth mode because Discord requires a registered, stable callback URL.
 - For a permanent, non-public hostname, use a named tunnel with Cloudflare
   Access and a real domain instead of this script.
 - The tunnel origin is discoverable if the URL leaks, so treat it like a

@@ -12,8 +12,9 @@
  *   node scripts/tunnel-admin.mjs [--port 3000] [--api-port 4000]
  *                                 [--log <file>] [--url-file <file>]
  *
- * Requires DASHBOARD_ADMIN_PASSWORD and DASHBOARD_SESSION_SECRET in the
- * environment (or dashboard/.env.local).
+ * Requires DASHBOARD_SESSION_SECRET and API_SECRET_KEY. The quick tunnel uses
+ * DASHBOARD_ADMIN_PASSWORD; individual Discord OAuth requires a stable named
+ * tunnel and is intentionally rejected by this rotating quick-tunnel launcher.
  *
  * `--log` / `--url-file` are for detached (daemonised) launches, where the
  * tunnel must keep running after the parent shell exits.
@@ -196,7 +197,7 @@ function startDashboard() {
       ...process.env,
       BACKEND_API_URL: `http://127.0.0.1:${API_PORT}`,
       API_SECRET_KEY: process.env.API_SECRET_KEY,
-      DASHBOARD_ADMIN_PASSWORD: process.env.DASHBOARD_ADMIN_PASSWORD,
+      DASHBOARD_ADMIN_PASSWORD: process.env.DASHBOARD_ADMIN_PASSWORD || '',
       DASHBOARD_SESSION_SECRET: process.env.DASHBOARD_SESSION_SECRET,
     },
     stdio: ['ignore', 'inherit', 'inherit'],
@@ -227,7 +228,9 @@ function startTunnel(cloudflared) {
       recordUrl(url);
       console.log(`\n${C.rose}${C.bold}  ▸▸  ADMIN CONSOLE IS LIVE${C.reset}`);
       console.log(`${C.rose}${C.bold}${url}${C.reset}\n`);
-      console.log(`${C.dim}  Password: DASHBOARD_ADMIN_PASSWORD (from .env).${C.reset}`);
+      console.log(OWNER_OAUTH_ENABLED
+        ? `${C.dim}  Access: Discord owners listed in BOT_OWNER_IDS.${C.reset}`
+        : `${C.dim}  Password: DASHBOARD_ADMIN_PASSWORD (from .env).${C.reset}`);
       console.log(`${C.dim}  Press Ctrl+C to tear down the tunnel.${C.reset}\n`);
     }
   };
@@ -252,34 +255,38 @@ if (!cloudflared) {
   process.exit(1);
 }
 
+const OWNER_OAUTH_ENABLED = process.env.DASHBOARD_OWNER_OAUTH_ENABLED === 'true';
+if (OWNER_OAUTH_ENABLED) {
+  console.error('✖ Quick tunnels use rotating hostnames and cannot safely complete Discord OAuth. Use a named Cloudflare tunnel with a stable HTTPS hostname, or disable dashboard OAuth for this quick-tunnel session.');
+  process.exit(1);
+}
 if (!process.env.DASHBOARD_ADMIN_PASSWORD) {
-  console.error(`${C.red}✖ DASHBOARD_ADMIN_PASSWORD is not set.${C.reset}`);
-  console.error(`  Create dashboard/.env.local with:`);
-  console.error(`      DASHBOARD_ADMIN_PASSWORD=<a strong password>`);
-  console.error(`      DASHBOARD_SESSION_SECRET=<a long random string>`);
-  console.error(`      API_SECRET_KEY=<shared with the API server>`);
+  console.error('✖ DASHBOARD_ADMIN_PASSWORD is not set and Discord owner OAuth is disabled.');
+  console.error('  Configure a bootstrap password or use a stable-hostname deployment with dashboard OAuth.');
   process.exit(1);
 }
 
-if (!process.env.DASHBOARD_SESSION_SECRET) {
-  console.error(`${C.red}✖ DASHBOARD_SESSION_SECRET is not set.${C.reset}`);
+if (!process.env.DASHBOARD_SESSION_SECRET || process.env.DASHBOARD_SESSION_SECRET.length < 32) {
+  console.error('✖ DASHBOARD_SESSION_SECRET must contain at least 32 characters.');
   process.exit(1);
 }
-
+if (!process.env.API_SECRET_KEY || process.env.API_SECRET_KEY.length < 32 || process.env.API_SECRET_KEY === 'destiny_internal_secret_32bytes_min_key!') {
+  console.error('✖ API_SECRET_KEY must contain at least 32 characters.');
+  process.exit(1);
+}
 /**
  * Waits for an HTTP endpoint to become reachable.
  *
  * `/api/health` is protected by the `x-api-key` header, so it must be sent —
  * a plain request returns 401 and would look like the API never came up.
  */
-async function waitForHttp(url, { timeoutMs = 45000, apiKey = '' } = {}) {
+async function waitForHttp(url, { timeoutMs = 45000, apiKey = '', expectedStatus = 200, allowDegraded = false } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
       const headers = apiKey ? { 'x-api-key': apiKey } : {};
       const res = await fetch(url, { redirect: 'manual', headers });
-      // Any HTTP response means the server is listening.
-      if (res.status > 0) return true;
+      if (res.status === expectedStatus || (allowDegraded && res.status === 503)) return true;
     } catch {}
     await new Promise((r) => setTimeout(r, 750));
   }
@@ -321,6 +328,7 @@ async function main() {
 
   const apiUp = await waitForHttp(`http://127.0.0.1:${API_PORT}/api/health`, {
     apiKey: process.env.API_SECRET_KEY || '',
+    allowDegraded: true,
   });
   if (!apiUp) {
     console.error(`${C.red}✖ Admin API did not come up on 127.0.0.1:${API_PORT}.${C.reset}`);

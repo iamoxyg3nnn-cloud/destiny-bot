@@ -729,13 +729,13 @@ export class EmbedService {
    * Server Setup & Admin Console Container
    */
   createServerSetupContainer(guild: { id: string; name: string }, settings: GuildSettings | null, currentChannelId?: string): ContainerBuilder {
-    const activeChannel = settings?.matchChannelId || settings?.modLogChannelId;
+    const activeChannel = settings?.matchChannelId;
     const isCurrentSet = currentChannelId && activeChannel === currentChannelId;
 
     const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_set_current')
-        .setLabel(isCurrentSet ? 'Channel Set Here' : 'Set This Channel as Bot Channel')
+        .setLabel(isCurrentSet ? 'Portal Set Here' : 'Set This Channel as Matchmaking Portal')
         .setEmoji(isCurrentSet ? '✅' : '📌')
         .setStyle(isCurrentSet ? ButtonStyle.Success : ButtonStyle.Primary)
         .setDisabled(Boolean(isCurrentSet)),
@@ -753,7 +753,7 @@ export class EmbedService {
 
     const channelSelect = new ChannelSelectMenuBuilder()
       .setCustomId('destiny_select_admin_channel')
-      .setPlaceholder('📂 Or select another channel from this server...')
+      .setPlaceholder('📂 Select the matchmaking portal channel...')
       .setChannelTypes(ChannelType.GuildText)
       .setMinValues(1)
       .setMaxValues(1);
@@ -768,7 +768,7 @@ export class EmbedService {
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_reset')
-        .setLabel('Reset Channel Lock')
+        .setLabel('Clear Portal Channel')
         .setEmoji('🗑️')
         .setStyle(ButtonStyle.Danger)
         .setDisabled(!activeChannel)
@@ -780,14 +780,14 @@ export class EmbedService {
         new TextDisplayBuilder().setContent(
           `# ⚙️ Destiny — Server Setup & Admin Console\n\n` +
           `Welcome to the **Destiny** admin control panel for **${guild.name}**!\n` +
-          `Designate a specific channel for Destiny so admins can interact with the bot and all bot activity stays in that channel.\n\n` +
+          `Choose where members can access the public matchmaking portal. Configure the private moderation log separately with /setup modlog.\n\n` +
           `### 📊 Current Server Configuration\n` +
-          `• 📌 **Designated Bot Channel:** ${activeChannel ? `<#${activeChannel}>` : '`❌ None (Unrestricted)`'}\n` +
-          `• 🛡️ **Verification & Mod Logs:** ${settings?.modLogChannelId ? `<#${settings.modLogChannelId}>` : activeChannel ? `<#${activeChannel}>` : '`❌ None (Default Search)`'}\n` +
-          `• 🌐 **Matching Network:** **Global Cross-Server Active** ✅\n` +
+          `• 📌 **Matchmaking Portal:** ${activeChannel ? `<#${activeChannel}>` : '`❌ Not configured`'}\n` +
+          `• 🛡️ **Private Moderation Log:** ${settings?.modLogChannelId ? `<#${settings.modLogChannelId}>` : '`❌ Not configured — use /setup modlog`'}\n` +
+          `• 🌐 **Cross-Server Matching:** ${settings?.crossServerEnabled === false ? '**Disabled (this server only)**' : '**Enabled**'}\n` +
           `• 🔒 **Privacy Mode:** **100% Anonymous DM Relay** ✨\n\n` +
           `### 🛠️ Quick Actions:\n` +
-          `1. Click **Set This Channel as Bot Channel** (or pick from dropdown) to lock all bot interactions here.\n` +
+          `1. Set a matchmaking portal channel (or pick one from the dropdown).\n` +
           `2. Click **Post Public Lobby** to send the interactive matchmaking card for members.\n` +
           `3. Click **Post Verification Hub** to post the instant role sync & voice verification card!`
         )
@@ -862,9 +862,8 @@ export class EmbedService {
         new TextDisplayBuilder().setContent(
           `# ✅ Destiny Channel Configured!\n\n` +
           `Destiny is now officially locked to <#${channelId}> in **${guildName}**!\n\n` +
-          `• 📌 **Admin Commands & Interactions:** Only in <#${channelId}>\n` +
-          `• 🛡️ **Verification Alerts & Logs:** Sent directly here\n` +
-          `• 🧹 **Clean Server Policy:** Commands invoked in other channels will be redirected here\n\n` +
+          `• 📌 **Public matchmaking portal:** <#${channelId}>\n` +
+          `• 🛡️ **Private moderation alerts:** Configure separately with /setup modlog\n\n` +
           `*Admins can return to this setup anytime by typing \`setup\` or clicking **Setup Menu** below.*`
         )
       )
@@ -893,9 +892,9 @@ export class EmbedService {
       .setAccentColor(COLORS.PRIMARY)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🔄 Destiny Channel Lock Removed\n\n` +
-          `The designated channel lock for **${guildName}** has been cleared.\n` +
-          `Admins can re-lock Destiny to a channel anytime using \`setup\` or the button below.`
+          `# 🔄 Matchmaking Portal Channel Cleared\n\n` +
+          `The matchmaking portal channel for **${guildName}** has been cleared. The private moderation log setting was not changed.\n` +
+          `Admins can configure a new portal channel anytime using /setup portal or the button below.`
         )
       )
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
