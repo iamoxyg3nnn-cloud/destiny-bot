@@ -9,7 +9,6 @@ import {
   MessagesSquare, 
   ShieldAlert, 
   BadgeCheck, 
-  Coins, 
   Settings, 
   FileText,
   Activity,
@@ -40,12 +39,6 @@ export default function RootLayout({
       items: [
         { name: 'Moderation Desk', href: '/moderation', icon: ShieldAlert },
         { name: 'Gender Verification', href: '/verification', icon: BadgeCheck },
-      ],
-    },
-    {
-      label: 'Economy',
-      items: [
-        { name: 'Destiny Coins', href: '/economy', icon: Coins },
       ],
     },
     {
