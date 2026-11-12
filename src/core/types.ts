@@ -23,6 +23,7 @@ export interface UserProfile {
   activeRoomId?: string | null;
   isBanned: boolean;
   banReason?: string;
+  banExpiresAt?: string | null;
   reputationScore: number;
   bio?: string;
   matchIntent?: string;
