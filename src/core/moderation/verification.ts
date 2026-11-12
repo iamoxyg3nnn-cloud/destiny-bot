@@ -55,14 +55,12 @@ export class VerificationService {
         return { success: false as const, message: 'This user has no pending verification request to review.' };
       }
 
-      await db.createOrUpdateUser({
+      const updatedUser = await db.createOrUpdateUser({
         discordUserId: user.discordUserId,
         genderVerified: approved,
         genderVerificationStatus: approved ? 'verified' : 'rejected',
         genderVerificationEvidence: null,
       });
-
-      const updatedUser = await db.getUserById(userId, true);
       let auditWarning = false;
       try {
         await db.logAdminAction(
