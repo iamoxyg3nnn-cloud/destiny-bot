@@ -84,7 +84,7 @@ export class MessageCommandHandler {
    * Complete In-DM Message & Command Processing (Components V2)
    */
   private async handleDMMessage(client: Client, message: Message, rawContent: string): Promise<boolean> {
-    if (/^\\s*(?:destiny\\s+)?(?:wallet|coins|daily|shop|wardrobe)\\s*$/i.test(rawContent)) {
+    if (/^\s*(?:destiny\s+)?(?:wallet|coins|daily|shop|wardrobe)\s*$/i.test(rawContent)) {
       await message.reply({
         content: 'Destiny is now focused on anonymous conversations. Type `start` to find a match or `profile` to manage your anonymous profile.',
       }).catch(() => {});
