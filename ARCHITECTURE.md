@@ -22,7 +22,7 @@ Destiny is a focused, distributed anonymous-chat system for matchmaking compatib
       |                                  |                                  |
 +-----v---------------+        +---------v-----------+            +---------v-----------+
 | Matchmaking Worker  |        | Notification Worker |            | Moderation & Desk   |
-| (Multi-criteria,    |        | (7:30 PM IST Cron,  |            | (Triage, Badges,    |
+| (Multi-criteria,    |        | (7:30 PM IST Cron,  |            | (Triage, Verification, |
 |  Queue Pairing)     |        |  Quiet Hours)       |            |  Global Blocks)     |
 +---------+-----------+        +---------+-----------+            +---------+-----------+
           |                              |                                  |
