@@ -48,8 +48,15 @@ BEGIN
     ELSIF p_action = 'temp_ban' THEN
         UPDATE public.users
            SET is_banned = TRUE,
-               ban_reason = 'Temporarily banned via safety report: ' || v_category,
-               ban_expires_at = NOW() + INTERVAL '24 hours',
+               ban_reason = CASE
+                 WHEN is_banned AND ban_expires_at IS NULL THEN ban_reason
+                 ELSE 'Temporarily banned via safety report: ' || v_category
+               END,
+               ban_expires_at = CASE
+                 WHEN is_banned AND ban_expires_at IS NULL THEN NULL
+                 WHEN is_banned AND ban_expires_at > NOW() THEN ban_expires_at + INTERVAL '24 hours'
+                 ELSE NOW() + INTERVAL '24 hours'
+               END,
                updated_at = NOW()
          WHERE id = v_reported_id;
 
