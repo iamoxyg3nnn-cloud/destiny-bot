@@ -39,7 +39,7 @@ export const COLORS = {
   PRIMARY: BRAND.MAGENTA,
   /** Secondary brand accent. */
   DESTINY_PURPLE: BRAND.MAGENTA,
-  /** Warm highlight for rewards, coins and streaks. */
+  /** Warm highlight for important states and attention. */
   GOLD: BRAND.ROSE,
   /** Positive outcomes (profile saved, reveal complete, verified). */
   SUCCESS: BRAND.MAGENTA,
@@ -135,11 +135,6 @@ export class EmbedService {
         .setLabel(user?.genderVerified ? 'Verified' : 'Get Verified')
         .setEmoji('🛡️')
         .setStyle(user?.genderVerified ? ButtonStyle.Success : ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_icebreaker')
-        .setLabel('Icebreaker')
-        .setEmoji('💬')
-        .setStyle(ButtonStyle.Secondary)
     );
 
     container.addActionRowComponents(mainRow);
@@ -291,57 +286,10 @@ export class EmbedService {
       .addActionRowComponents(row);
   }
 
-    createIcebreakerContainer(prompt: string, inRoom = false): ContainerBuilder {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_icebreaker')
-        .setLabel('Another Prompt')
-        .setEmoji('💬')
-        .setStyle(ButtonStyle.Primary)
-    );
-
-    if (inRoom) {
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId('btn_reveal_consent')
-          .setLabel('Request Reveal')
-          .setEmoji('🔒')
-          .setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId('destiny_btn_leave')
-          .setLabel('Leave Chat')
-          .setEmoji('🚪')
-          .setStyle(ButtonStyle.Danger)
-      );
-    } else {
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId('destiny_btn_start')
-          .setLabel('Find a Match')
-          .setEmoji('✨')
-          .setStyle(ButtonStyle.Success)
-      );
-    }
-
-    return new ContainerBuilder()
-      .setAccentColor(COLORS.DESTINY_PURPLE)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `# 💬 Conversation Spark\n\n` +
-          `> **"${prompt}"**\n\n` +
-          (inRoom
-            ? `*Share your answer in chat, or request a mutual reveal when you both feel ready.*`
-            : `*Start a match to share this prompt with someone new.*`)
-        )
-      )
-      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-      .addActionRowComponents(row);
-  }
-
   /**
    * Connection Established Container with buttons inside
    */
-  createMatchFoundContainer(room: RoomSession, isUser1: boolean, iceBreaker: string, sharedInterests: string[] = []): ContainerBuilder {
+  createMatchFoundContainer(room: RoomSession, isUser1: boolean, sharedInterests: string[] = []): ContainerBuilder {
     const myPersona = isUser1 ? room.user1Pseudonym : room.user2Pseudonym;
     const myAvatar = isUser1 ? room.user1Avatar : room.user2Avatar;
     const partnerPersona = isUser1 ? room.user2Pseudonym : room.user1Pseudonym;
@@ -376,10 +324,9 @@ export class EmbedService {
           `# ✨ Destiny Connection Established! [${room.roomCode}]\n\n` +
           `You have been matched anonymously with **${partnerAvatar} ${partnerPersona}**!\n\n` +
           `• **Your Persona:** ${myAvatar} **${myPersona}**\n` +
-          `• **🌱 Connection Tier:** Strangers (Tier 1)\n` +
           `• **🔒 Privacy Notice:** Discord usernames, IDs, and avatars are hidden.\n` +
           `• **🎯 Shared Interests:** ${interestsStr}\n\n` +
-          `**💬 Conversation Starter:**\n> *${iceBreaker}*\n\n` +
+
           `*All messages typed right here in DM will be sanitized and forwarded in real-time.*`
         )
       )
@@ -1268,7 +1215,7 @@ export class EmbedService {
           `# 🎉 Mutual Identity Revealed!\n\n` +
           `You and your partner both agreed to reveal your real profiles!\n\n` +
           `${detailsStr}\n\n` +
-          `🎁 **+100 Connection XP Awarded!** You can continue chatting right here in DM or add each other directly on Discord.`
+          `You can continue chatting right here in DM or add each other directly on Discord.`
         )
       )
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -1302,7 +1249,7 @@ export class EmbedService {
   // LEGACY EMBEDS (Preserved for backward compatibility & testing)
   // =========================================================================
 
-  createMatchFoundEmbed(room: RoomSession, isUser1: boolean, iceBreaker: string, sharedInterests: string[] = []): EmbedBuilder {
+  createMatchFoundEmbed(room: RoomSession, isUser1: boolean, sharedInterests: string[] = []): EmbedBuilder {
     const partnerPersona = isUser1 ? room.user2Pseudonym : room.user1Pseudonym;
     const partnerAvatar = isUser1 ? room.user2Avatar : room.user1Avatar;
     const myPersona = isUser1 ? room.user1Pseudonym : room.user2Pseudonym;
