@@ -5,10 +5,8 @@ import {
   UserProfile, 
   RoomSession, 
   ChatMessage, 
-  CoinTransaction, 
   ReportItem, 
   UserBlock, 
-  ShopItem, 
   NotificationSettings, 
   AdminAuditLog,
   GuildSettings
@@ -31,16 +29,12 @@ export class DatabaseService {
   public mockUsers: Map<string, UserProfile> = new Map();
   public mockRooms: Map<string, RoomSession> = new Map();
   public mockMessages: ChatMessage[] = [];
-  public mockTransactions: CoinTransaction[] = [];
   public mockReports: Map<string, ReportItem> = new Map();
   public mockBlocks: UserBlock[] = [];
-  public mockShopItems: Map<string, ShopItem> = new Map();
-  public mockInventory: Map<string, string[]> = new Map(); // userId -> itemId[]
   public mockAuditLogs: AdminAuditLog[] = [];
   public mockNotifications: Map<string, NotificationSettings> = new Map();
 
   constructor() {
-    this.seedMockShopItems();
     if (
       config.SUPABASE_URL && 
       config.SUPABASE_SERVICE_ROLE_KEY && 
@@ -68,25 +62,6 @@ export class DatabaseService {
     this.userCache.delete(userId);
     for (const [discordId, cached] of this.discordUserCache.entries()) {
       if (cached.user.id === userId) this.discordUserCache.delete(discordId);
-    }
-  }
-
-  private seedMockShopItems(): void {
-    const defaultItems: ShopItem[] = [
-      { id: 'badge_verified_vip', name: 'Destiny VIP Badge', description: 'Displays an exclusive VIP icon on your anonymous profile banner.', category: 'badge', price: 500, icon: '👑', metadata: { color: '#FFD700' }, isActive: true },
-      { id: 'badge_star_wanderer', name: 'Star Wanderer', description: 'Mark of an explorer across 50+ anonymous conversations.', category: 'badge', price: 250, icon: '⭐', metadata: { color: '#7289DA' }, isActive: true },
-      { id: 'badge_mystic_aura', name: 'Mystic Aura', description: 'Glowing celestial aura badge for your profile card.', category: 'badge', price: 400, icon: '🔮', metadata: { color: '#9B59B6' }, isActive: true },
-      { id: 'badge_streak_titan', name: '7D Streak Master Insignia', description: 'Displays verified 7-day streak insignia on your profile card.', category: 'badge', price: 300, icon: '🔥', metadata: { badge: '7D STREAK' }, isActive: true },
-      { id: 'badge_titan_1k', name: 'Titan Supporter Insignia', description: 'Exclusive commemorative rack insignia for Destiny Titans.', category: 'badge', price: 500, icon: '⚡', metadata: { badge: 'TITAN 1K' }, isActive: true },
-      { id: 'title_cosmic_friend', name: 'Title: Cosmic Soul', description: 'Unlocks the title Cosmic Soul next to your anonymous alias.', category: 'title', price: 300, icon: '🌌', metadata: { title: 'Cosmic Soul' }, isActive: true },
-      { id: 'title_night_owl', name: 'Title: Night Owl', description: 'For late-night conversationalists under the midnight sky.', category: 'title', price: 200, icon: '🦉', metadata: { title: 'Night Owl' }, isActive: true },
-      { id: 'card_instant_reveal', name: 'Identity Reveal Token', description: 'Allows you to initiate a mutual reveal sequence without coin cost.', category: 'reveal_card', price: 150, icon: '📜', metadata: { consumable: true }, isActive: true },
-      { id: 'theme_cyber_damask', name: 'Cyber Damask Skin', description: 'High-contrast obsidian and damask steel pattern card skin.', category: 'theme', price: 450, icon: '🛡️', metadata: { theme: 'cyber_damask' }, isActive: true },
-      { id: 'theme_frost_glaze', name: 'Frost Glaze Skin', description: 'Frosted titanium minimalist aesthetic with razor hairlines.', category: 'theme', price: 550, icon: '❄️', metadata: { theme: 'frost_glaze' }, isActive: true },
-      { id: 'theme_holographic_plat', name: 'Holographic Platinum', description: 'Prestige platinum finish with iridescent micro-reflections.', category: 'theme', price: 800, icon: '💎', metadata: { theme: 'holographic_plat' }, isActive: true },
-    ];
-    for (const item of defaultItems) {
-      this.mockShopItems.set(item.id, item);
     }
   }
 
@@ -294,17 +269,12 @@ export class DatabaseService {
         ['preferredGender', 'preferred_gender'],
         ['minAgePref', 'min_age_pref'],
         ['maxAgePref', 'max_age_pref'],
-        ['streakCount', 'streak_count'],
-        ['lastDailyClaim', 'last_daily_claim'],
-        ['connectionTier', 'connection_tier'],
         ['activeRoomId', 'active_room_id'],
         ['isBanned', 'is_banned'],
         ['banReason', 'ban_reason'],
         ['reputationScore', 'reputation_score'],
         ['bio', 'bio'],
         ['matchIntent', 'match_intent'],
-        ['cardTheme', 'card_theme'],
-        ['equippedBadges', 'equipped_badges'],
       ];
       for (const [field, column] of writableFields) {
         if (Object.prototype.hasOwnProperty.call(user, field) && user[field] !== undefined) {
@@ -340,34 +310,17 @@ export class DatabaseService {
       preferredGender: user.preferredGender || ['any'],
       minAgePref: user.minAgePref || 18,
       maxAgePref: user.maxAgePref || 99,
-      destinyCoins: 100,
-      streakCount: 0,
-      connectionTier: 'Strangers',
       activeRoomId: null,
       isBanned: false,
       reputationScore: 100,
       bio: user.bio,
       matchIntent: user.matchIntent,
-      cardTheme: user.cardTheme,
-      equippedBadges: user.equippedBadges,
       createdAt: now,
       updatedAt: now,
     };
 
     if (this.isMockMode || !this.client) {
       this.mockUsers.set(newUser.id, newUser);
-      if (newUser.destinyCoins > 0) {
-        this.mockTransactions.push({
-          id: uuidv4(),
-          userId: newUser.id,
-          amount: newUser.destinyCoins,
-          balanceAfter: newUser.destinyCoins,
-          type: 'welcome_bonus',
-          referenceId: `welcome:${newUser.id}`,
-          metadata: { source: 'signup' },
-          createdAt: now,
-        });
-      }
       return newUser;
     }
 
@@ -387,15 +340,10 @@ export class DatabaseService {
         preferred_gender: newUser.preferredGender,
         min_age_pref: newUser.minAgePref,
         max_age_pref: newUser.maxAgePref,
-        destiny_coins: newUser.destinyCoins,
-        streak_count: newUser.streakCount,
-        connection_tier: newUser.connectionTier,
         reputation_score: newUser.reputationScore,
         last_active_at: now,
         bio: newUser.bio,
         match_intent: newUser.matchIntent,
-        card_theme: newUser.cardTheme,
-        equipped_badges: newUser.equippedBadges,
       })
       .select()
       .single();
@@ -498,252 +446,6 @@ export class DatabaseService {
     return result;
   }
 
-
-  // ---------------- ATOMIC COIN TRANSACTIONS ----------------
-  async executeCoinTransaction(
-    userId: string,
-    amount: number,
-    type: CoinTransaction['type'],
-    referenceId: string,
-    metadata: Record<string, any> = {}
-  ): Promise<{ success: boolean; newBalance: number; error?: string; txId?: string }> {
-    if (!Number.isSafeInteger(amount) || amount === 0 || !referenceId || referenceId.trim().length === 0 || referenceId.length > 128) {
-      return { success: false, newBalance: 0, error: 'INVALID_TRANSACTION' };
-    }
-
-    if (this.isMockMode || !this.client) {
-      // Replays are idempotent only when every transaction identity field matches.
-      const existingTx = this.mockTransactions.find((t) => t.referenceId === referenceId);
-      if (existingTx) {
-        const sameOperation = existingTx.userId === userId && existingTx.amount === amount && existingTx.type === type;
-        return sameOperation
-          ? { success: true, newBalance: existingTx.balanceAfter, txId: existingTx.id }
-          : { success: false, newBalance: 0, error: 'IDEMPOTENCY_KEY_REUSED' };
-      }
-
-      const user = this.mockUsers.get(userId);
-      if (!user) {
-        return { success: false, newBalance: 0, error: 'USER_NOT_FOUND' };
-      }
-
-      const newBalance = user.destinyCoins + amount;
-      if (newBalance < 0) {
-        return { success: false, newBalance: user.destinyCoins, error: 'INSUFFICIENT_FUNDS' };
-      }
-
-      user.destinyCoins = newBalance;
-      user.updatedAt = new Date().toISOString();
-      const txId = uuidv4();
-      const tx: CoinTransaction = {
-        id: txId,
-        userId,
-        amount,
-        balanceAfter: newBalance,
-        type,
-        referenceId,
-        metadata,
-        createdAt: new Date().toISOString(),
-      };
-      this.mockTransactions.push(tx);
-      this.invalidateUserCaches(userId);
-      return { success: true, newBalance, txId };
-    }
-
-    // Call Supabase Stored Procedure
-    const { data, error } = await this.client.rpc('execute_coin_transaction', {
-      p_user_id: userId,
-      p_amount: amount,
-      p_type: type,
-      p_reference_id: referenceId,
-      p_metadata: metadata,
-    });
-
-    if (error || !data || data.length === 0) {
-      return { success: false, newBalance: 0, error: error?.message || 'TRANSACTION_FAILED' };
-    }
-
-    const res = data[0];
-    if (res.success) this.invalidateUserCaches(userId);
-    return {
-      success: res.success,
-      newBalance: Number(res.new_balance),
-      error: res.error_message,
-      txId: res.transaction_id,
-    };
-  }
-
-  /**
-   * Atomically claim the daily reward, update its streak/cooldown and write the
-   * coin ledger entry. The DB RPC serializes claims by user across processes.
-   */
-  async claimDailyReward(
-    userId: string,
-    referenceId: string
-  ): Promise<{
-    success: boolean;
-    rewardDc: number;
-    newStreak: number;
-    newBalance: number;
-    nextClaimAt?: string;
-    error?: string;
-  }> {
-    if (!userId || !referenceId || referenceId.trim().length === 0 || referenceId.length > 128) {
-      return { success: false, rewardDc: 0, newStreak: 0, newBalance: 0, error: 'INVALID_CLAIM' };
-    }
-
-    if (this.isMockMode || !this.client) {
-      const user = this.mockUsers.get(userId);
-      if (!user) {
-        return { success: false, rewardDc: 0, newStreak: 0, newBalance: 0, error: 'USER_NOT_FOUND' };
-      }
-
-      const existing = this.mockTransactions.find((tx) => tx.referenceId === referenceId);
-      if (existing) {
-        if (existing.userId !== userId || existing.type !== 'daily_reward' || existing.amount <= 0) {
-          return { success: false, rewardDc: 0, newStreak: user.streakCount, newBalance: user.destinyCoins, error: 'IDEMPOTENCY_KEY_REUSED' };
-        }
-        const claimedAt = new Date(existing.createdAt);
-        const lastClaim = user.lastDailyClaim ? new Date(user.lastDailyClaim) : null;
-        if (!lastClaim || lastClaim.getTime() < claimedAt.getTime()) {
-          user.lastDailyClaim = claimedAt.toISOString();
-          user.streakCount = Number(existing.metadata?.streak) || 1;
-        }
-        return {
-          success: true,
-          rewardDc: existing.amount,
-          newStreak: user.streakCount,
-          newBalance: user.destinyCoins,
-          nextClaimAt: new Date(new Date(user.lastDailyClaim || claimedAt.toISOString()).getTime() + 24 * 60 * 60 * 1000).toISOString(),
-        };
-      }
-
-      const now = new Date();
-      const lastClaim = user.lastDailyClaim ? new Date(user.lastDailyClaim) : null;
-      if (lastClaim && Number.isFinite(lastClaim.getTime()) && now.getTime() < lastClaim.getTime() + 24 * 60 * 60 * 1000) {
-        const nextClaimAt = new Date(lastClaim.getTime() + 24 * 60 * 60 * 1000).toISOString();
-        return { success: false, rewardDc: 0, newStreak: user.streakCount, newBalance: user.destinyCoins, nextClaimAt, error: 'ALREADY_CLAIMED' };
-      }
-
-      const previousClaimMs = lastClaim?.getTime();
-      const newStreak = !lastClaim || previousClaimMs === undefined || !Number.isFinite(previousClaimMs)
-        ? 1
-        : now.getTime() <= previousClaimMs + 48 * 60 * 60 * 1000
-          ? user.streakCount + 1
-          : 1;
-      const rewardDc = 50 + Math.min(Math.max((newStreak - 1) * 10, 0), 100);
-      const transaction = await this.executeCoinTransaction(
-        userId,
-        rewardDc,
-        'daily_reward',
-        referenceId,
-        { streak: newStreak }
-      );
-      if (!transaction.success) {
-        return { success: false, rewardDc: 0, newStreak, newBalance: transaction.newBalance, error: transaction.error || 'TRANSACTION_FAILED' };
-      }
-
-      user.streakCount = newStreak;
-      user.lastDailyClaim = now.toISOString();
-      user.updatedAt = now.toISOString();
-      this.invalidateUserCaches(userId);
-      return {
-        success: true,
-        rewardDc,
-        newStreak,
-        newBalance: transaction.newBalance,
-        nextClaimAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-      };
-    }
-
-    const { data, error } = await this.client.rpc('claim_daily_reward', {
-      p_user_id: userId,
-      p_reference_id: referenceId,
-    });
-    if (error || !data || data.length === 0) {
-      return { success: false, rewardDc: 0, newStreak: 0, newBalance: 0, error: error?.message || 'CLAIM_FAILED' };
-    }
-
-    const result = Array.isArray(data) ? data[0] : data;
-    if (result.success) this.invalidateUserCaches(userId);
-    return {
-      success: Boolean(result.success),
-      rewardDc: Number(result.reward_dc || 0),
-      newStreak: Number(result.new_streak || 0),
-      newBalance: Number(result.new_balance || 0),
-      nextClaimAt: result.next_claim_at ? new Date(result.next_claim_at).toISOString() : undefined,
-      error: result.error_message || undefined,
-    };
-  }
-
-  /**
-   * Atomically transfers Destiny Coins between two users. The production
-   * implementation is a single database RPC; the mock implementation keeps
-   * both ledger entries and balances in one synchronous critical section.
-   */
-  async transferCoins(
-    fromUserId: string,
-    toUserId: string,
-    amount: number,
-    referenceId: string
-  ): Promise<{ success: boolean; error?: string }> {
-    if (fromUserId === toUserId) return { success: false, error: 'CANNOT_TRANSFER_TO_SELF' };
-    if (!Number.isSafeInteger(amount) || amount <= 0) return { success: false, error: 'INVALID_AMOUNT' };
-    if (!referenceId || referenceId.trim().length === 0 || referenceId.length > 115) {
-      return { success: false, error: 'INVALID_REFERENCE_ID' };
-    }
-
-    const debitRef = `transfer:out:${referenceId}`;
-    const creditRef = `transfer:in:${referenceId}`;
-
-    if (this.isMockMode || !this.client) {
-      const existingDebit = this.mockTransactions.find((tx) => tx.referenceId === debitRef);
-      const existingCredit = this.mockTransactions.find((tx) => tx.referenceId === creditRef);
-      if (existingDebit || existingCredit) {
-        const validReplay = !!existingDebit && !!existingCredit &&
-          existingDebit.userId === fromUserId && existingDebit.amount === -amount && existingDebit.type === 'transfer_sent' &&
-          existingCredit.userId === toUserId && existingCredit.amount === amount && existingCredit.type === 'transfer_received';
-        return validReplay ? { success: true } : { success: false, error: 'IDEMPOTENCY_KEY_REUSED' };
-      }
-
-      const from = this.mockUsers.get(fromUserId);
-      const to = this.mockUsers.get(toUserId);
-      if (!from || !to) return { success: false, error: 'USER_NOT_FOUND' };
-      if (from.destinyCoins < amount) return { success: false, error: 'INSUFFICIENT_FUNDS' };
-      if (!Number.isSafeInteger(to.destinyCoins + amount)) return { success: false, error: 'BALANCE_LIMIT_EXCEEDED' };
-
-      const now = new Date().toISOString();
-      from.destinyCoins -= amount;
-      from.updatedAt = now;
-      to.destinyCoins += amount;
-      to.updatedAt = now;
-      this.mockTransactions.push(
-        { id: uuidv4(), userId: fromUserId, amount: -amount, balanceAfter: from.destinyCoins, type: 'transfer_sent', referenceId: debitRef, metadata: { toUserId }, createdAt: now },
-        { id: uuidv4(), userId: toUserId, amount, balanceAfter: to.destinyCoins, type: 'transfer_received', referenceId: creditRef, metadata: { fromUserId }, createdAt: now },
-      );
-      this.userCache.delete(fromUserId);
-      this.userCache.delete(toUserId);
-      return { success: true };
-    }
-
-    const { data, error } = await this.client.rpc('transfer_coins', {
-      p_from_user_id: fromUserId,
-      p_to_user_id: toUserId,
-      p_amount: amount,
-      p_reference_id: referenceId,
-    });
-    if (error || !data || data.length === 0) {
-      return { success: false, error: error?.message || 'TRANSFER_FAILED' };
-    }
-    const success = Boolean(data[0].success);
-    if (success) {
-      this.userCache.delete(fromUserId);
-      this.userCache.delete(toUserId);
-      for (const [discordId, cached] of this.discordUserCache.entries()) {
-        if (cached.user.id === fromUserId || cached.user.id === toUserId) this.discordUserCache.delete(discordId);
-      }
-    }
-    return { success, error: data[0].error_message || undefined };
-  }
 
   // ---------------- ROOM OPERATIONS ----------------
   async createRoom(room: Omit<RoomSession, 'id' | 'createdAt' | 'updatedAt'>): Promise<RoomSession> {
@@ -1091,34 +793,6 @@ export class DatabaseService {
     return Boolean(data);
   }
 
-  async updateRoomXP(roomId: string, addedXp: number): Promise<{ newXp: number; level: RoomSession['connectionLevel'] }> {
-    if (!Number.isSafeInteger(addedXp) || addedXp <= 0 || addedXp > 100) {
-      throw new Error('Room XP increment must be an integer between 1 and 100.');
-    }
-
-    if (this.isMockMode || !this.client) {
-      const room = this.mockRooms.get(roomId);
-      if (!room || room.status !== 'active') return { newXp: 0, level: 'Strangers' };
-      room.connectionXp += addedXp;
-      if (room.connectionXp >= 1201) room.connectionLevel = 'Destiny';
-      else if (room.connectionXp >= 701) room.connectionLevel = 'Trusted Connection';
-      else if (room.connectionXp >= 351) room.connectionLevel = 'Connection';
-      else if (room.connectionXp >= 151) room.connectionLevel = 'Familiar';
-      else if (room.connectionXp >= 51) room.connectionLevel = 'Acquaintances';
-      room.updatedAt = new Date().toISOString();
-      return { newXp: room.connectionXp, level: room.connectionLevel };
-    }
-
-    const { data, error } = await this.client.rpc('add_room_xp', {
-      p_room_id: roomId,
-      p_added_xp: addedXp,
-    });
-    if (error) throw new Error(`Failed to update room XP: ${error.message}`);
-    const row = Array.isArray(data) ? data[0] : data;
-    if (!row) return { newXp: 0, level: 'Strangers' };
-    return { newXp: row.new_xp, level: row.level as RoomSession['connectionLevel'] };
-  }
-
   // ---------------- MESSAGES & AUDIT ----------------
   async saveMessage(msg: Omit<ChatMessage, 'id' | 'createdAt'>): Promise<ChatMessage> {
     const id = uuidv4();
@@ -1428,134 +1102,6 @@ export class DatabaseService {
     }));
   }
 
-  async getRecentTransactions(limit: number = 50): Promise<CoinTransaction[]> {
-    if (this.isMockMode || !this.client) {
-      return [...this.mockTransactions].reverse().slice(0, limit);
-    }
-    const { data, error } = await this.client
-      .from('coin_transactions')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    if (error) throw new Error(`Failed to load recent transactions: ${error.message}`);
-    return (data || []).map((t: any) => ({
-      id: t.id,
-      userId: t.user_id,
-      amount: Number(t.amount),
-      balanceAfter: Number(t.balance_after),
-      type: t.type,
-      referenceId: t.reference_id,
-      metadata: t.metadata || {},
-      createdAt: t.created_at,
-    }));
-  }
-
-  async getUserTransactions(userId: string, limit: number = 20): Promise<CoinTransaction[]> {
-    if (this.isMockMode || !this.client) {
-      return this.mockTransactions
-        .filter((t) => t.userId === userId)
-        .reverse()
-        .slice(0, limit);
-    }
-    const { data, error } = await this.client
-      .from('coin_transactions')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    if (error) throw new Error(`Failed to load user transactions: ${error.message}`);
-    return (data || []).map((t: any) => ({
-      id: t.id,
-      userId: t.user_id,
-      amount: Number(t.amount),
-      balanceAfter: Number(t.balance_after),
-      type: t.type,
-      referenceId: t.reference_id,
-      metadata: t.metadata || {},
-      createdAt: t.created_at,
-    }));
-  }
-
-  async getShopItems(): Promise<ShopItem[]> {
-    if (this.isMockMode || !this.client) {
-      return Array.from(this.mockShopItems.values());
-    }
-    const { data, error } = await this.client
-      .from('shop_items')
-      .select('*')
-      .order('price', { ascending: true });
-    if (error) throw new Error(`Failed to load shop catalog: ${error.message}`);
-    return (data || []).map((item: any) => ({
-      id: item.id,
-      name: item.name,
-      description: item.description,
-      category: item.category,
-      price: Number(item.price),
-      icon: item.icon,
-      metadata: item.metadata || {},
-      isActive: item.is_active,
-    }));
-  }
-
-  async getUserInventory(userId: string): Promise<string[]> {
-    if (this.isMockMode || !this.client) {
-      return [...(this.mockInventory.get(userId) || [])];
-    }
-    const { data, error } = await this.client
-      .from('user_inventory')
-      .select('item_id, quantity')
-      .eq('user_id', userId);
-    if (error) throw new Error(`Failed to load user inventory: ${error.message}`);
-    // Callers only need ownership checks, not one array entry per consumable.
-    // Expanding a corrupt/large quantity into repeated strings can allocate
-    // millions of entries, and retaining the production result in mockInventory
-    // creates an unbounded process-local cache with no reader.
-    return Array.from(new Set((data || []).map((row: any) => row.item_id)));
-  }
-
-  async addToUserInventory(userId: string, itemId: string, allowDuplicate = false): Promise<boolean> {
-    if (this.isMockMode || !this.client) {
-      const inventory = this.mockInventory.get(userId) || [];
-      if (!allowDuplicate && inventory.includes(itemId)) return false;
-      inventory.push(itemId);
-      this.mockInventory.set(userId, inventory);
-      return true;
-    }
-
-    if (allowDuplicate) {
-      const { data: existing, error: lookupError } = await this.client
-        .from('user_inventory')
-        .select('id, quantity')
-        .eq('user_id', userId)
-        .eq('item_id', itemId)
-        .maybeSingle();
-      if (lookupError) return false;
-      if (existing) {
-        const { error: updateError } = await this.client
-          .from('user_inventory')
-          .update({ quantity: Number(existing.quantity || 1) + 1 })
-          .eq('id', existing.id);
-        if (updateError) return false;
-      } else {
-        const { error: insertError } = await this.client.from('user_inventory').insert({
-          user_id: userId,
-          item_id: itemId,
-          quantity: 1,
-        });
-        if (insertError) return false;
-      }
-    } else {
-      const { error } = await this.client.from('user_inventory').insert({
-        user_id: userId,
-        item_id: itemId,
-        quantity: 1,
-      });
-      if (error) return false;
-    }
-
-    return true;
-  }
-
   async getMessageCountLast24h(): Promise<number> {
     if (this.isMockMode || !this.client) {
       return this.mockMessages.length;
@@ -1567,34 +1113,6 @@ export class DatabaseService {
       .gte('created_at', since);
     if (error) throw new Error(`Failed to count recent messages: ${error.message}`);
     return count || 0;
-  }
-
-  /**
-   * Total number of registered users.
-   * Uses a HEAD count so no rows are transferred.
-   */
-  async getEconomySummary(): Promise<{ totalUsers: number; activeUsers: number; totalCoins: number }> {
-    if (this.isMockMode || !this.client) {
-      const users = Array.from(this.mockUsers.values());
-      const since = Date.now() - 24 * 60 * 60 * 1000;
-      return {
-        totalUsers: users.length,
-        activeUsers: users.filter((user: any) => {
-          const lastActive = Date.parse(user.lastActiveAt || user.updatedAt || user.createdAt || '');
-          return Number.isFinite(lastActive) && lastActive >= since;
-        }).length,
-        totalCoins: users.reduce((sum, user) => sum + (Number(user.destinyCoins) || 0), 0),
-      };
-    }
-
-    const { data, error } = await this.client.rpc('get_economy_summary');
-    if (error) throw new Error(`Failed to load economy summary: ${error.message}`);
-    const row = Array.isArray(data) ? data[0] : data;
-    return {
-      totalUsers: Number(row?.total_users || 0),
-      activeUsers: Number(row?.active_users || 0),
-      totalCoins: Number(row?.total_coins || 0),
-    };
   }
 
   async getHourlyActivity(hours = 24): Promise<Array<{ hour: string; messages: number; matches: number }>> {
@@ -1773,18 +1291,15 @@ export class DatabaseService {
       preferredGender: row.preferred_gender || ['any'],
       minAgePref: Number(row.min_age_pref || 18),
       maxAgePref: Number(row.max_age_pref || 99),
-      destinyCoins: Number(row.destiny_coins || 0),
-      streakCount: Number(row.streak_count || 0),
-      lastDailyClaim: row.last_daily_claim,
-      connectionTier: row.connection_tier,
+      destinyCoins: 0,
+      streakCount: 0,
+      connectionTier: 'Strangers',
       activeRoomId: row.active_room_id,
       isBanned: Boolean(row.is_banned),
       banReason: row.ban_reason,
       reputationScore: Number(row.reputation_score || 100),
       bio: row.bio ?? undefined,
-      equippedBadges: row.equipped_badges || [],
       matchIntent: row.match_intent ?? undefined,
-      cardTheme: row.card_theme || 'obsidian',
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -1806,8 +1321,8 @@ export class DatabaseService {
       startedAt: row.started_at,
       endedAt: row.ended_at,
       endReason: row.end_reason,
-      connectionXp: Number(row.connection_xp || 0),
-      connectionLevel: row.connection_level,
+      connectionXp: 0,
+      connectionLevel: 'Strangers',
       pinnedMessageId: row.pinned_message_id,
       revealStatusUser1: row.reveal_status_user1 || { consented: false, revealedFields: [] },
       revealStatusUser2: row.reveal_status_user2 || { consented: false, revealedFields: [] },
