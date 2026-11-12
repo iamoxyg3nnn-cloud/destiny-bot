@@ -9,8 +9,10 @@ import {
   UserBlock, 
   NotificationSettings, 
   AdminAuditLog,
-  GuildSettings
+  GuildSettings,
+  GenderVerificationStatus
 } from '../core/types.js';
+import { isBanActive } from '../core/moderation/ban-policy.js';
 import { v4 as uuidv4 } from 'uuid';
 import { redis } from '../redis/client.js';
 import { lockManager } from '../redis/locks.js';
