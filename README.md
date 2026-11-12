@@ -163,6 +163,9 @@ Open **http://localhost:3000** to access the Admin Dashboard. For Docker, copy `
 | `/report <category> <description>` | Safely report user with automated chat excerpt |
 | `/block [destiny_id]` | Globally block user across all servers |
 | `/settings` | Configure 7:30 PM IST daily reminders, timezone, and quiet hours |
+| `/setup portal`, `/setup cross_server`, `/setup view` | Configure only the current Discord server (Manage Server or Administrator) |
+| `/setup modlog` | Configure the private moderation alert channel in a trusted staff guild |
+| `/owner status` | Global bot, database and worker diagnostics for IDs in `BOT_OWNER_IDS` only |
 
 ---
 
