@@ -6,14 +6,6 @@ export type Gender = 'male' | 'female' | 'non_binary' | 'other' | 'prefer_not_to
 
 export type GenderVerificationStatus = 'unverified' | 'pending' | 'verified' | 'rejected';
 
-export type ConnectionTier = 
-  | 'Strangers'
-  | 'Acquaintances'
-  | 'Familiar'
-  | 'Connection'
-  | 'Trusted Connection'
-  | 'Destiny';
-
 export interface UserProfile {
   id: string; // UUID in Supabase
   discordUserId: string;
@@ -28,18 +20,12 @@ export interface UserProfile {
   preferredGender: string[];
   minAgePref: number;
   maxAgePref: number;
-  destinyCoins: number;
-  streakCount: number;
-  lastDailyClaim?: string;
-  connectionTier: ConnectionTier;
   activeRoomId?: string | null;
   isBanned: boolean;
   banReason?: string;
   reputationScore: number;
   bio?: string;
-  equippedBadges?: string[];
   matchIntent?: string;
-  cardTheme?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -74,8 +60,6 @@ export interface RoomSession {
   startedAt: string;
   endedAt?: string;
   endReason?: 'user_left' | 'timeout' | 'moderated' | 'inactivity';
-  connectionXp: number;
-  connectionLevel: ConnectionTier;
   pinnedMessageId?: string;
   revealStatusUser1: {
     consented: boolean;
@@ -109,28 +93,6 @@ export interface ChatMessage {
   createdAt: string;
 }
 
-export type TransactionType = 
-  | 'daily_reward'
-  | 'shop_purchase'
-  | 'streak_bonus'
-  | 'mission_reward'
-  | 'room_milestone'
-  | 'admin_adjustment'
-  | 'transfer_sent'
-  | 'transfer_received'
-  | 'welcome_bonus';
-
-export interface CoinTransaction {
-  id: string;
-  userId: string;
-  amount: number;
-  balanceAfter: number;
-  type: TransactionType;
-  referenceId: string; // Idempotency key
-  metadata: Record<string, any>;
-  createdAt: string;
-}
-
 export interface ReportItem {
   id: string;
   reporterId: string;
@@ -157,31 +119,6 @@ export interface UserBlock {
   blockedId: string;
   reason?: string;
   createdAt: string;
-}
-
-export interface ShopItem {
-  id: string;
-  name: string;
-  description: string;
-  category: 'badge' | 'title' | 'theme' | 'reveal_card';
-  price: number;
-  icon: string;
-  metadata: Record<string, any>;
-  isActive: boolean;
-}
-
-export interface UserMission {
-  id: string;
-  userId: string;
-  missionCode: string;
-  title: string;
-  description: string;
-  rewardDc: number;
-  currentProgress: number;
-  targetProgress: number;
-  isCompleted: boolean;
-  isClaimed: boolean;
-  expiresAt: string;
 }
 
 export interface NotificationSettings {
