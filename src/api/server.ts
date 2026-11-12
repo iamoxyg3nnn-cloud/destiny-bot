@@ -47,6 +47,10 @@ async function writeDashboardAudit(
   }
 }
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 function dashboardActor(req: Request): string {
   const actor = req.header('x-admin-id') || '';
   return /^[0-9]{17,20}$/.test(actor) ? actor : 'dashboard_owner';
@@ -255,6 +259,7 @@ export function createApiServer(): express.Express {
 
   app.post('/api/users/:id/ban', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
+    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid user ID.' });
     const { banned, reason } = req.body || {};
     if (typeof banned !== 'boolean') return res.status(400).json({ error: 'banned must be a boolean.' });
     if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) {
@@ -306,6 +311,7 @@ export function createApiServer(): express.Express {
 
   app.post('/api/rooms/:id/terminate', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
+    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid room ID.' });
     const { reason } = req.body || {};
     if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) {
       return res.status(400).json({ error: 'reason must be a string of at most 500 characters.' });
@@ -319,19 +325,25 @@ export function createApiServer(): express.Express {
 
   app.get('/api/rooms/:id/messages', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
+    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid room ID.' });
     const messages = await db.getRoomMessages(id, 100);
     res.json(messages);
   }));
 
   // 5. REPORTS DESK
   app.get('/api/reports', asyncRoute(async (req: Request, res: Response) => {
-    const status = req.query.status as any;
-    const reports = await db.getReports(status);
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const allowedStatuses = ['pending', 'resolved', 'dismissed'];
+    if (status && !allowedStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid report status filter.' });
+    }
+    const reports = await db.getReports(status as 'pending' | 'resolved' | 'dismissed' | undefined);
     res.json(reports);
   }));
 
   app.post('/api/reports/:id/resolve', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
+    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid report ID.' });
     const { action, notes } = req.body || {};
     const allowedActions = ['none', 'warned', 'temp_ban', 'perma_ban'];
     if (!allowedActions.includes(action)) return res.status(400).json({ error: 'Invalid report resolution action.' });
@@ -403,6 +415,7 @@ export function createApiServer(): express.Express {
 
   app.post('/api/verifications/:id/review', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
+    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid user ID.' });
     const { approved, notes } = req.body || {};
     if (typeof approved !== 'boolean') return res.status(400).json({ error: 'approved must be a boolean.' });
     if (notes !== undefined && (typeof notes !== 'string' || notes.length > 1000)) {
