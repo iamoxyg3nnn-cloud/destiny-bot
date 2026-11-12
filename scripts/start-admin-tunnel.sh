@@ -78,15 +78,10 @@ validate_secret API_SECRET_KEY 32
 
 OWNER_OAUTH_READY=0
 if [ "${DASHBOARD_OWNER_OAUTH_ENABLED:-false}" = "true" ]; then
-  if [ -z "${BOT_OWNER_IDS:-}" ] || [ -z "${DISCORD_CLIENT_ID:-}" ] ||
-     [ -z "${DISCORD_CLIENT_SECRET:-}" ] || [[ ! "${NEXTAUTH_URL:-}" =~ ^https:// ]]; then
-    echo "::error::DASHBOARD_OWNER_OAUTH_ENABLED=true requires BOT_OWNER_IDS, Discord OAuth credentials and a stable HTTPS NEXTAUTH_URL." >&2
-    exit 1
-  fi
-  OWNER_OAUTH_READY=1
-else
-  validate_secret DASHBOARD_ADMIN_PASSWORD 12
+  echo "::error::Quick tunnels use rotating hostnames and cannot safely complete Discord OAuth. Use a named Cloudflare tunnel with a stable HTTPS hostname, or disable dashboard OAuth for this quick-tunnel session." >&2
+  exit 1
 fi
+validate_secret DASHBOARD_ADMIN_PASSWORD 12
 
 if [ "$CHECK_CONFIG" -eq 1 ]; then
   if [ "$OWNER_OAUTH_READY" -eq 1 ]; then
