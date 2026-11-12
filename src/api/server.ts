@@ -223,7 +223,7 @@ export function createApiServer(): express.Express {
       );
     }
 
-    res.json(filtered);
+    res.json(filtered.map(({ destinyCoins, streakCount, lastDailyClaim, connectionTier, equippedBadges, cardTheme, ...profile }) => profile));
   });
 
   app.post('/api/users/:id/ban', async (req: Request, res: Response) => {
