@@ -364,7 +364,7 @@ export function createApiServer(): express.Express {
               })]
             : []),
         ]);
-        cleanupWarning = cleanup.some((result) => result.status === 'rejected');
+        cleanupWarning = cleanupWarning || cleanup.some((result) => result.status === 'rejected');
         if (cleanupWarning) {
           console.error('[API] Ban was recorded but queue/room cleanup needs attention:', cleanup.filter((result) => result.status === 'rejected'));
         }
