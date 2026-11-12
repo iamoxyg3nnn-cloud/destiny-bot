@@ -682,7 +682,6 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
 
         const editOptions: any = { components: [leaveResponseContainer] };
         await safeEditReply(btn, editOptions);
-      }
     } else {
         const noRoomContainer = new ContainerBuilder()
           .setAccentColor(COLORS.DARK)
