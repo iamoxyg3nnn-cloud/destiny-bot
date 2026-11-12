@@ -2,7 +2,7 @@
 
 ## 1. High-Level System Architecture
 
-Destiny is designed as a modular, distributed, multi-process ecosystem capable of handling high-volume concurrent anonymous matchmaking and chat sessions across thousands of Discord servers.
+Destiny is a focused, distributed anonymous-chat system for matchmaking compatible users, relaying private conversations and enforcing safety across Discord servers.
 
 ```
                            +---------------------------+
@@ -32,9 +32,9 @@ Destiny is designed as a modular, distributed, multi-process ecosystem capable o
      |                                                                       |
 +----v-----------------------------+                   +---------------------v-------------+
 |    Redis Coordination & Cache    |                   |    Supabase PostgreSQL (Permanent)|
-| • Redlock (Reveal, Tx, Match)    |                   | • Users & Profiles (Destiny ID)   |
+| • Redlock (Reveal, Match)        |                   | • Users & Profiles (Destiny ID)   |
 | • Sliding-Window Rate Limiting   |                   | • Rooms & Message Audit Trails    |
-| • Active Room State & Pub/Sub    |                   | • Atomic Coin Ledger (Idempotent) |
+| • Active Room State & Pub/Sub    |                   | • Reports, Blocks & Verifications |
 | • BullMQ Durable Job Queues      |                   | • Reports, Blocks & Verifications |
 +----------------------------------+                   +-----------------------------------+
                                          ^
@@ -72,10 +72,10 @@ Destiny is designed as a modular, distributed, multi-process ecosystem capable o
 - **Field Intersection Guarantee**: A field is only revealed if BOTH users independently select it.
 - Guarded by distributed lock `lock:reveal:${roomId}` to prevent concurrent race conditions.
 
-### D. Destiny Coins (DC) Atomic Ledger
-- Currency is non-redeemable for real money.
-- Server-authoritative settlements using SQL row-level locks (`FOR UPDATE`) and idempotency keys (`reference_id`).
-- Conversation rewards, daily streaks, and cosmetics are settled server-side with the same idempotency guarantees.
+### D. Anonymous Session Lifecycle
+- Matchmaking reserves two compatible users and creates one active room.
+- Messages are sanitized, relayed between DMs and persisted with pseudonymous sender labels.
+- Either participant can end the session; inactivity cleanup and moderation can also terminate rooms.
 
 ### E. Scheduled 7:30 PM IST Daily Reminders
 - Daily social matchmaking event scheduled at 7:30 PM IST (19:30 Asia/Kolkata).
