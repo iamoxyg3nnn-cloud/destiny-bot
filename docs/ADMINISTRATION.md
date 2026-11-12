@@ -16,7 +16,7 @@ The web dashboard can use individual Discord OAuth sessions (`DASHBOARD_OWNER_OA
 
 ## 2. Discord server setup
 
-A Discord server owner or member with the native Discord `Administrator` permission can configure only the guild in which the command is run. `Manage Server` alone is not sufficient for setup.
+A Discord server owner or member with `Manage Server` or `Administrator` can configure only the guild in which the command is run. This permission never grants platform-owner or global moderation access.
 
 - `/setup portal channel:#channel` sets this guild's matchmaking portal.
 - `/setup cross_server enabled:true|false` sets this guild's cross-server matchmaking policy.
