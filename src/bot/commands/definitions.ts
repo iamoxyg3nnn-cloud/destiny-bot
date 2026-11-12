@@ -22,7 +22,6 @@ import { revealService } from '../../core/moderation/reveal.js';
 import { UserProfile } from '../../core/types.js';
 import { buildProfileCard, createProfileActionRow, isProfileComplete } from '../profile-view.js';
 import { buildProfileModal, normalizeGender, parseList } from '../profile-modal.js';
-import { pickIcebreaker } from '../icebreakers.js';
 import { sendCleanDmPanel } from '../dm-cleanup.js';
 import { handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
 
@@ -140,11 +139,6 @@ export const slashCommands = [
     .addBooleanOption((opt) =>
       opt.setName('opt_out').setDescription('Opt out of all automated prompts').setRequired(false)
     ),
-
-  // 12. /icebreaker
-  new SlashCommandBuilder()
-    .setName('icebreaker')
-    .setDescription('Get a curated thought-provoking conversation starter in your current chat room'),
 
   // 14. /setup
   new SlashCommandBuilder()
@@ -460,40 +454,6 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       );
 
     await respond({ embeds: [embed], ephemeral: true });
-    return;
-  }
-
-  // 11. ICEBREAKER
-  if (commandName === 'icebreaker') {
-    const picked = pickIcebreaker();
-
-    let activeRoomId = user.activeRoomId;
-    if (!activeRoomId) {
-      activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
-    }
-
-    if (activeRoomId) {
-      const room = await db.getRoomById(activeRoomId);
-      if (room && room.status === 'active') {
-        const isUser1 = room.user1Id === user.id;
-        const partnerId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
-        const partnerUser = partnerId ? await interaction.client.users.fetch(partnerId).catch(() => null) : null;
-
-        const promptContainer = embedService.createIcebreakerContainer(picked, true);
-
-        if (partnerUser) {
-          await sendCleanDmPanel(partnerUser, {
-            components: [promptContainer],
-            flags: [MessageFlags.IsComponentsV2],
-          }).catch(() => {});
-        }
-        await respond({ components: [promptContainer], ephemeral: true });
-        return;
-      }
-    }
-
-    const soloContainer = embedService.createIcebreakerContainer(picked, false);
-    await respond({ components: [soloContainer], ephemeral: true });
     return;
   }
 
