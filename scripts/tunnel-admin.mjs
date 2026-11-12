@@ -256,16 +256,12 @@ if (!cloudflared) {
 
 const OWNER_OAUTH_ENABLED = process.env.DASHBOARD_OWNER_OAUTH_ENABLED === 'true';
 if (OWNER_OAUTH_ENABLED) {
-  const ownerIds = (process.env.BOT_OWNER_IDS || '').split(',').map((id) => id.trim()).filter((id) => /^[0-9]{17,20}$/.test(id));
-  const origin = (() => { try { return new URL(process.env.NEXTAUTH_URL || ''); } catch { return null; } })();
-  if (ownerIds.length === 0 || !process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_CLIENT_SECRET ||
-      !origin || (process.env.NODE_ENV === 'production' && origin.protocol !== 'https:')) {
-    console.error('✖ Discord owner OAuth requires BOT_OWNER_IDS, Discord OAuth credentials and a stable HTTPS NEXTAUTH_URL.');
-    process.exit(1);
-  }
-} else if (!process.env.DASHBOARD_ADMIN_PASSWORD) {
+  console.error('✖ Quick tunnels use rotating hostnames and cannot safely complete Discord OAuth. Use a named Cloudflare tunnel with a stable HTTPS hostname, or disable dashboard OAuth for this quick-tunnel session.');
+  process.exit(1);
+}
+if (!process.env.DASHBOARD_ADMIN_PASSWORD) {
   console.error('✖ DASHBOARD_ADMIN_PASSWORD is not set and Discord owner OAuth is disabled.');
-  console.error('  Configure a bootstrap password or enable DASHBOARD_OWNER_OAUTH_ENABLED with a stable owner OAuth origin.');
+  console.error('  Configure a bootstrap password or use a stable-hostname deployment with dashboard OAuth.');
   process.exit(1);
 }
 
