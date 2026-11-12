@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Compass, Lock, Loader2, ShieldCheck } from 'lucide-react';
 
@@ -9,6 +9,21 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get('error');
+    const messages: Record<string, string> = {
+      oauth_disabled: 'Discord owner sign-in is not enabled for this deployment. Use the bootstrap password or ask the platform owner.',
+      not_owner: 'This Discord account is not listed in BOT_OWNER_IDS.',
+      oauth_state: 'The Discord sign-in expired or failed its security check. Please try again.',
+      oauth_config: 'Discord owner sign-in is not configured correctly.',
+      oauth_exchange: 'Discord could not complete the authorization exchange. Please try again.',
+      oauth_identity: 'Could not verify your Discord account.',
+      session_config: 'Dashboard session signing is not configured.',
+      oauth_failed: 'Discord sign-in failed. Please try again.',
+    };
+    if (code && messages[code]) setError(messages[code]);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
