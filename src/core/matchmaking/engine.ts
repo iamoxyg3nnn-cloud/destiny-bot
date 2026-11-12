@@ -209,7 +209,11 @@ export class MatchmakingEngine {
 
     for (const candidate of candidates) {
       if (candidate.userId === ticket.userId || candidate.discordUserId === ticket.discordUserId) continue;
-      if (ticket.guildId && candidate.guildId && ticket.guildId !== candidate.guildId) {
+      if (ticket.guildId !== candidate.guildId) {
+        // A guild-scoped ticket must never be paired with an unattributed
+        // ticket: without both guild IDs we cannot prove both servers permit
+        // cross-server discovery. Two unattributed tickets remain compatible.
+        if (!ticket.guildId || !candidate.guildId) continue;
         const sourceAllowsGlobal = guildSettings.get(ticket.guildId)?.crossServerEnabled !== false;
         const candidateAllowsGlobal = guildSettings.get(candidate.guildId)?.crossServerEnabled !== false;
         if (!sourceAllowsGlobal || !candidateAllowsGlobal) continue;
