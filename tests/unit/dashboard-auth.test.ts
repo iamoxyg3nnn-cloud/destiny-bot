@@ -5,6 +5,7 @@ import {
   safeEqual,
   verifyAdminPassword,
   verifySessionToken,
+  readSessionPayload,
   SESSION_TTL_SECONDS,
 } from '../../dashboard/lib/auth.js';
 
@@ -50,6 +51,18 @@ describe('Dashboard authentication helpers', () => {
     const [payload, signature] = token!.split('.');
     const changedSignature = (signature[0] === 'A' ? 'B' : 'A') + signature.slice(1);
     expect(await verifySessionToken(`${payload}.${changedSignature}`)).toBe(false);
+  });
+
+  it('binds Discord owner identity into the signed session', async () => {
+    vi.stubEnv('DASHBOARD_SESSION_SECRET', 'test-session-secret-with-enough-entropy');
+    const token = await createSessionToken(60, '123456789012345678');
+    expect(token).toBeTruthy();
+    expect(await verifySessionToken(token)).toBe(true);
+    expect(await readSessionPayload(token)).toMatchObject({
+      sub: '123456789012345678',
+      role: 'owner',
+    });
+    expect(await createSessionToken(60, 'not-a-discord-id')).toBeNull();
   });
 
   it('accepts a strong session secret with a formerly blocked prefix', async () => {
