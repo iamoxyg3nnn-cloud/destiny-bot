@@ -58,7 +58,7 @@ export default function SettingsPage() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'The server setting could not be saved.');
-      setSuccess(guild.name + ': setting saved.');
+      setSuccess(guild.name + (payload.auditWarning ? ': setting saved, but the audit log could not be written.' : ': setting saved.'));
       await fetchGuilds();
     } catch (err: any) {
       setError(err?.message || 'The server setting could not be saved.');
