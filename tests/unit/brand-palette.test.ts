@@ -23,11 +23,8 @@ describe('Destiny Brand Colour Palette', () => {
     maxAgePref: 99,
     interests: ['music', 'coding'],
     languages: ['en'],
-    destinyCoins: 120,
-    streakCount: 3,
     reputationScore: 88,
     isBanned: false,
-    connectionTier: 'Strangers',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -44,8 +41,6 @@ describe('Destiny Brand Colour Palette', () => {
     user2Pseudonym: 'Cosmic Voyager',
     user1Avatar: '🌌',
     user2Avatar: '🌠',
-    connectionXp: 10,
-    connectionLevel: 'Strangers',
     revealStatusUser1: { consented: false, revealedFields: [] },
     revealStatusUser2: { consented: false, revealedFields: [] },
     startedAt: new Date().toISOString(),
@@ -77,10 +72,6 @@ describe('Destiny Brand Colour Palette', () => {
       embedService.createMainMenuContainer('Tester', mockUser, true),
       embedService.createProfileRequiredContainer(),
       embedService.createProfileCreatedContainer(mockUser),
-      embedService.createWardrobeContainer(mockUser),
-      embedService.createShopContainer([
-        { id: 'theme_obsidian', name: 'Obsidian', description: 'Deep dark theme', price: 100 },
-      ]),
       embedService.createMatchFoundContainer(mockRoom, true, 'Favourite movie?'),
       embedService.createReportMenuContainer('room_palette', 'Starlit'),
       embedService.createReportSuccessContainer(),
@@ -99,7 +90,6 @@ describe('Destiny Brand Colour Palette', () => {
       embedService.createAlreadyVerifiedContainer(mockUser),
       embedService.createVerificationPendingContainer(),
       embedService.createVerificationSubmittedContainer(),
-      embedService.createWalletContainer(mockUser),
     ];
 
     for (const container of containers) {

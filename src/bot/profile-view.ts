@@ -57,7 +57,6 @@ export async function buildProfileStats(
     timezone: 'UTC+05:30',
     matchIntent: user.matchIntent,
     bio: user.bio,
-    equippedBadges: user.equippedBadges,
   };
 }
 
@@ -85,19 +84,9 @@ export function createProfileActionRow(): ActionRowBuilder<ButtonBuilder> {
       .setEmoji('✏️')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
-      .setCustomId('destiny_btn_wardrobe')
-      .setLabel('Wardrobe')
-      .setEmoji('👔')
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
       .setCustomId('destiny_btn_start')
       .setLabel('Find Match')
       .setEmoji('✨')
       .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId('destiny_btn_wallet')
-      .setLabel('Destiny Vault')
-      .setEmoji('🪙')
-      .setStyle(ButtonStyle.Secondary)
   );
 }

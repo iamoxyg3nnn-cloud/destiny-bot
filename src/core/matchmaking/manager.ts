@@ -518,8 +518,6 @@ export class MatchmakingManager {
       user2Avatar: personaB.avatarEmoji,
       status: 'active',
       startedAt: new Date().toISOString(),
-      connectionXp: 10,
-      connectionLevel: 'Strangers',
       revealStatusUser1: { consented: false, revealedFields: [] },
       revealStatusUser2: { consented: false, revealedFields: [] },
     });

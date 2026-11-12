@@ -1,4 +1,4 @@
-# 🌌 Destiny — Production-Ready Anonymous Social & Matchmaking Discord Bot
+# 🌌 Destiny — Anonymous Chat & Matchmaking Discord Bot
 
 > A scalable, production-grade anonymous social connection and matchmaking Discord bot powered by **TypeScript**, **Discord.js v14**, **Supabase PostgreSQL**, **Redis**, **BullMQ**, and a **Next.js Web Admin Dashboard**.
 
@@ -20,24 +20,19 @@
 - **Mutual-Consent Profile Reveal**: Fine-grained field selection (`age`, `gender`, `interests`, `destinyId`, `discordTag`). A field is **only revealed if both partners agree**.
 - **Global Cross-Server Safety**: Blocking and abuse restrictions apply globally across all joined Discord servers.
 
-### 🪙 Step 3 — Destiny Coins (DC), Progression & Conversation Rewards
-- **Atomic DC Ledger**: Bank-grade SQL row-level locks (`FOR UPDATE`) with unique idempotency keys (`reference_id`) preventing double rewards, race conditions, or negative balances. Currency is non-redeemable for real money.
-- **Conversation-First Rewards**:
-  1. 💬 **Icebreakers**: Curated conversation prompts delivered in DMs or to both partners in an active room.
-  2. 🔥 **Daily Streaks**: 24-hour claim window with consecutive streak multipliers.
-  3. 🏆 **Connection Tiers**: `Strangers` ➔ `Acquaintances` ➔ `Familiar` ➔ `Connection` ➔ `Trusted Connection` ➔ `Destiny`.
-  4. 🎁 **Room Milestones**: Earn DC and Connection XP for meaningful conversations.
-- **Identity Wardrobe**: Unlock and equip card themes, titles, badges, and a 5-slot insignia rack.
-- **Cosmetics Shop**: Spend DC on profile themes, badges, titles, and reveal tokens.
+### 💬 Step 3 — Anonymous Conversation Experience
+- **Private 1-on-1 Chat**: Messages are relayed through the bot's DMs using per-room pseudonyms.
+- **Conversation Prompts**: Optional icebreakers help partners start or continue a conversation.
+- **Session Controls**: Either participant can leave at any time; the partner is notified without exposing Discord identities.
+- **Safety Controls**: Global blocking, abuse reports, moderation restrictions and mutual-consent profile reveal.
 
 ### 📊 Step 4 — Modern Web Admin Dashboard
 - **Built with Next.js 14, Tailwind CSS, and Recharts**.
 - **Live System Telemetry**: CPU, Memory, Shard health, Redis, and Supabase status.
-- **User Registry**: Search by Destiny ID or Discord ID, view verification badges, adjust coins, ban/unban.
+- **User Registry**: Search by Destiny ID or Discord ID, view profile verification, and ban/unban.
 - **Live Room Inspector**: View active rooms, inspect sanitized message feeds, and force-terminate malicious sessions.
 - **Safety Desk**: Moderate reports with automated chat excerpts attached.
 - **Gender Verification Desk**: Review submitted verification claims and award verified badges.
-- **Economy Analytics**: Faucet vs Sink distribution charts, coin velocity, and cosmetics shop manager.
 - **7:30 PM IST Reminders**: Configure automated daily notifications with timezone support, quiet hours, and user opt-out.
 - **Admin Audit Trail**: Immutable logging of all moderator actions.
 
@@ -109,20 +104,20 @@ same logical database and `destiny:` key prefix as the application. Redis dashbo
 usually show keys within a logical database, not a separately created database object.
 
 ### 3. Database Schema Setup
-Execute the SQL migrations located in `supabase/migrations/` in order:
+Execute the SQL migrations located in `supabase/migrations/` in order. Economy/progression migrations are retained only for compatibility with existing databases; the current application does not use those features or write economy records:
 1. `001_initial_schema.sql` — Tables, indexes, and Row Level Security.
-2. `002_functions_triggers.sql` — Stored procedures (`execute_coin_transaction`, `calculate_connection_tier`).
-3. `003_seed_data.sql` — Default cosmetic items, badges, and titles.
+2. `002_functions_triggers.sql` — Core stored procedures and legacy schema helpers.
+3. `003_seed_data.sql` — Initial reference data.
 4. `004_profile_enhancements.sql` — Profile fields and preferences.
 5. `005_remove_games_history.sql` — Retire legacy game-history schema.
 6. `006_security_hardening.sql` — Lock down privileged stored procedures.
-7. `007_atomic_wallet_and_idempotency.sql` — Strict ledger idempotency and atomic coin transfers.
+7. `007_atomic_wallet_and_idempotency.sql` — Legacy economy schema (unused by the chat application).
 8. `008_atomic_rooms_and_inventory.sql` — Atomic room lifecycle and consumable inventory quantities.
-9. `009_atomic_room_xp.sql` — Atomic XP increments for concurrent chat messages.
-10. `010_dashboard_aggregates.sql` — Accurate economy totals and hourly activity buckets.
-11. `011_transfer_ledger_types.sql` — Separate peer transfers from shop and mission rewards.
-12. `012_welcome_bonus_ledger.sql` — Record signup welcome balances atomically in the coin ledger.
-13. `013_atomic_daily_claim.sql` — Atomically apply daily rewards, streaks, and the 24-hour cooldown.
+9. `009_atomic_room_xp.sql` — Legacy progression schema (unused by the chat application).
+10. `010_dashboard_aggregates.sql` — Legacy aggregates plus activity buckets.
+11. `011_transfer_ledger_types.sql` — Legacy ledger types.
+12. `012_welcome_bonus_ledger.sql` — Legacy welcome-bonus ledger.
+13. `013_atomic_daily_claim.sql` — Legacy daily-claim procedure.
 14. `014_atomic_report_resolution.sql` — Resolve moderation reports and apply permanent bans in one transaction.
 15. `015_conditional_room_inactivity.sql` — Close rooms only when they remain inactive at the transactionally rechecked cutoff.
 
@@ -156,11 +151,7 @@ Open **http://localhost:3000** to access the Admin Dashboard. For Docker, copy `
 | `/leave` | Exit current room session or queue |
 | `/reveal` | Request mutual profile reveal with field selection |
 | `/profile [age] [gender] [bio] [interests] [languages] [looking_for]` | Auto-setup or edit your anonymous profile and render your card |
-| `/coins` | Check Destiny Coins balance and transaction history |
-| `/daily` | Claim 24h daily streak reward |
 | `/icebreaker` | Get a curated conversation starter for your room or DMs |
-| `/wardrobe` | Equip card themes and up to 5 insignia badges |
-| `/shop [buy]` | Browse or purchase cosmetic titles, badges, themes, and reveal cards |
 | `/report <category> <description>` | Safely report user with automated chat excerpt |
 | `/block [destiny_id]` | Globally block user across all servers |
 | `/settings` | Configure 7:30 PM IST daily reminders, timezone, and quiet hours |

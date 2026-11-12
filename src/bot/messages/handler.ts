@@ -84,6 +84,13 @@ export class MessageCommandHandler {
    * Complete In-DM Message & Command Processing (Components V2)
    */
   private async handleDMMessage(client: Client, message: Message, rawContent: string): Promise<boolean> {
+    if (/^\s*(?:destiny\s+)?(?:wallet|coins|daily|shop|wardrobe)\s*$/i.test(rawContent)) {
+      await message.reply({
+        content: 'Destiny is now focused on anonymous conversations. Type `start` to find a match or `profile` to manage your anonymous profile.',
+      }).catch(() => {});
+      return true;
+    }
+
     const authorId = message.author.id;
     // Always fetch fresh state in DMs so activeRoomId and queue status are never stale
     const user = await db.getUserByDiscordId(authorId, true);
@@ -254,10 +261,6 @@ export class MessageCommandHandler {
           return await this.handleIcebreaker(message, user, true);
         }
 
-        // Subcase A3: Wallet while chatting
-        if (/^\s*(?:destiny\s+wallet|wallet|coins|daily)\s*$/i.test(rawContent)) {
-          return await this.handleWallet(message, user);
-        }
 
         // Subcase A3: Verification while chatting
         if (/^\s*(?:destiny\s+verify|verify)\s*$/i.test(rawContent)) {
@@ -378,10 +381,6 @@ export class MessageCommandHandler {
       return await this.handleStart(message, user);
     }
 
-    // Subcase C2: Wallet command ("wallet", "coins", "daily", "destiny wallet")
-    if (/^\s*(?:destiny\s+wallet|wallet|coins|daily)\s*$/i.test(rawContent)) {
-      return await this.handleWallet(message, user);
-    }
 
     // Subcase C3: Conversation icebreaker ("icebreaker", "prompt", "destiny icebreaker")
     if (/^\s*(?:destiny\s+icebreaker|icebreaker|prompt|conversation\s+starter)\s*$/i.test(rawContent)) {
@@ -642,22 +641,6 @@ export class MessageCommandHandler {
 
     matchmakingManager.processMatchCycle().catch(() => {});
     await safeV2Reply(message, embedService.createSearchingContainer(user));
-    return true;
-  }
-
-  /**
-   * Handle Wallet / Coins Menu in DM (Components V2)
-   */
-  async handleWallet(message: Message, existingUser?: UserProfile | null): Promise<boolean> {
-    const user = existingUser !== undefined ? existingUser : await db.getUserByDiscordId(message.author.id);
-    if (!user) {
-      const container = embedService.createProfileRequiredContainer();
-      await safeV2Reply(message, container);
-      return true;
-    }
-
-    const container = embedService.createWalletContainer(user);
-    await safeV2Reply(message, container);
     return true;
   }
 

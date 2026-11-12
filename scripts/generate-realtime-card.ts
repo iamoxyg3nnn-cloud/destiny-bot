@@ -40,9 +40,6 @@ async function main() {
     preferredGender: rawUser.preferred_gender || ['any'],
     minAgePref: rawUser.min_age_pref || 18,
     maxAgePref: rawUser.max_age_pref || 99,
-    destinyCoins: Number(rawUser.destiny_coins || 100),
-    streakCount: Number(rawUser.streak_count || 0),
-    connectionTier: rawUser.connection_tier || 'Strangers',
     isBanned: rawUser.is_banned,
     reputationScore: Number(rawUser.reputation_score || 100),
     createdAt: rawUser.created_at,
@@ -64,7 +61,6 @@ async function main() {
     reputationPercent: user.reputationScore,
     personaName: 'Midnight Wolf',
     timezone: 'UTC+05:30',
-    equippedBadges: user.equippedBadges || [],
   };
 
   // 4. Generate Live PNG

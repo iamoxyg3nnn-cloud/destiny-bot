@@ -18,8 +18,6 @@ function room(overrides: Partial<RoomSession> = {}): RoomSession {
     user2Avatar: '🐺',
     status: 'active',
     startedAt: now,
-    connectionXp: 10,
-    connectionLevel: 'Strangers',
     revealStatusUser1: { consented: false, revealedFields: [] },
     revealStatusUser2: { consented: false, revealedFields: [] },
     createdAt: now,

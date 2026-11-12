@@ -9,7 +9,6 @@ import {
   MessagesSquare, 
   ShieldAlert, 
   BadgeCheck, 
-  Coins, 
   Settings, 
   FileText, 
   ExternalLink,
@@ -44,7 +43,6 @@ export function CommandMenu() {
     { title: 'User Directory & Destiny IDs', href: '/users', icon: Users, category: 'Navigation' },
     { title: 'Moderation & Safety Desk', href: '/moderation', icon: ShieldAlert, category: 'Navigation' },
     { title: 'Gender Verification Queue', href: '/verification', icon: BadgeCheck, category: 'Navigation' },
-    { title: 'Destiny Coins & Ledger', href: '/economy', icon: Coins, category: 'Navigation' },
     { title: 'System Settings', href: '/settings', icon: Settings, category: 'Navigation' },
     { title: 'Administrative Audit Logs', href: '/logs', icon: FileText, category: 'Navigation' },
   ];

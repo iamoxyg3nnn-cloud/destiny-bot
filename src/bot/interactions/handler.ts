@@ -21,15 +21,12 @@ import {
 import { db } from '../../database/supabase.js';
 import { redis } from '../../redis/client.js';
 import { matchmakingManager } from '../../core/matchmaking/manager.js';
-import { streakService } from '../../core/economy/streaks.js';
-import { shopService } from '../../core/economy/shop.js';
 import { revealService } from '../../core/moderation/reveal.js';
 import { reporterService } from '../../core/moderation/reporter.js';
 import { verificationService } from '../../core/moderation/verification.js';
 import { ECLAIRS_GUILD_IDS, handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
 import { embedService, COLORS } from '../embeds/index.js';
 import { ProfileField, ReportItem, UserProfile } from '../../core/types.js';
-import { profileCardGenerator } from '../../core/profile/card-generator.js';
 import {
   buildProfileCard,
   createProfileActionRow,
@@ -126,6 +123,26 @@ async function safeEditReply(interaction: ButtonInteraction | StringSelectMenuIn
 }
 
 export async function handleInteraction(interaction: Interaction): Promise<void> {
+  // Gracefully acknowledge buttons and menus posted by older bot versions.
+  // These component IDs remain in already-published Discord messages.
+  const retiredButtonIds = new Set([
+    'destiny_btn_wallet',
+    'destiny_btn_wallet_daily',
+    'destiny_btn_claim_daily',
+    'destiny_btn_shop',
+    'destiny_btn_wardrobe',
+  ]);
+  const retiredSelectIds = new Set(['destiny_select_theme', 'destiny_select_badges']);
+  const retiredMessage = 'This control is no longer available. Use /match to start an anonymous chat or /profile to manage your profile.';
+  if (interaction.isButton() && retiredButtonIds.has(interaction.customId)) {
+    await interaction.reply({ content: retiredMessage, flags: MessageFlags.Ephemeral }).catch(() => {});
+    return;
+  }
+  if (interaction.isStringSelectMenu() && retiredSelectIds.has(interaction.customId)) {
+    await interaction.reply({ content: retiredMessage, flags: MessageFlags.Ephemeral }).catch(() => {});
+    return;
+  }
+
   // Slash commands are routed to the command controller.
   if (interaction.isChatInputCommand()) {
     await handleCommand(interaction);
@@ -320,59 +337,6 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       return;
     }
 
-    // Wardrobe Theme Selection
-    if (customId === 'destiny_select_theme') {
-      const ok = await safeDeferReply(select);
-      if (!ok) return;
-
-      const user = await db.getUserByDiscordId(discordUser.id);
-      if (!user) {
-        await safeEditReply(select, { content: '❌ User profile not found.' });
-        return;
-      }
-
-      const res = await shopService.equipCardTheme(user, values[0]);
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId('destiny_btn_card_static')
-          .setLabel('Preview Updated Card')
-          .setStyle(ButtonStyle.Secondary)
-      );
-
-      const container = new ContainerBuilder()
-        .setAccentColor(COLORS.DESTINY_PURPLE)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(res.message))
-        .addActionRowComponents(row);
-      await safeEditReply(select, { components: [container] });
-      return;
-    }
-
-    // Wardrobe Insignia Badges Selection
-    if (customId === 'destiny_select_badges') {
-      const ok = await safeDeferReply(select);
-      if (!ok) return;
-
-      const user = await db.getUserByDiscordId(discordUser.id);
-      if (!user) {
-        await safeEditReply(select, { content: '❌ User profile not found.' });
-        return;
-      }
-
-      const res = await shopService.setEquippedBadges(user, values);
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId('destiny_btn_card_static')
-          .setLabel('Preview Updated Card')
-          .setStyle(ButtonStyle.Secondary)
-      );
-
-      const container = new ContainerBuilder()
-        .setAccentColor(COLORS.DESTINY_PURPLE)
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(res.message))
-        .addActionRowComponents(row);
-      await safeEditReply(select, { components: [container] });
-      return;
-    }
   }
 
   // =========================================================================
@@ -604,14 +568,6 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       return;
     }
 
-    // --- Wallet & Daily Coins Menu ---
-    if (customId === 'destiny_btn_wallet' || customId === 'destiny_btn_wallet_daily') {
-      const ok = await safeDeferReply(btn);
-      if (!ok) return;
-      await handleWalletMenu(btn);
-      return;
-    }
-
     // --- Conversation Icebreaker ---
     if (customId === 'destiny_btn_icebreaker') {
       const ok = await safeDeferReply(btn);
@@ -647,41 +603,6 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       return;
     }
 
-    // --- Wardrobe Menu Trigger ---
-    if (customId === 'destiny_btn_wardrobe') {
-      const ok = await safeDeferReply(btn);
-      if (!ok) return;
-
-      const user = await db.getUserByDiscordId(discordUser.id);
-      if (!user) {
-        await safeEditReply(btn, { content: 'Please set up your profile first with `/profile`.' });
-        return;
-      }
-
-      const container = embedService.createWardrobeContainer(user);
-      await safeEditReply(btn, { components: [container] });
-      return;
-    }
-
-    // --- Shop Menu Trigger ---
-    if (customId === 'destiny_btn_shop') {
-      const ok = await safeDeferReply(btn);
-      if (!ok) return;
-
-      const catalog = await shopService.getCatalog();
-      const container = embedService.createShopContainer(catalog);
-      await safeEditReply(btn, { components: [container] });
-      return;
-    }
-
-    // --- Claim Daily Reward ---
-    if (customId === 'destiny_btn_claim_daily') {
-      const ok = await safeDeferReply(btn);
-      if (!ok) return;
-      await handleClaimDaily(btn);
-      return;
-    }
-
     // --- Room Leave Button ---
     if (customId === 'destiny_btn_leave' || customId === 'btn_room_leave') {
       const ok = await safeDeferReply(btn);
@@ -700,64 +621,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         // The conversation just ended — reflect it in the rotating presence.
         refreshBotPresence();
 
-        // Post-Room Mutual Chemistry Card (P4 Feature)
         if (room) {
-          const diffMs = Math.max(10000, Date.now() - new Date(room.startedAt).getTime());
-          const mins = Math.floor(diffMs / 60000);
-          const secs = Math.floor((diffMs % 60000) / 1000);
-          const durationText = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-
-          const [u1Obj, u2Obj] = await Promise.all([
-            db.getUserById(room.user1Id).catch(() => null),
-            db.getUserById(room.user2Id).catch(() => null),
-          ]);
-
-          let u1AvatarUrl: string | undefined = undefined;
-          let u2AvatarUrl: string | undefined = undefined;
-          const isRevealed = Boolean(room.revealStatusUser1?.consented && room.revealStatusUser2?.consented);
-          if (isRevealed) {
-            try {
-              if (room.user1DiscordId) {
-                const discU1 = await btn.client.users.fetch(room.user1DiscordId).catch(() => null);
-                if (discU1) u1AvatarUrl = discU1.displayAvatarURL({ extension: 'png', size: 256 });
-              }
-              if (room.user2DiscordId) {
-                const discU2 = await btn.client.users.fetch(room.user2DiscordId).catch(() => null);
-                if (discU2) u2AvatarUrl = discU2.displayAvatarURL({ extension: 'png', size: 256 });
-              }
-            } catch {}
-          }
-
-          const recapData = {
-            roomCode: room.roomCode,
-            durationText,
-            chemistryScore: Math.min(99, Math.max(70, Math.floor(75 + mins * 3))),
-            xpAwarded: Math.max(150, mins * 30),
-            coinsAwarded: Math.max(15, mins * 5),
-            user1: {
-              pseudonym: room.user1Pseudonym || 'Midnight Wolf',
-              avatarMonogram: (room.user1Pseudonym || 'MW').split(' ').map((p: string) => p[0]).join('').substring(0, 2).toUpperCase(),
-              destinyId: u1Obj?.destinyId || 'USER-1',
-              tier: room.connectionLevel || 'Strangers',
-              avatarUrl: u1AvatarUrl,
-            },
-            user2: {
-              pseudonym: room.user2Pseudonym || 'Celestial Fox',
-              avatarMonogram: (room.user2Pseudonym || 'CF').split(' ').map((p: string) => p[0]).join('').substring(0, 2).toUpperCase(),
-              destinyId: u2Obj?.destinyId || 'USER-2',
-              tier: room.connectionLevel || 'Strangers',
-              avatarUrl: u2AvatarUrl,
-            },
-          };
-
-          let recapAttachment: AttachmentBuilder | null = null;
-          try {
-            const recapBuffer = await profileCardGenerator.generateSessionRecapCard(recapData);
-            recapAttachment = new AttachmentBuilder(recapBuffer, { name: 'destiny_session_recap.png' });
-          } catch (e) {
-            recapAttachment = null;
-          }
-
           const partnerDiscordId = room.user1Id === user.id ? room.user2DiscordId : room.user1DiscordId;
           if (partnerDiscordId) {
             btn.client.users.fetch(partnerDiscordId).then((partner) => {
@@ -786,13 +650,13 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
                 components: [partnerContainer], 
                 flags: [MessageFlags.IsComponentsV2] 
               };
-              if (recapAttachment) sendOptions.files = [recapAttachment];
 
               sendCleanDmPanel(partner, sendOptions).catch(() => {});
             }).catch(() => {});
           }
+        }
 
-          const leaveResponseContainer = new ContainerBuilder()
+        const leaveResponseContainer = new ContainerBuilder()
             .setAccentColor(COLORS.DARK)
             .addTextDisplayComponents(
               new TextDisplayBuilder().setContent(
@@ -814,9 +678,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
           );
 
         const editOptions: any = { components: [leaveResponseContainer] };
-        if (recapAttachment) editOptions.files = [recapAttachment];
         await safeEditReply(btn, editOptions);
-      }
     } else {
         const noRoomContainer = new ContainerBuilder()
           .setAccentColor(COLORS.DARK)
@@ -1293,44 +1155,6 @@ async function handleStartMatchButton(btn: ButtonInteraction): Promise<void> {
 
   matchmakingManager.processMatchCycle().catch(() => {});
   const container = embedService.createSearchingContainer(user);
-  await safeEditReply(btn, { components: [container] });
-}
-
-/**
- * Handle Coins & Wallet Menu (Components V2)
- */
-async function handleWalletMenu(btn: ButtonInteraction): Promise<void> {
-  const user = await db.getUserByDiscordId(btn.user.id);
-  if (!user) {
-    const container = embedService.createProfileRequiredContainer();
-    await safeEditReply(btn, { components: [container] });
-    return;
-  }
-
-  const container = embedService.createWalletContainer(user);
-  await safeEditReply(btn, { components: [container] });
-}
-
-/**
- * Handle Claiming Daily Reward (Components V2)
- */
-async function handleClaimDaily(btn: ButtonInteraction): Promise<void> {
-  const user = await db.getUserByDiscordId(btn.user.id);
-  if (!user) {
-    const container = embedService.createProfileRequiredContainer();
-    await safeEditReply(btn, { components: [container] });
-    return;
-  }
-
-  const claimRes = await streakService.claimDaily(user.id);
-  const container = embedService.createDailyClaimResultContainer(
-    claimRes.success,
-    claimRes.message,
-    claimRes.newBalance,
-    claimRes.rewardDc,
-    claimRes.newStreak
-  );
-
   await safeEditReply(btn, { components: [container] });
 }
 

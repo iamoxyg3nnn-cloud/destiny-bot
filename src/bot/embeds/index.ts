@@ -3,7 +3,6 @@ import {
   ActionRowBuilder, 
   ButtonBuilder, 
   ButtonStyle, 
-  StringSelectMenuBuilder,
   ChannelSelectMenuBuilder,
   ChannelType,
   ContainerBuilder,
@@ -68,10 +67,6 @@ export class EmbedService {
         .setCustomId('destiny_btn_profile')
         .setLabel('My Profile & Stats')
         .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_wallet')
-        .setLabel('Destiny Vault')
-        .setStyle(ButtonStyle.Secondary)
     );
 
     return new ContainerBuilder()
@@ -82,7 +77,6 @@ export class EmbedService {
           `Welcome to the **Destiny Anonymous Social Network**! Meet verified people across servers completely anonymously.\n\n` +
           `• 🔒 **100% Privacy-Preserving**: Your Discord tag, username, and avatar are completely hidden.\n` +
           `• ⚡ **Real-Time Matchmaking**: Smart affinity pairing based on shared interests and preferences.\n` +
-          `• 🏆 **Leveling & Streaks**: Earn Destiny Coins and level up connection tiers as you chat.\n\n` +
           `*Click **Find Anonymous Match** below or configure your profile to jump in!*`
         )
       )
@@ -117,7 +111,6 @@ export class EmbedService {
           `Welcome back, **${authorName}**!\n\n` +
           `• 🆔 **Destiny ID:** \`${user.destinyId}\`\n` +
           `• 🎂 **Age:** \`${user.age}\`  •  ⚧ **Gender:** \`${user.gender}\`${user.genderVerified ? '  🛡️ **[Verified]**' : ''}\n` +
-          `• 🪙 **Destiny Coins:** \`${user.destinyCoins.toLocaleString()} DC\`  •  🔥 **Streak:** \`${user.streakCount} days\`\n` +
           `• 🎯 **Interests:** ${interestsStr}\n\n` +
           `*Click **Start Match** or type \`start\` to connect with an anonymous partner!*`
         )
@@ -142,11 +135,6 @@ export class EmbedService {
         .setLabel(user?.genderVerified ? 'Verified' : 'Get Verified')
         .setEmoji('🛡️')
         .setStyle(user?.genderVerified ? ButtonStyle.Success : ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_wallet')
-        .setLabel('Coins & Daily')
-        .setEmoji('🪙')
-        .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_icebreaker')
         .setLabel('Icebreaker')
@@ -210,11 +198,6 @@ export class EmbedService {
         .setLabel('Start Match Now')
         .setEmoji('✨')
         .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_wallet')
-        .setLabel('Coins & Daily')
-        .setEmoji('🪙')
-        .setStyle(ButtonStyle.Secondary)
     );
 
     return new ContainerBuilder()
@@ -226,7 +209,6 @@ export class EmbedService {
           `• 🆔 **Destiny ID:** \`${savedUser.destinyId}\`\n` +
           `• 🎂 **Age:** \`${savedUser.age}\`  •  ⚧ **Gender:** \`${savedUser.gender}\`\n` +
           `• 🎯 **Interests:** ${interestsStr}\n` +
-          `• 🪙 **Destiny Coins:** \`${savedUser.destinyCoins.toLocaleString()} DC\`\n\n` +
           `🔒 *Your Discord username, avatar, and server identity remain 100% anonymous.*`
         )
       )
@@ -234,110 +216,7 @@ export class EmbedService {
       .addActionRowComponents(row);
   }
 
-  /**
-   * Identity Wardrobe Container (theme + badge select menus)
-   */
-  createWardrobeContainer(user: UserProfile): ContainerBuilder {
-    const themeMenu = new StringSelectMenuBuilder()
-      .setCustomId('destiny_select_theme')
-      .setPlaceholder(`Current Theme: ${(user.cardTheme || 'obsidian').toUpperCase()}`)
-      .addOptions(
-        { label: 'Obsidian Monochrome (Default)', value: 'obsidian', description: 'Deep obsidian void with dot-matrix hardware texture', default: (user.cardTheme || 'obsidian') === 'obsidian' },
-        { label: 'Cyber Damask', value: 'cyber_damask', description: 'Obsidian & high-contrast damask steel micro-lines', default: user.cardTheme === 'cyber_damask' },
-        { label: 'Frost Glaze', value: 'frost_glaze', description: 'Frosted titanium aesthetic with cool cyan sheen', default: user.cardTheme === 'frost_glaze' },
-        { label: 'Holographic Platinum', value: 'holographic_plat', description: 'Prestige platinum finish with iridescent micro-reflections', default: user.cardTheme === 'holographic_plat' }
-      );
-
-    const badgeOptions = [
-      { label: 'ID VERIFIED', value: 'ID VERIFIED', description: 'Emerald verified trust badge', default: user.equippedBadges?.includes('ID VERIFIED') },
-      { label: '7D STREAK', value: '7D STREAK', description: 'Flame 7-day conversation streak badge', default: user.equippedBadges?.includes('7D STREAK') },
-      { label: 'TITAN 1K', value: 'TITAN 1K', description: 'Commemorative Titan supporter badge', default: user.equippedBadges?.includes('TITAN 1K') },
-      { label: 'VETERAN', value: 'VETERAN', description: 'Awarded for completing 10+ match conversations', default: user.equippedBadges?.includes('VETERAN') },
-      { label: 'KARMA 100%', value: 'KARMA 100%', description: 'Pristine 100% reputation rating', default: user.equippedBadges?.includes('KARMA 100%') },
-      { label: 'STAR WANDERER', value: 'STAR WANDERER', description: 'Mark of an explorer across 50+ matches', default: user.equippedBadges?.includes('STAR WANDERER') },
-      { label: 'VIP', value: 'VIP', description: 'Destiny VIP patron badge', default: user.equippedBadges?.includes('VIP') },
-      { label: 'MYSTIC AURA', value: 'MYSTIC AURA', description: 'Glowing celestial aura rack insignia', default: user.equippedBadges?.includes('MYSTIC AURA') },
-    ];
-
-    const badgeMenu = new StringSelectMenuBuilder()
-      .setCustomId('destiny_select_badges')
-      .setPlaceholder('Equip up to 5 Insignia Badges for your Rack')
-      .setMinValues(1)
-      .setMaxValues(5)
-      .addOptions(badgeOptions);
-
-    const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(themeMenu);
-    const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(badgeMenu);
-    const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_card_static')
-        .setLabel('Preview Profile Card')
-        .setEmoji('📸')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_shop')
-        .setLabel('Shop Cosmetics')
-        .setEmoji('🛍️')
-        .setStyle(ButtonStyle.Primary)
-    );
-
-    const activeBadges = user.equippedBadges && user.equippedBadges.length > 0
-      ? user.equippedBadges.map((b: string) => `\`[${b}]\``).join(' ')
-      : '`[ID VERIFIED]` `[7D STREAK]` `[TITAN 1K]` `[VETERAN]` `[KARMA 100%]`';
-
-    return new ContainerBuilder()
-      .setAccentColor(COLORS.DARK)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `# 👔 Destiny Identity Wardrobe\n\n` +
-          `Customize the appearance of your **Destiny Profile Card**.\n\n` +
-          `• **Equipped Theme**: \`${(user.cardTheme || 'obsidian').toUpperCase()}\`\n` +
-          `• **Active Badges (${user.equippedBadges?.length || 5}/5)**: ${activeBadges}\n\n` +
-          `*Select a new card skin or choose up to 5 rack insignias below.*`
-        )
-      )
-      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-      .addActionRowComponents(row1, row2 as any, row3);
-  }
-
-  /**
-   * Cosmetics Shop Container
-   */
-  createShopContainer(catalog: Array<{ id: string; name: string; description: string; price: number; icon?: string }>): ContainerBuilder {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_wardrobe')
-        .setLabel('Back to Wardrobe')
-        .setEmoji('👔')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_wallet')
-        .setLabel('Destiny Vault')
-        .setEmoji('🪙')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    const itemsText = catalog.length > 0
-      ? catalog.map((item) => `• ${item.icon || '🛍️'} **${item.name}** (\`${item.id}\`) — **${item.price} DC**\n  *${item.description}*`).join('\n')
-      : '*The Destiny Shop currently has no items in stock.*';
-
-    return new ContainerBuilder()
-      .setAccentColor(COLORS.GOLD)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `# 🛍️ Destiny Cosmetic & Title Emporium\n\n` +
-          `Use \`/shop buy:<item_id>\` to purchase an item.\n\n` +
-          itemsText
-        )
-      )
-      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-      .addActionRowComponents(row);
-  }
-
-  /**
-   * Searching Queue Container with Cancel button inside
-   */
-  createSearchingContainer(user: UserProfile): ContainerBuilder {
+    createSearchingContainer(user: UserProfile): ContainerBuilder {
     const cancelRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_queue')
@@ -412,105 +291,7 @@ export class EmbedService {
       .addActionRowComponents(row);
   }
 
-  /**
-   * Coins & Wallet Menu Container with buttons inside
-   */
-  createWalletContainer(user: UserProfile): ContainerBuilder {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_claim_daily')
-        .setLabel('Claim Daily (+50 DC)')
-        .setEmoji('🔥')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_icebreaker')
-        .setLabel('Conversation Prompt')
-        .setEmoji('💬')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    return new ContainerBuilder()
-      .setAccentColor(COLORS.GOLD)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `# 🪙 Destiny Coins Wallet — ${user.destinyId}\n\n` +
-          `Your balance and daily reward streaks are saved in real-time in Supabase.\n\n` +
-          `• 💰 **Current Balance:** \`${user.destinyCoins.toLocaleString()} DC\`\n` +
-          `• 🔥 **Daily Streak:** \`${user.streakCount} days\`\n` +
-          `• 🕒 **Last Claim:** ${user.lastDailyClaim ? `<t:${Math.floor(new Date(user.lastDailyClaim).getTime() / 1000)}:R>` : '*Never*'}\n\n` +
-          `*Claim your daily reward every 24 hours to build your streak bonus!*`
-        )
-      )
-      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-      .addActionRowComponents(row);
-  }
-
-  /**
-   * Daily Reward Result Container
-   */
-  createDailyClaimResultContainer(success: boolean, message: string, newBalance: number, rewardDc?: number, newStreak?: number): ContainerBuilder {
-    const container = new ContainerBuilder();
-
-    if (success) {
-      container
-        .setAccentColor(COLORS.SUCCESS)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `# 🎉 Daily Reward Claimed!\n\n` +
-            `You received **+${rewardDc} Destiny Coins**! 🪙\n\n` +
-            `• 🔥 **Current Streak:** ${newStreak} days\n` +
-            `• 💰 **New Balance:** ${newBalance.toLocaleString()} DC`
-          )
-        )
-        .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-        .addActionRowComponents(
-          new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder()
-              .setCustomId('destiny_btn_start')
-              .setLabel('Start Match')
-              .setEmoji('✨')
-              .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-              .setCustomId('destiny_btn_icebreaker')
-              .setLabel('Conversation Prompt')
-              .setEmoji('💬')
-              .setStyle(ButtonStyle.Secondary)
-          )
-        );
-    } else {
-      container
-        .setAccentColor(COLORS.PRIMARY)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `# ⏳ Daily Already Claimed\n\n` +
-            `${message}\n\n` +
-            `• 💰 **Current Balance:** ${newBalance.toLocaleString()} DC`
-          )
-        )
-        .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-        .addActionRowComponents(
-          new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder()
-              .setCustomId('destiny_btn_start')
-              .setLabel('Find a Match')
-              .setEmoji('✨')
-              .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-              .setCustomId('destiny_btn_icebreaker')
-              .setLabel('Conversation Prompt')
-              .setEmoji('💬')
-              .setStyle(ButtonStyle.Secondary)
-          )
-        );
-    }
-
-    return container;
-  }
-
-  /**
-   * Conversation Icebreaker Container with prompt and continue buttons
-   */
-  createIcebreakerContainer(prompt: string, inRoom = false): ContainerBuilder {
+    createIcebreakerContainer(prompt: string, inRoom = false): ContainerBuilder {
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId('destiny_btn_icebreaker')
@@ -1088,11 +869,6 @@ export class EmbedService {
         .setLabel('Get Verified')
         .setEmoji('🎙️')
         .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('destiny_btn_wallet_daily')
-        .setLabel('Daily Coins')
-        .setEmoji('🪙')
-        .setStyle(ButtonStyle.Secondary)
     );
 
     return new ContainerBuilder()
@@ -1104,7 +880,6 @@ export class EmbedService {
           `• 🎭 **100% Anonymous:** Random pseudonyms and avatars generated for every match.\n` +
           `• 🛡️ **Identity Protected:** Real Discord usernames are never revealed unless both users agree.\n` +
           `• ⚡ **Mood & Criteria Based:** Find partners who match your vibe.\n` +
-          `• 🪙 **Economy & Streaks:** Earn daily coins and build connection streaks!\n\n` +
           `*Click **Start Match** below to pair with someone new right now!*`
         )
       )

@@ -12,7 +12,7 @@ async function testIntegration() {
   if (!user) {
     throw new Error(`User with Discord ID ${targetDiscordId} not found in database!`);
   }
-  console.log(`✓ Fetched real user from Supabase: ${user.destinyId} (Coins: ${user.destinyCoins}, Streak: ${user.streakCount}, Tier: ${user.connectionTier})`);
+  console.log(`✓ Fetched anonymous profile from Supabase: ${user.destinyId}`);
 
   // 2. Fetch real user rooms
   const userRooms = await db.getUserRooms(user.id);

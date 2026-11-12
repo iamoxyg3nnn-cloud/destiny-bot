@@ -42,7 +42,6 @@ describe('Destiny DM-First Button & Message Workflow Tests', () => {
     const startDmRegex = /^\s*(?:destiny\s+start|start)\s*$/i;
     const leaveDmRegex = /^\s*(?:destiny\s+leave|leave|exit|stop|end)\s*$/i;
     const cancelDmRegex = /^\s*(?:destiny\s+cancel|cancel|stop)\s*$/i;
-    const walletDmRegex = /^\s*(?:destiny\s+wallet|wallet|coins|daily)\s*$/i;
     const icebreakerDmRegex = /^\s*(?:destiny\s+icebreaker|icebreaker|prompt|conversation\s+starter)\s*$/i;
 
     it('should match start matchmaking keywords in DM ("start", "destiny start")', () => {
@@ -72,12 +71,7 @@ describe('Destiny DM-First Button & Message Workflow Tests', () => {
       expect(cancelDmRegex.test('stop')).toBe(true);
     });
 
-    it('should match wallet and icebreaker quick commands in DM', () => {
-      expect(walletDmRegex.test('wallet')).toBe(true);
-      expect(walletDmRegex.test('coins')).toBe(true);
-      expect(walletDmRegex.test('daily')).toBe(true);
-      expect(walletDmRegex.test('destiny wallet')).toBe(true);
-
+    it('should match icebreaker quick commands in DM', () => {
       expect(icebreakerDmRegex.test('icebreaker')).toBe(true);
       expect(icebreakerDmRegex.test('prompt')).toBe(true);
       expect(icebreakerDmRegex.test('conversation starter')).toBe(true);

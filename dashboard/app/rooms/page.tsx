@@ -154,8 +154,6 @@ export default function RoomsPage() {
               {/* Room Metadata & Controls */}
               <div className="flex items-center justify-between text-xs pt-1">
                 <div className="flex items-center gap-2 text-zinc-400">
-                  <span>Level:</span>
-                  <span className="font-medium text-zinc-200">{room.connectionTier || 'Strangers'}</span>
                   {room.revealedFields && room.revealedFields.length > 0 && (
                     <Badge variant="amber">Mutual Reveal</Badge>
                   )}
@@ -197,7 +195,7 @@ export default function RoomsPage() {
                   <Badge variant="emerald" dot>Live Stream</Badge>
                 </div>
                 <div className="text-xs text-zinc-400 mt-0.5">
-                  Connection: {inspectRoom.connectionTier || 'Strangers'} · Anonymized Relay
+                  Anonymized Relay
                 </div>
               </div>
 

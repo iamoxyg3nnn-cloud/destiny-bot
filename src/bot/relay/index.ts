@@ -4,7 +4,6 @@ import { db } from '../../database/supabase.js';
 import { redis } from '../../redis/client.js';
 import { sanitizer } from '../../core/sanitizer.js';
 import { embedService, COLORS } from '../embeds/index.js';
-import { progressionService } from '../../core/progression/levels.js';
 import { lockManager } from '../../redis/locks.js';
 import { RoomSession, UserProfile } from '../../core/types.js';
 
@@ -171,38 +170,6 @@ export class MessageRelayService {
         console.error('[Relay] Could not update room activity timestamp:', activityError);
       }
 
-      try {
-        const prevLevel = room.connectionLevel;
-        const { newXp, level: currentLevel } = await db.updateRoomXP(room.id, 2);
-        if (currentLevel !== prevLevel) {
-          room.connectionLevel = currentLevel;
-          const partnerUserId = isUser1 ? room.user2Id : room.user1Id;
-          const ref1 = `levelup:${room.id}:${currentLevel}:${authorUser.id}`;
-          const ref2 = `levelup:${room.id}:${currentLevel}:${partnerUserId}`;
-          const rewards = await Promise.all([
-            db.executeCoinTransaction(authorUser.id, 25, 'room_milestone', ref1, { level: currentLevel, roomId: room.id }),
-            db.executeCoinTransaction(partnerUserId, 25, 'room_milestone', ref2, { level: currentLevel, roomId: room.id }),
-          ]);
-          const rewardsGranted = rewards.every((reward) => reward.success);
-          if (!rewardsGranted) console.error('[Relay] One or more connection milestone rewards failed:', rewards);
-
-          const tierData = progressionService.getTierFromXp(newXp);
-          const levelUpEmbed = new EmbedBuilder()
-            .setColor(COLORS.GOLD)
-            .setTitle(`🎉 Connection Evolved: ${currentLevel.toUpperCase()}!`)
-            .setDescription(
-              `Your conversation has evolved to **${currentLevel}** (${newXp} XP)!\n\n` +
-              (rewardsGranted ? '✨ **+25 Destiny Coins** granted to both of you!\n' : '⚠️ Your milestone reward is being checked by the system.\n') +
-              `🔓 **Unlocked Perks**: ${tierData.perks.join(', ')}`
-            )
-            .setFooter({ text: 'Keep chatting to unlock higher tiers & deeper reveals!' });
-
-          await sendCleanDmPanel(message.author, { embeds: [levelUpEmbed] }).catch(() => {});
-          await client.users.fetch(recipientDiscordId).then((u) => sendCleanDmPanel(u, { embeds: [levelUpEmbed] })).catch(() => {});
-        }
-      } catch (error) {
-        console.error('[Relay] Connection XP update failed:', error);
-      }
 
       await message.react('✨').catch(() => {});
       return true;

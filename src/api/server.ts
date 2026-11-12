@@ -29,8 +29,7 @@ function safeEqual(a: string, b: string): boolean {
  *
  * The dashboard proxy forwards requests with `x-api-key`. When no key is
  * configured the API refuses every request rather than defaulting to open —
- * this API can ban users, adjust the coin economy, terminate rooms and read
- * private anonymous chat messages.
+ * this API can manage users, moderate rooms and read private anonymous chat messages.
  */
 function requireApiKey(req: Request, res: Response, next: NextFunction) {
   const expected = config.API_SECRET_KEY;
@@ -160,7 +159,7 @@ export function createApiServer(): express.Express {
   // 2. OVERVIEW METRICS
   app.get('/api/overview', async (_req: Request, res: Response) => {
     const [
-      economy,
+      totalUsers,
       activeRooms,
       queuedTickets,
       reports,
@@ -170,7 +169,7 @@ export function createApiServer(): express.Express {
       shardIds,
       workerIds,
     ] = await Promise.all([
-      db.getEconomySummary(),
+      db.getUserCount(),
       db.getActiveRooms(),
       matchmakingManager.getQueueTickets(),
       db.getReports('pending'),
@@ -197,12 +196,10 @@ export function createApiServer(): express.Express {
     }));
 
     res.json({
-      activeUsers: economy.activeUsers,
-      totalUsers: economy.totalUsers,
+      totalUsers,
       activeRoomsCount: activeRooms.length,
       queuedUsersCount: queuedTickets.length,
       pendingReportsCount: reports.length,
-      totalCoinsInCirculation: economy.totalCoins,
       messagesLast24h: messagesCount,
       hourlyThroughput,
       supabaseConnected: !db.isUsingMock(),
@@ -261,32 +258,6 @@ export function createApiServer(): express.Express {
     res.json({ success: true, user: result.user });
   });
 
-  app.post('/api/users/:id/adjust-coins', async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    const { amount, reason } = req.body || {};
-    if (!Number.isSafeInteger(amount) || amount === 0 || Math.abs(amount) > 1_000_000) {
-      return res.status(400).json({ error: 'amount must be a non-zero safe integer between -1,000,000 and 1,000,000.' });
-    }
-    if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) {
-      return res.status(400).json({ error: 'reason must be a string of at most 500 characters.' });
-    }
-
-    const idempotencyKey = req.header('idempotency-key');
-    if (!idempotencyKey || !/^[A-Za-z0-9:_-]{1,118}$/.test(idempotencyKey)) {
-      return res.status(400).json({ error: 'Invalid Idempotency-Key header.' });
-    }
-    const result = await db.executeCoinTransaction(
-      id,
-      amount,
-      'admin_adjustment',
-      `admin:adj:${idempotencyKey}`,
-      { reason, adminId: 'admin_web' }
-    );
-
-    if (!result.success) return res.status(409).json(result);
-    await db.logAdminAction('admin_web', 'ADJUST_COINS', 'USER', id, { amount, reason });
-    res.json(result);
-  });
 
   // 4. LIVE ROOMS & CHAT INSPECTOR
   app.get('/api/rooms', async (_req: Request, res: Response) => {
@@ -380,53 +351,7 @@ export function createApiServer(): express.Express {
     res.json(result);
   });
 
-  // 7. ECONOMY & CONVERSATION REWARDS
-  app.get('/api/economy', async (_req: Request, res: Response) => {
-    const transactions = await db.getRecentTransactions(50);
-    const shopItems = await db.getShopItems();
-
-    // Compute real faucet vs sink totals
-    let dailyRewards = 0;
-    let conversationRewards = 0;
-    let missionRewards = 0;
-    let shopSink = 0;
-    let adminAdjFaucet = 0;
-    let adminAdjSink = 0;
-    let transferVolume = 0;
-    let welcomeBonusFaucet = 0;
-
-    for (const tx of transactions) {
-      if (tx.type === 'welcome_bonus') welcomeBonusFaucet += tx.amount;
-      else if (tx.type === 'daily_reward') dailyRewards += tx.amount;
-      else if (tx.type === 'room_milestone' || tx.type === 'streak_bonus') conversationRewards += tx.amount;
-      else if (tx.type === 'mission_reward') missionRewards += tx.amount;
-      else if (tx.type === 'shop_purchase') shopSink += Math.abs(tx.amount);
-      else if (tx.type === 'admin_adjustment') {
-        if (tx.amount >= 0) adminAdjFaucet += tx.amount;
-        else adminAdjSink += Math.abs(tx.amount);
-      } else if (tx.type === 'transfer_sent') {
-        transferVolume += Math.abs(tx.amount);
-      }
-    }
-
-    const faucetSinkData = [
-      { category: 'Welcome Grants', faucet: welcomeBonusFaucet, sink: 0 },
-      { category: 'Daily Rewards', faucet: dailyRewards, sink: 0 },
-      { category: 'Conversation Milestones', faucet: conversationRewards, sink: 0 },
-      { category: 'Missions & Rewards', faucet: missionRewards, sink: 0 },
-      { category: 'Shop Purchases', faucet: 0, sink: shopSink },
-      { category: 'Admin Adjustments', faucet: adminAdjFaucet, sink: adminAdjSink },
-    ];
-
-    res.json({
-      transactions,
-      shopItems,
-      faucetSinkData,
-      transferVolume,
-    });
-  });
-
-  // 8. AUDIT LOGS
+  // 7. AUDIT LOGS
   app.get('/api/logs', async (_req: Request, res: Response) => {
     const logs = await db.getAdminLogs(100);
     res.json(logs);

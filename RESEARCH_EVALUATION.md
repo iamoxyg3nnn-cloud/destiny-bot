@@ -56,20 +56,14 @@ In compliance with open-source licensing rules, **zero proprietary code was blin
 - **Adopted Concept**:
   - Deterministic persona and avatar generation per session (e.g., Celestial Fox 🦊, Mystic Phoenix 🦅, Starlight Owl 🦉) with consistent styling across the chat session.
 
-### D. `warrensteph/discord-economy-bot`
-- The repository was confirmed deleted or private on GitHub (`fatal: repository not found`).
-- **Destiny Solution**: Destiny builds a brand new, bank-grade atomic economy engine from scratch with PostgreSQL row-level locks (`FOR UPDATE`), idempotency keys (`reference_id`), conversation rewards, daily streak multipliers, room milestones, missions, and a cosmetics shop.
 
----
-
-## 4. Summary of Destiny's Architectural Additions
+## 4. Summary of Destiny's Anonymous-Chat Architecture
 
 1. **Supabase PostgreSQL as Source of Truth**:
    - Strict schemas, foreign keys, row-level security, and audit logging.
-   - PL/pgSQL stored function `execute_coin_transaction` with automatic rollback and idempotency.
 2. **Redis Coordination & Distributed Locks**:
    - Distributed tickets for cross-server matchmaking with multi-criteria filtering (age, gender preference, language, interests).
-   - Distributed Redlock for profile reveals, room termination, and coin deductions.
+   - Distributed Redlock for profile reveals, room termination and matchmaking reservations.
    - Sliding-window rate limiters preventing spam and abuse.
 3. **Privacy by Design**:
    - Strict regex & token content sanitizers that strip invites, user pings `<@...>`, channel links, and personal tokens.
@@ -78,4 +72,4 @@ In compliance with open-source licensing rules, **zero proprietary code was blin
 4. **BullMQ Background Workers**:
    - Separate worker processes for matchmaking, notifications (7:30 PM IST cron), moderation triage, and session cleanup.
 5. **Modern Next.js Admin Dashboard**:
-   - Real-time telemetry, user management, room inspection, gender verification queue, moderation desk, economy analytics, and system audit logs.
+   - Real-time telemetry, user management, room inspection, gender verification queue, moderation desk and system audit logs.
