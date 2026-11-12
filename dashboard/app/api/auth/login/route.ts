@@ -43,8 +43,17 @@ export async function POST(req: NextRequest) {
   // Once individual platform owners are configured, shared-password access is
   // disabled so every dashboard action can be attributed to a verified owner.
   const configuredOwners = (process.env.BOT_OWNER_IDS || '').split(',').map((id) => id.trim()).filter((id) => /^[0-9]{17,20}$/.test(id));
-  if (configuredOwners.length > 0) {
-    return NextResponse.json({ error: 'Use Sign in with Discord. Shared-password login is disabled while platform owners are configured.' }, { status: 403 });
+  let ownerOAuthReady = false;
+  try {
+    const publicOrigin = new URL(process.env.NEXTAUTH_URL || 'http://localhost:3000');
+    ownerOAuthReady = configuredOwners.length > 0 &&
+      Boolean(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET) &&
+      (process.env.NODE_ENV !== 'production' || publicOrigin.protocol === 'https:');
+  } catch {
+    ownerOAuthReady = false;
+  }
+  if (ownerOAuthReady) {
+    return NextResponse.json({ error: 'Use Sign in with Discord. Shared-password login is disabled while owner OAuth is configured.' }, { status: 403 });
   }
   // Report a broken deployment as a configuration error, not as a wrong
   // password. This is safe to expose: it never reveals the configured value.
