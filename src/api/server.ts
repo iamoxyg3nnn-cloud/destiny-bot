@@ -32,7 +32,7 @@ function safeEqual(a: string, b: string): boolean {
  */
 function dashboardActor(req: Request): string {
   const actor = req.header('x-admin-id') || '';
-  return /^[0-9]{17,20}$/.test(actor) ? actor : dashboardActor(req);
+  return /^[0-9]{17,20}$/.test(actor) ? actor : 'dashboard_owner';
 }
 
 function requireApiKey(req: Request, res: Response, next: NextFunction) {
