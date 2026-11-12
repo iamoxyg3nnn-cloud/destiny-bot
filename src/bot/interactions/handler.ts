@@ -1296,10 +1296,11 @@ async function handleAdminVerifyAction(btn: ButtonInteraction, approve: boolean,
     return;
   }
 
-  const targetUser = await db.getUserById(userId);
-  const statusText = approve
+  const targetUser = review.user || null;
+  const auditWarning = review.auditWarning ? '\n⚠️ The decision was saved, but its audit log could not be written. Notify a platform owner.' : '';
+  const statusText = (approve
     ? `✅ **Approved by <@${btn.user.id}>** on ${new Date().toLocaleDateString()}`
-    : `❌ **Rejected by <@${btn.user.id}>** on ${new Date().toLocaleDateString()}`;
+    : `❌ **Rejected by <@${btn.user.id}>** on ${new Date().toLocaleDateString()}`) + auditWarning;
 
   const decisionEmbed = embedService.createStaffVerificationDecisionEmbed(targetUser, statusText, approve);
   try {
