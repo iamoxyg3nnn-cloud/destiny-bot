@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readSessionPayload, SESSION_COOKIE } from '../../../lib/auth';
+import { isConfiguredDashboardOwner, readSessionPayload, SESSION_COOKIE } from '../../../lib/auth';
 
 const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:4000';
 const API_KEY = process.env.API_SECRET_KEY || '';
@@ -10,6 +10,12 @@ const API_KEY = process.env.API_SECRET_KEY || '';
  */
 async function backendHeaders(req: NextRequest, extra: Record<string, string> = {}): Promise<Record<string, string>> {
   const session = await readSessionPayload(req.cookies.get(SESSION_COOKIE)?.value);
+  if (!session) throw new Error('Dashboard session is invalid or expired.');
+  if (process.env.DASHBOARD_OWNER_OAUTH_ENABLED === 'true') {
+    if (!session.sub || !isConfiguredDashboardOwner(session.sub)) throw new Error('Dashboard owner access has been revoked.');
+  } else if (session.sub) {
+    throw new Error('Discord owner OAuth is disabled for this dashboard.');
+  }
   return {
     Accept: 'application/json',
     ...(API_KEY ? { 'x-api-key': API_KEY } : {}),
