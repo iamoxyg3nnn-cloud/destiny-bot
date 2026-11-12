@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction, RequestHandler } from 'express';
 import crypto from 'crypto';
 import { config } from '../config/index.js';
 import { db } from '../database/supabase.js';
@@ -148,6 +148,14 @@ function everyoneCanViewChannel(guildId: string, channel: any, roles: any[]): bo
   return (permissions & 1024n) === 1024n;
 }
 
+function asyncRoute(
+  handler: (req: Request, res: Response, next: NextFunction) => Promise<unknown>
+): RequestHandler {
+  return (req, res, next) => {
+    void Promise.resolve(handler(req, res, next)).catch(next);
+  };
+}
+
 function requireDashboardOwner(req: Request, res: Response, next: NextFunction) {
   if (process.env.DASHBOARD_OWNER_OAUTH_ENABLED !== 'true') return next();
   const actor = req.header('x-admin-id') || '';
@@ -166,7 +174,7 @@ export function createApiServer(): express.Express {
   app.use('/api', requireApiKey);
 
   // 1. HEALTH & TELEMETRY
-  app.get('/api/health', async (_req: Request, res: Response) => {
+  app.get('/api/health', asyncRoute(async (_req: Request, res: Response) => {
     const mem = process.memoryUsage();
     const supabaseConnected = !db.isUsingMock() && await db.assertConnection().then(() => true).catch(() => false);
     const redisConnected = redis.isHealthy();
@@ -193,14 +201,14 @@ export function createApiServer(): express.Express {
         loadAverage: os.loadavg(),
       },
     });
-  });
+  }));
 
   // Health stays available for authenticated infrastructure diagnostics. All
   // user, room, report, verification and guild-management routes are owner-only.
   app.use('/api', requireDashboardOwner);
 
   // 2. OVERVIEW METRICS
-  app.get('/api/overview', async (_req: Request, res: Response) => {
+  app.get('/api/overview', asyncRoute(async (_req: Request, res: Response) => {
     const [
       totalUsers,
       activeRooms,
@@ -252,18 +260,18 @@ export function createApiServer(): express.Express {
       queueStats,
       uptimeSeconds: Math.floor(process.uptime()),
     });
-  });
+  }));
 
   // 3. USERS MANAGEMENT
-  app.get('/api/users', async (req: Request, res: Response) => {
+  app.get('/api/users', asyncRoute(async (req: Request, res: Response) => {
     const query = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 64) : '';
     const users = await db.searchUsers(query, 200);
     // Verification evidence is private and belongs only in the dedicated
     // verification workflow, never in the general user directory response.
     res.json(users.map(({ genderVerificationEvidence: _evidence, ...user }) => user));
-  });
+  }));
 
-  app.post('/api/users/:id/ban', async (req: Request, res: Response) => {
+  app.post('/api/users/:id/ban', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
     const { banned, reason } = req.body || {};
     if (typeof banned !== 'boolean') return res.status(400).json({ error: 'banned must be a boolean.' });
@@ -305,16 +313,16 @@ export function createApiServer(): express.Express {
     if (result.notFound) return res.status(404).json({ error: 'User not found' });
     const auditLogged = await writeDashboardAudit(req, banned ? 'BAN_USER' : 'UNBAN_USER', 'USER', id, { reason });
     res.json({ success: true, user: result.user, auditWarning: !auditLogged, cleanupWarning: result.cleanupWarning });
-  });
+  }));
 
 
   // 4. LIVE ROOMS & CHAT INSPECTOR
-  app.get('/api/rooms', async (_req: Request, res: Response) => {
+  app.get('/api/rooms', asyncRoute(async (_req: Request, res: Response) => {
     const rooms = await db.getActiveRooms();
     res.json(rooms);
-  });
+  }));
 
-  app.post('/api/rooms/:id/terminate', async (req: Request, res: Response) => {
+  app.post('/api/rooms/:id/terminate', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
     const { reason } = req.body || {};
     if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) {
@@ -325,22 +333,22 @@ export function createApiServer(): express.Express {
     if (!success) return res.status(409).json({ error: 'Room is missing or is no longer active.' });
     const auditLogged = await writeDashboardAudit(req, 'TERMINATE_ROOM', 'ROOM', id, { reason });
     res.json({ success: true, auditWarning: !auditLogged });
-  });
+  }));
 
-  app.get('/api/rooms/:id/messages', async (req: Request, res: Response) => {
+  app.get('/api/rooms/:id/messages', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
     const messages = await db.getRoomMessages(id, 100);
     res.json(messages);
-  });
+  }));
 
   // 5. REPORTS DESK
-  app.get('/api/reports', async (req: Request, res: Response) => {
+  app.get('/api/reports', asyncRoute(async (req: Request, res: Response) => {
     const status = req.query.status as any;
     const reports = await db.getReports(status);
     res.json(reports);
-  });
+  }));
 
-  app.post('/api/reports/:id/resolve', async (req: Request, res: Response) => {
+  app.post('/api/reports/:id/resolve', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
     const { action, notes } = req.body || {};
     const allowedActions = ['none', 'warned', 'temp_ban', 'perma_ban'];
@@ -398,10 +406,10 @@ export function createApiServer(): express.Express {
       cleanupWarning: outcome.cleanupWarning,
       report: { ...outcome.report, status: 'resolved', actionTaken: action },
     });
-  });
+  }));
 
   // 6. GENDER VERIFICATIONS
-  app.get('/api/verifications', async (req: Request, res: Response) => {
+  app.get('/api/verifications', asyncRoute(async (req: Request, res: Response) => {
     const status = typeof req.query.status === 'string' ? req.query.status : 'pending';
     const allowedStatuses = ['pending', 'verified', 'rejected', 'unverified', 'all'];
     if (!allowedStatuses.includes(status)) {
@@ -409,9 +417,9 @@ export function createApiServer(): express.Express {
     }
     const users = await db.getUsersByVerificationStatus(status as any, 1000, 0);
     res.json(users);
-  });
+  }));
 
-  app.post('/api/verifications/:id/review', async (req: Request, res: Response) => {
+  app.post('/api/verifications/:id/review', asyncRoute(async (req: Request, res: Response) => {
     const id = req.params.id as string;
     const { approved, notes } = req.body || {};
     if (typeof approved !== 'boolean') return res.status(400).json({ error: 'approved must be a boolean.' });
@@ -421,16 +429,16 @@ export function createApiServer(): express.Express {
 
     const result = await verificationService.reviewVerification(dashboardActor(req), id, approved, notes);
     res.json(result);
-  });
+  }));
 
   // 7. AUDIT LOGS
-  app.get('/api/logs', async (_req: Request, res: Response) => {
+  app.get('/api/logs', asyncRoute(async (_req: Request, res: Response) => {
     const logs = await db.getAdminLogs(100);
     res.json(logs);
-  });
+  }));
 
   // 9. GUILDS & SERVER DEDICATED CHANNELS
-  app.get('/api/guilds', async (_req: Request, res: Response) => {
+  app.get('/api/guilds', asyncRoute(async (_req: Request, res: Response) => {
     const shardIds = await redis.sMembers('bot:guild-shards');
     const snapshots = await Promise.all(shardIds.map(async (shardId) => {
       const raw = await redis.get(`bot:guilds:${shardId}`);
@@ -457,9 +465,9 @@ export function createApiServer(): express.Express {
       };
     }));
     res.json(enriched);
-  });
+  }));
 
-  app.post('/api/guilds/:id/settings', async (req: Request, res: Response) => {
+  app.post('/api/guilds/:id/settings', asyncRoute(async (req: Request, res: Response) => {
     try {
       const guildId = req.params.id as string;
       const body = req.body || {};
@@ -526,12 +534,18 @@ export function createApiServer(): express.Express {
       console.error('[API] Failed to update guild settings:', err?.message || err);
       res.status(500).json({ error: 'Failed to update guild settings' });
     }
-  });
+  }));
 
   app.use((error: any, _req: Request, res: Response, next: NextFunction) => {
     console.error('[API] Unhandled request error:', error?.message || error);
     if (res.headersSent) return next(error);
     return res.status(500).json({ error: 'Internal server error' });
+  });
+
+  app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) return next(error);
+    console.error('[API] Unhandled request error:', error);
+    return res.status(500).json({ error: 'Internal server error.' });
   });
 
   return app;
