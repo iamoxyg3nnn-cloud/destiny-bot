@@ -53,8 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in 1 2 3 4 5 6; do
-            if gh run list --repo "${GH_REPO}" --workflow destiny.yml --event workflow_dispatch --branch main --limit 20 --json runNumber,status \\
-              --jq "any(.[]; .runNumber > ${PREVIOUS_RUN_NUMBER} and (.status == \\\"queued\\\" or .status == \\\"in_progress\\\"))" | grep -qx true; then
+            if gh run list --repo "${GH_REPO}" --workflow destiny.yml --event workflow_dispatch --branch main --limit 20 --json number,status --jq 'any(.[]; .number > '"${PREVIOUS_RUN_NUMBER}"' and (.status == "queued" or .status == "in_progress"))' | grep -qx true; then
               echo "::notice::Verified that GitHub created the successor workflow run."
               exit 0
             fi
