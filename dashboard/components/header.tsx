@@ -80,7 +80,7 @@ export function Header() {
           <span>{pingMs === null ? '—' : `${pingMs}ms`}</span>
           <span className="text-zinc-600">·</span>
           <span className={gatewayOk === false ? 'text-red-400' : gatewayOk === true ? 'text-emerald-400' : 'text-zinc-500'}>
-            {gatewayOk === false ? 'Gateway unavailable' : gatewayOk === true ? 'Gateway OK' : 'Not checked'}
+            {gatewayOk === false ? 'API unavailable' : gatewayOk === true ? 'API OK' : 'Not checked'}
           </span>
         </div>
 
