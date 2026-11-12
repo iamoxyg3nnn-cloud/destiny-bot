@@ -108,7 +108,9 @@ jobs:
               sh /workspace/scripts/apply-migrations.sh
               echo "Second pass: confirm every migration is skipped"
               sh /workspace/scripts/apply-migrations.sh
-              psql -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) FROM destiny_internal.schema_migrations"
+              applied="$(psql -Atqc "SELECT count(*) FROM destiny_internal.schema_migrations")"
+              expected="$(find /workspace/supabase/migrations -maxdepth 1 -name '*.sql' | wc -l | tr -d ' ')"
+              test "$applied" = "$expected"
             '
 
   docker:
