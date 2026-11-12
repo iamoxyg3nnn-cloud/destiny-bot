@@ -544,8 +544,8 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
     if (sub === 'portal') {
       const channel = interaction.options.getChannel('channel', true) as any;
-      if (!channel.isTextBased()) {
-        await respond({ content: '⚠️ The designated portal channel must be a text channel.', ephemeral: true });
+      if (![0, 5].includes(Number(channel.type))) {
+        await respond({ content: '⚠️ The designated portal channel must be a text or announcement channel.', ephemeral: true });
         return;
       }
       const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
@@ -555,20 +555,31 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         return;
       }
 
+      const previousSettings = await db.getGuildSettings(interaction.guild.id);
       const saved = await db.setGuildMatchChannel(interaction.guild.id, channel.id, interaction.guild.name);
       if (!saved) {
         await respond({ content: '⚠️ Could not save the matchmaking portal channel. Please try again.', ephemeral: true });
         return;
       }
-      const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_MATCH_CHANNEL', interaction.guild.id, { channelId: channel.id });
 
       const portalContainer = embedService.createMatchmakingPortalContainer();
-      await channel.send({
-        components: [portalContainer],
-        flags: [MessageFlags.IsComponentsV2]
-      }).catch((err: any) => {
-        throw new Error(`Failed to send portal in #${channel.name}: ${err?.message}`);
-      });
+      try {
+        await channel.send({
+          components: [portalContainer],
+          flags: [MessageFlags.IsComponentsV2]
+        });
+      } catch (error: any) {
+        const rolledBack = await db.setGuildMatchChannel(interaction.guild.id, previousSettings?.matchChannelId ?? null, interaction.guild.name);
+        await respond({
+          content: rolledBack
+            ? `⚠️ Could not post the portal in <#${channel.id}>. The previous portal setting was restored.`
+            : `⚠️ Portal posting failed and the previous setting could not be restored. Please contact the bot owner.`,
+          ephemeral: true,
+        });
+        console.error('[Guild Setup] Portal post failed:', error?.message || error);
+        return;
+      }
+      const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_MATCH_CHANNEL', interaction.guild.id, { channelId: channel.id });
 
       await respond({
         content: `✅ **Destiny Matchmaking Portal** deployed successfully in <#${channel.id}>! Members can now click "Find Match" to start chatting.`,
