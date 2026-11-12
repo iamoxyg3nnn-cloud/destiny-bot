@@ -94,7 +94,7 @@ export default function UsersPage() {
             <Badge variant="zinc">{users.length} profiles</Badge>
           </div>
           <p className="text-xs text-zinc-400 mt-1">
-            Anonymous identities, profile eligibility and moderation status. No wallets, balances or reward records.
+            Anonymous identities, profile eligibility and moderation status.
           </p>
         </div>
         <Button size="sm" variant="secondary" onClick={() => { setLoading(true); void fetchUsers().finally(() => setLoading(false)); }} disabled={loading}>
