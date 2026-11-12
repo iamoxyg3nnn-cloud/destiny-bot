@@ -227,17 +227,11 @@ export function createApiServer(): express.Express {
 
   // 3. USERS MANAGEMENT
   app.get('/api/users', async (req: Request, res: Response) => {
-    const query = (req.query.q as string || '').toLowerCase();
-    const allUsers = await db.getAllUsers(200);
-
-    let filtered = allUsers;
-    if (query) {
-      filtered = allUsers.filter(
-        (u) => u.destinyId.toLowerCase().includes(query) || u.discordUserId.includes(query)
-      );
-    }
-
-    res.json(filtered);
+    const query = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 64) : '';
+    const users = await db.searchUsers(query, 200);
+    // Verification evidence is private and belongs only in the dedicated
+    // verification workflow, never in the general user directory response.
+    res.json(users.map(({ genderVerificationEvidence: _evidence, ...user }) => user));
   });
 
   app.post('/api/users/:id/ban', async (req: Request, res: Response) => {
@@ -345,12 +339,13 @@ export function createApiServer(): express.Express {
 
   // 6. GENDER VERIFICATIONS
   app.get('/api/verifications', async (req: Request, res: Response) => {
-    const status = (req.query.status as string) || 'pending';
-    const users = await db.getAllUsers(500);
-    const filtered = status === 'all'
-      ? users.filter((u) => u.genderVerificationStatus && u.genderVerificationStatus !== 'unverified')
-      : users.filter((u) => u.genderVerificationStatus === status);
-    res.json(filtered);
+    const status = typeof req.query.status === 'string' ? req.query.status : 'pending';
+    const allowedStatuses = ['pending', 'verified', 'rejected', 'unverified', 'all'];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid verification status filter.' });
+    }
+    const users = await db.getUsersByVerificationStatus(status as any, 1000, 0);
+    res.json(users);
   });
 
   app.post('/api/verifications/:id/review', async (req: Request, res: Response) => {
