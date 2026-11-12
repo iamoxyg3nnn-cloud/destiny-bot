@@ -54,11 +54,6 @@ export class RevealService {
         ? requestedFields.filter((f) => previous.revealedFields.includes(f))
         : requestedFields;
 
-      // Detect whether the reveal was already completed before this submission so
-      // the bonus XP is only granted on the transition into a completed reveal.
-      const otherStatus = isUser1 ? room.revealStatusUser2 : room.revealStatusUser1;
-      const wasAlreadyComplete = Boolean(previous?.consented && otherStatus?.consented);
-
       if (isUser1) {
         room.revealStatusUser1 = { consented: true, revealedFields: effectiveFields };
       } else {
