@@ -590,8 +590,8 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
     if (sub === 'modlog') {
       const channel = interaction.options.getChannel('channel', true) as any;
-      if (!channel.isTextBased()) {
-        await respond({ content: '⚠️ The moderation log must be a text channel.', ephemeral: true });
+      if (![0, 5].includes(Number(channel.type))) {
+        await respond({ content: '⚠️ The moderation log must be a text or announcement channel.', ephemeral: true });
         return;
       }
       const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
