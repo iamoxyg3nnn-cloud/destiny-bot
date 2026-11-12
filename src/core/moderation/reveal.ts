@@ -95,10 +95,6 @@ export class RevealService {
           return filtered;
         };
 
-        // Award bonus Connection XP for mutual reveal (only once per room).
-        if (!wasAlreadyComplete) {
-          await db.updateRoomXP(roomId, 100);
-        }
 
         return {
           completed: true,
