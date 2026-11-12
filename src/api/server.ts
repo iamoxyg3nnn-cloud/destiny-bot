@@ -284,16 +284,27 @@ export function createApiServer(): express.Express {
         banExpiresAt: null,
       });
 
+      let cleanupWarning = false;
       if (banned) {
-        await matchmakingManager.removeQueueTicketUnderLock(id);
-        if (user.activeRoomId) await db.endRoom(user.activeRoomId, 'moderated');
+        const cleanup = await Promise.allSettled([
+          matchmakingManager.removeQueueTicketUnderLock(id),
+          ...(user.activeRoomId
+            ? [db.endRoom(user.activeRoomId, 'moderated').then(async (ended) => {
+                if (!ended) await db.clearActiveRoom(id, user.activeRoomId!);
+              })]
+            : []),
+        ]);
+        cleanupWarning = cleanup.some((result) => result.status === 'rejected');
+        if (cleanupWarning) {
+          console.error('[API] Ban was saved but queue/room cleanup needs attention:', cleanup.filter((result) => result.status === 'rejected'));
+        }
       }
-      return { notFound: false as const, user: updatedUser };
+      return { notFound: false as const, user: updatedUser, cleanupWarning };
     });
 
     if (result.notFound) return res.status(404).json({ error: 'User not found' });
     const auditLogged = await writeDashboardAudit(req, banned ? 'BAN_USER' : 'UNBAN_USER', 'USER', id, { reason });
-    res.json({ success: true, user: result.user, auditWarning: !auditLogged });
+    res.json({ success: true, user: result.user, auditWarning: !auditLogged, cleanupWarning: result.cleanupWarning });
   });
 
 
