@@ -8,6 +8,7 @@ set -eu
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA IF NOT EXISTS destiny_internal'
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'REVOKE ALL ON SCHEMA destiny_internal FROM PUBLIC, anon, authenticated'
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE TABLE IF NOT EXISTS destiny_internal.schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())'
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'REVOKE ALL ON ALL TABLES IN SCHEMA destiny_internal FROM PUBLIC, anon, authenticated'
 
 for migration in /workspace/supabase/migrations/*.sql; do
   [ -f "$migration" ] || continue
