@@ -1130,7 +1130,7 @@ export class DatabaseService {
       p_report_id: id,
       p_action: action,
       p_notes: notes ?? null,
-      p_admin_id: adminId || 'admin_web',
+      p_admin_id: adminId || 'dashboard_owner',
     });
     if (error) throw new Error(`Failed to resolve report: ${error.message}`);
     return Boolean(data);
