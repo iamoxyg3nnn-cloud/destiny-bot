@@ -42,7 +42,6 @@ describe('Destiny DM-First Button & Message Workflow Tests', () => {
     const startDmRegex = /^\s*(?:destiny\s+start|start)\s*$/i;
     const leaveDmRegex = /^\s*(?:destiny\s+leave|leave|exit|stop|end)\s*$/i;
     const cancelDmRegex = /^\s*(?:destiny\s+cancel|cancel|stop)\s*$/i;
-    const walletDmRegex = /^\s*(?:destiny\s+wallet|wallet|coins|daily)\s*$/i;
     const icebreakerDmRegex = /^\s*(?:destiny\s+icebreaker|icebreaker|prompt|conversation\s+starter)\s*$/i;
 
     it('should match start matchmaking keywords in DM ("start", "destiny start")', () => {
