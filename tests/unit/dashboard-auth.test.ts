@@ -55,6 +55,8 @@ describe('Dashboard authentication helpers', () => {
 
   it('binds Discord owner identity into the signed session', async () => {
     vi.stubEnv('DASHBOARD_SESSION_SECRET', 'test-session-secret-with-enough-entropy');
+    vi.stubEnv('DASHBOARD_OWNER_OAUTH_ENABLED', 'true');
+    vi.stubEnv('BOT_OWNER_IDS', '123456789012345678,234567890123456789');
     const token = await createSessionToken(60, '123456789012345678');
     expect(token).toBeTruthy();
     expect(await verifySessionToken(token)).toBe(true);
