@@ -35,10 +35,11 @@ function callbackUri(): string {
 }
 
 export async function GET(req: NextRequest) {
+  if (process.env.DASHBOARD_OWNER_OAUTH_ENABLED !== 'true') return redirectToLogin('oauth_disabled');
   const code = req.nextUrl.searchParams.get('code') || '';
   const state = req.nextUrl.searchParams.get('state') || '';
   const storedState = req.cookies.get(STATE_COOKIE)?.value || '';
-  if (!code || !state || !storedState || !(await safeEqual(state, storedState))) {
+  if (!code || code.length > 2048 || !state || state.length > 128 || !storedState || !(await safeEqual(state, storedState))) {
     return redirectToLogin('oauth_state');
   }
 
