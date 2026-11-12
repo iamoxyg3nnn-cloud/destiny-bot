@@ -124,8 +124,11 @@ Execute the SQL migrations located in `supabase/migrations/` in order. Migration
 14. `014_atomic_report_resolution.sql` — Resolve moderation reports and apply permanent bans in one transaction.
 15. `015_conditional_room_inactivity.sql` — Close rooms only when they remain inactive at the transactionally rechecked cutoff.
 16. `016_remove_economy_and_progression.sql` — Drop all legacy economy/progression data and schema while preserving user profiles, rooms, chat, safety and moderation data.
+17. `017_admin_control_plane_security.sql` — Restrict the internal RLS event-trigger helper and add missing moderation foreign-key indexes.
+18. `018_deny_public_table_access.sql` — Explicitly deny direct `anon` and `authenticated` access to backend-only application tables.
+19. `019_temporary_safety_bans.sql` — Add 24-hour report suspensions while preserving permanent bans.
 
-**Deployment note:** Stop the bot and worker processes, apply the migrations through `016`, deploy the updated application, then restart the processes. Do not run the old bot version against the migrated schema because the room-creation RPC no longer accepts progression arguments.
+**Deployment note:** Fresh databases must apply all migrations `001`–`019` in order. Existing deployments use `scripts/apply-migrations.sh`, which tracks completed files in the private `destiny_internal.schema_migrations` schema and skips them on subsequent restarts. The connected production database has been baselined after verifying its final schema and all 19 migration versions. Do not run `supabase db push` until the separate Supabase CLI migration history is reconciled.
 
 ### 4. Running Destiny
 ```bash
