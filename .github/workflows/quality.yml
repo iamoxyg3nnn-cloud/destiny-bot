@@ -98,18 +98,17 @@ jobs:
             -e PGPORT=5432 \
             -e PGUSER=postgres \
             -e PGDATABASE=destiny_test \
+            -e DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/destiny_test" \
             -v "${GITHUB_WORKSPACE}:/workspace" \
             -w /workspace postgres:16-alpine sh -ec '
               psql -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN;"
               psql -v ON_ERROR_STOP=1 -c "CREATE ROLE authenticated NOLOGIN;"
               psql -v ON_ERROR_STOP=1 -c "CREATE ROLE service_role NOLOGIN BYPASSRLS;"
-              for pass in 1 2; do
-                echo "Migration pass ${pass}"
-                for migration in supabase/migrations/*.sql; do
-                  echo "Applying ${migration}"
-                  psql -v ON_ERROR_STOP=1 -f "${migration}"
-                done
-              done
+              echo "First pass: apply and record migrations"
+              sh /workspace/scripts/apply-migrations.sh
+              echo "Second pass: confirm every migration is skipped"
+              sh /workspace/scripts/apply-migrations.sh
+              psql -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) FROM destiny_internal.schema_migrations"
             '
 
   docker:
