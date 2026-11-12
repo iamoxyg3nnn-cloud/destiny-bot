@@ -462,6 +462,7 @@ export function createApiServer(): express.Express {
         matchChannelId: settings?.matchChannelId || null,
         modLogChannelId: settings?.modLogChannelId || null,
         crossServerEnabled: settings?.crossServerEnabled !== false,
+        isTrustedStaffGuild: config.ECLAIRS_GUILD_IDS.includes(guild.id),
       };
     }));
     res.json(enriched);
