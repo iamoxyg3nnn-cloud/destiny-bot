@@ -542,12 +542,6 @@ export function createApiServer(): express.Express {
     return res.status(500).json({ error: 'Internal server error' });
   });
 
-  app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {
-    if (res.headersSent) return next(error);
-    console.error('[API] Unhandled request error:', error);
-    return res.status(500).json({ error: 'Internal server error.' });
-  });
-
   return app;
 }
 
@@ -555,8 +549,8 @@ export const apiApp: express.Express = createApiServer();
 
 if (process.env.RUN_API === 'true') {
   const port = config.PORT || 4000;
-  // Bind to loopback only — the admin API must never be directly reachable
-  // from outside the host. The dashboard proxies to it over localhost.
+  // Bind to the configured interface. Docker uses 0.0.0.0 for the private
+  // container network; the API port is not published to the host.
   apiApp.listen(port, config.API_HOST, () => {
     console.log(`🌐 Destiny Admin API Server listening on http://${config.API_HOST}:${port}`);
   });
