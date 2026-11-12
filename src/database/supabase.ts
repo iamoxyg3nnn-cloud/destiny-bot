@@ -1255,7 +1255,7 @@ export class DatabaseService {
 
     if (this.isMockMode) {
       const settings = this.mockGuildSettings.get(guildId) || null;
-      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 300_000 });
+      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 5_000 });
       return settings;
     }
     if (!this.client) throw new Error('Supabase is unavailable; guild settings cannot be loaded.');
@@ -1285,7 +1285,7 @@ export class DatabaseService {
       updatedAt: data.updated_at,
     };
 
-    this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 300_000 });
+    this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 5_000 });
     return settings;
   }
 
@@ -1297,7 +1297,7 @@ export class DatabaseService {
       if (guildName) settings.guildName = guildName;
       settings.updatedAt = new Date().toISOString();
       this.mockGuildSettings.set(guildId, settings);
-      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 300_000 });
+      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 5_000 });
       return true;
     }
     if (!this.client) return false;
@@ -1316,7 +1316,7 @@ export class DatabaseService {
     if (cached) {
       cached.crossServerEnabled = enabled;
       if (guildName) cached.guildName = guildName;
-      this.guildSettingsCache.set(guildId, { settings: cached, expires: Date.now() + 300_000 });
+      this.guildSettingsCache.set(guildId, { settings: cached, expires: Date.now() + 5_000 });
     } else {
       this.guildSettingsCache.delete(guildId);
     }
@@ -1331,7 +1331,7 @@ export class DatabaseService {
       if (guildName) settings.guildName = guildName;
       settings.updatedAt = new Date().toISOString();
       this.mockGuildSettings.set(guildId, settings);
-      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 300_000 });
+      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 5_000 });
       return true;
     }
     if (!this.client) return false;
@@ -1350,7 +1350,7 @@ export class DatabaseService {
     if (cached) {
       cached.matchChannelId = channelId;
       if (guildName) cached.guildName = guildName;
-      this.guildSettingsCache.set(guildId, { settings: cached, expires: Date.now() + 300_000 });
+      this.guildSettingsCache.set(guildId, { settings: cached, expires: Date.now() + 5_000 });
     } else {
       this.guildSettingsCache.delete(guildId);
     }
@@ -1365,7 +1365,7 @@ export class DatabaseService {
       if (guildName) settings.guildName = guildName;
       settings.updatedAt = new Date().toISOString();
       this.mockGuildSettings.set(guildId, settings);
-      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 300_000 });
+      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 5_000 });
       return true;
     }
     if (!this.client) return false;
@@ -1384,7 +1384,7 @@ export class DatabaseService {
     if (cached) {
       cached.modLogChannelId = channelId;
       if (guildName) cached.guildName = guildName;
-      this.guildSettingsCache.set(guildId, { settings: cached, expires: Date.now() + 300_000 });
+      this.guildSettingsCache.set(guildId, { settings: cached, expires: Date.now() + 5_000 });
     } else {
       this.guildSettingsCache.delete(guildId);
     }
