@@ -1287,7 +1287,7 @@ async function handleAdminVerifyAction(btn: ButtonInteraction, approve: boolean,
   }
 
   const review = await verificationService.reviewVerification(
-    btn.user.tag,
+    btn.user.id,
     userId,
     approve,
     approve ? `Approved by staff @${btn.user.tag}` : `Rejected by staff @${btn.user.tag}`
