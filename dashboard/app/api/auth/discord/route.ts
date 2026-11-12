@@ -7,7 +7,10 @@ function redirectUri(): string {
   return new URL('/api/auth/callback/discord', base).toString();
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (process.env.DASHBOARD_OWNER_OAUTH_ENABLED !== 'true') {
+    return NextResponse.redirect(new URL('/login?error=oauth_disabled', req.url));
+  }
   const clientId = process.env.DISCORD_CLIENT_ID || '';
   const owners = (process.env.BOT_OWNER_IDS || '').split(',').map((id) => id.trim()).filter((id) => /^[0-9]{17,20}$/.test(id));
   let publicOrigin: URL;
