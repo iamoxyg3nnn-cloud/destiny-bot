@@ -478,6 +478,9 @@ export function createApiServer(): express.Express {
       }
       const hasMatch = Object.prototype.hasOwnProperty.call(body, 'matchChannelId');
       const hasModLog = Object.prototype.hasOwnProperty.call(body, 'modLogChannelId');
+      if (hasModLog && !config.ECLAIRS_GUILD_IDS.includes(guildId)) {
+        return res.status(403).json({ error: 'The global moderation alert channel can only be configured in a trusted staff guild.' });
+      }
       const hasCrossServer = Object.prototype.hasOwnProperty.call(body, 'crossServerEnabled');
       const settingCount = Number(hasMatch) + Number(hasModLog) + Number(hasCrossServer);
       if (settingCount !== 1) {
