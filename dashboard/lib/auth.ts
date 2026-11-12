@@ -135,7 +135,15 @@ export async function readSessionPayload(token: string | undefined | null): Prom
     if (!Number.isSafeInteger(payload.iat) || !Number.isSafeInteger(payload.exp)) return null;
     if (payload.iat > now + 60_000 || payload.exp <= now || payload.exp <= payload.iat) return null;
     if (payload.exp - payload.iat > SESSION_TTL_SECONDS * 1000) return null;
-    if (payload.sub !== undefined && (!/^[0-9]{17,20}$/.test(payload.sub) || payload.role !== 'owner')) return null;
+    if (payload.sub !== undefined) {
+      if (!/^[0-9]{17,20}$/.test(payload.sub) || payload.role !== 'owner' ||
+          process.env.DASHBOARD_OWNER_OAUTH_ENABLED !== 'true') return null;
+      const configuredOwners = (process.env.BOT_OWNER_IDS || '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter((id) => /^[0-9]{17,20}$/.test(id));
+      if (!configuredOwners.includes(payload.sub)) return null;
+    }
     if (payload.sub === undefined && payload.role !== undefined) return null;
     return payload;
   } catch {
