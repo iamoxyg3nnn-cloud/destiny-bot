@@ -249,7 +249,55 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     return;
   }
 
-  // All other commands acknowledge immediately before DB-backed moderation checks.
+  // Platform-owner operations are authorized by the out-of-band owner allowlist,
+  // not by user profile/reputation state. Do not create a chat profile just to
+  // inspect service health, and never let a moderation ban disable owner recovery.
+  if (commandName === 'owner') {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    }
+    if (!config.BOT_OWNER_IDS.includes(interaction.user.id)) {
+      await interaction.editReply({ content: '⛔ This command is reserved for configured Destiny bot owners.' });
+      return;
+    }
+    try {
+      const [shardIds, workerIds] = await Promise.all([
+        redis.sMembers('bot:guild-shards'),
+        redis.sMembers('worker:instances'),
+      ]);
+      const [shardSnapshots, workerHeartbeats] = await Promise.all([
+        Promise.all(shardIds.map((id) => redis.get('bot:guilds:' + id))),
+        Promise.all(workerIds.map((id) => redis.get('worker:heartbeat:' + id))),
+      ]);
+      const staleShards = shardIds.filter((_id, index) => !shardSnapshots[index]);
+      const staleWorkers = workerIds.filter((_id, index) => !workerHeartbeats[index]);
+      await Promise.all([
+        ...staleShards.map((id) => redis.sRem('bot:guild-shards', id)),
+        ...staleWorkers.map((id) => redis.sRem('worker:instances', id)),
+      ]);
+      const dbOnline = !db.isUsingMock() && await db.assertConnection().then(() => true).catch(() => false);
+      const embed = new EmbedBuilder()
+        .setColor(COLORS.DARK)
+        .setTitle('Destiny — Platform Owner Controls')
+        .setDescription('Global diagnostics only. Per-server configuration remains under /setup and requires Discord Administrator permission.')
+        .addFields(
+          { name: 'Owner authorization', value: 'Verified', inline: true },
+          { name: 'Bot shards online', value: String(shardSnapshots.filter(Boolean).length), inline: true },
+          { name: 'Workers online', value: String(workerHeartbeats.filter(Boolean).length), inline: true },
+          { name: 'Supabase', value: dbOnline ? 'Connected' : 'Unavailable', inline: true },
+          { name: 'Redis', value: redis.isHealthy() ? 'Connected' : 'Unavailable', inline: true },
+          { name: 'Configured owner IDs', value: String(config.BOT_OWNER_IDS.length), inline: true },
+        )
+        .setFooter({ text: 'Platform owner scope is separate from Discord server administration.' });
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error: any) {
+      console.error('[Owner] Could not collect platform diagnostics:', error?.message || error);
+      await interaction.editReply({ content: '⚠️ Platform diagnostics are temporarily unavailable. Check the bot logs and Redis connection.' });
+    }
+    return;
+  }
+
+  // All user/server commands acknowledge immediately before DB-backed moderation checks.
   if (!interaction.deferred && !interaction.replied) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
   }
@@ -465,36 +513,6 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
   }
 
   // 14. SETUP (Administrator)
-  if (commandName === 'owner') {
-    const owners = config.BOT_OWNER_IDS;
-    if (!owners.includes(interaction.user.id)) {
-      await respond({ content: '⛔ This command is reserved for the Destiny bot owner.', ephemeral: true });
-      return;
-    }
-    const [guildShards, workerIds] = await Promise.all([
-      redis.sMembers('bot:guild-shards'),
-      redis.sMembers('worker:instances'),
-    ]);
-    const workerHeartbeats = await Promise.all(workerIds.map((id) => redis.get(`worker:heartbeat:${id}`)));
-    const onlineWorkers = workerHeartbeats.filter(Boolean).length;
-    const dbOnline = !db.isUsingMock() && await db.assertConnection().then(() => true).catch(() => false);
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.DARK)
-      .setTitle('Destiny — Platform Owner Controls')
-      .setDescription('Global diagnostics only. Per-server configuration remains under `/setup` and requires Discord Administrator permission.')
-      .addFields(
-        { name: 'Owner authorization', value: 'Verified', inline: true },
-        { name: 'Bot shards reporting', value: String(guildShards.length), inline: true },
-        { name: 'Workers online', value: `${onlineWorkers}/${workerIds.length}`, inline: true },
-        { name: 'Supabase', value: dbOnline ? 'Connected' : 'Unavailable', inline: true },
-        { name: 'Redis', value: redis.isHealthy() ? 'Connected' : 'Unavailable', inline: true },
-        { name: 'Configured owner IDs', value: String(owners.length), inline: true },
-      )
-      .setFooter({ text: 'Platform owner scope is separate from Discord server administration.' });
-    await respond({ embeds: [embed], ephemeral: true });
-    return;
-  }
-
   if (commandName === 'setup') {
     if (!interaction.guild) {
       await respond({ content: '⚠️ The `/setup` command can only be executed inside a Discord server.', ephemeral: true });
