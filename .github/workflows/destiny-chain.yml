@@ -1,0 +1,58 @@
+name: Destiny Session Continuation
+
+on:
+  workflow_run:
+    workflows:
+      - Destiny Bot Runner
+    types:
+      - completed
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: destiny-session-continuation
+  cancel-in-progress: false
+
+jobs:
+  dispatch-successor:
+    name: Start the next Destiny session
+    if: ${{ github.event.workflow_run.conclusion != 'cancelled' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Back off after an unsuccessful session
+        if: ${{ github.event.workflow_run.conclusion != 'success' }}
+        run: |
+          echo "::warning::Previous Destiny run concluded as ${{ github.event.workflow_run.conclusion }}."
+          echo "Waiting 3 minutes before starting a recovery session."
+          sleep 180
+
+      - name: Dispatch the next bot session
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "Previous run: ${{ github.event.workflow_run.html_url }}"
+          echo "Conclusion: ${{ github.event.workflow_run.conclusion }}"
+          gh workflow run destiny.yml \
+            --repo "${GH_REPO}" \
+            --ref main \
+            -f session_minutes=345
+          echo "::notice::Successor session dispatch accepted by GitHub Actions."
+
+      - name: Continuation summary
+        if: always()
+        run: |
+          {
+            echo "### Destiny session continuation"
+            echo ""
+            echo "- Previous run: [#${{ github.event.workflow_run.run_number }}](${{ github.event.workflow_run.html_url }})"
+            echo "- Previous conclusion: ${{ github.event.workflow_run.conclusion }}"
+            echo "- Branch: main"
+            echo "- Successor: dispatch requested"
+          } >> "${GITHUB_STEP_SUMMARY}"
