@@ -1328,15 +1328,23 @@ async function handleAdminVerifyAction(btn: ButtonInteraction, approve: boolean,
  * Check if an interaction or message author has admin/staff permissions in the guild
  */
 export function isGuildAdmin(interactionOrMessage: Interaction | Message): boolean {
-  const member = interactionOrMessage.member as any;
-  if (!member) return false;
+  const authorId = interactionOrMessage instanceof Message
+    ? interactionOrMessage.author.id
+    : interactionOrMessage.user.id;
 
-  const authorId = interactionOrMessage instanceof Message ? interactionOrMessage.author.id : interactionOrMessage.user.id;
   // Server ownership and the native Administrator permission authorize only
   // this guild's setup. Platform-owner access is handled separately through
   // BOT_OWNER_IDS and must never be a hidden cross-server override.
   if (interactionOrMessage.guild?.ownerId === authorId) return true;
-  return Boolean(member.permissions?.has?.(PermissionFlagsBits.Administrator));
+
+  if (interactionOrMessage instanceof Message) {
+    return Boolean(interactionOrMessage.member?.permissions?.has(PermissionFlagsBits.Administrator));
+  }
+
+  // Guild interactions expose memberPermissions as the authoritative
+  // resolved permission bitfield. interaction.member may be a raw API object
+  // whose permissions field is a string rather than a PermissionsBitField.
+  return Boolean(interactionOrMessage.memberPermissions?.has(PermissionFlagsBits.Administrator));
 }
 
 /**
@@ -1358,7 +1366,7 @@ async function handleSetCurrentAdminChannel(btn: ButtonInteraction): Promise<voi
   const channel = btn.channel as any;
   const botMember = btn.guild?.members.me || await btn.guild?.members.fetchMe().catch(() => null);
   const botPermissions = botMember && channel?.permissionsFor ? channel.permissionsFor(botMember) : null;
-  if (!channel?.isTextBased?.() || !botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
+  if (!channel || ![0, 5].includes(Number(channel.type)) || !botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
     const errorContainer = new ContainerBuilder().setAccentColor(COLORS.DANGER)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent('Destiny needs a text channel with View Channel and Send Messages permissions.'));
     await safeEditReply(btn, { components: [errorContainer] });
@@ -1386,7 +1394,7 @@ async function handleSelectAdminChannel(select: ChannelSelectMenuInteraction): P
     const errorContainer = new ContainerBuilder()
       .setAccentColor(COLORS.DANGER)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent('⚠️ Only server administrators with **Manage Server** or **Administrator** permissions can configure Destiny.')
+        new TextDisplayBuilder().setContent('⚠️ Only the server owner or a member with Discord **Administrator** permission can configure Destiny.')
       );
     await safeEditReply(select, { components: [errorContainer] });
     return;
