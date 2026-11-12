@@ -19,6 +19,7 @@ import {
   PermissionFlagsBits
 } from 'discord.js';
 import { db } from '../../database/supabase.js';
+import { config } from '../../config/index.js';
 import { redis } from '../../redis/client.js';
 import { matchmakingManager } from '../../core/matchmaking/manager.js';
 import { revealService } from '../../core/moderation/reveal.js';
@@ -1279,7 +1280,8 @@ async function handleAdminVerifyAction(btn: ButtonInteraction, approve: boolean,
     btn.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)
   );
 
-  if (!isStaff && btn.user.id !== '971251685773152326') {
+  const isPlatformOwner = config.BOT_OWNER_IDS.includes(btn.user.id);
+  if (!isStaff && !isPlatformOwner) {
     await safeEditReply(btn, { content: '⛔ Verification reviews are restricted to authorized Eclairs community moderators.' });
     return;
   }
