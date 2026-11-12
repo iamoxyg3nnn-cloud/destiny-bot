@@ -92,7 +92,10 @@ export class DatabaseService {
     if (!forceFresh) {
       const cached = this.discordUserCache.get(discordUserId);
       if (cached && cached.expires > Date.now()) {
-        return await this.enrichProfileExtensions({ ...cached.user });
+        const user = this.normalizeUserBan(cached.user);
+        this.discordUserCache.set(discordUserId, { user, expires: cached.expires });
+        this.userCache.set(user.id, { user, expires: cached.expires });
+        return await this.enrichProfileExtensions(user);
       }
     }
 
@@ -121,7 +124,10 @@ export class DatabaseService {
     if (!forceFresh) {
       const cached = this.userCache.get(id);
       if (cached && cached.expires > Date.now()) {
-        return await this.enrichProfileExtensions({ ...cached.user });
+        const user = this.normalizeUserBan(cached.user);
+        this.userCache.set(id, { user, expires: cached.expires });
+        this.discordUserCache.set(user.discordUserId, { user, expires: cached.expires });
+        return await this.enrichProfileExtensions(user);
       }
     }
 
@@ -410,7 +416,7 @@ export class DatabaseService {
         ? users.filter((user) => user.destinyId.toLowerCase().includes(normalized.toLowerCase()) ||
             user.discordUserId.includes(normalized))
         : users;
-      return filtered.slice(0, safeLimit).map((user) => ({ ...user }));
+      return filtered.slice(0, safeLimit).map((user) => this.normalizeUserBan(user));
     }
 
     let request = this.client.from('users').select('*').order('created_at', { ascending: false }).limit(safeLimit);
