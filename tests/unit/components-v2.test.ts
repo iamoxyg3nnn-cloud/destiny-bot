@@ -131,8 +131,6 @@ describe('Discord Components V2 ContainerBuilder Tests', () => {
       user2Pseudonym: 'Cosmic Voyager',
       user1Avatar: '🌌',
       user2Avatar: '🌠',
-      connectionXp: 10,
-      connectionLevel: 'Strangers',
       revealStatusUser1: { consented: false, revealedFields: [] },
       revealStatusUser2: { consented: false, revealedFields: [] },
       startedAt: new Date().toISOString(),
