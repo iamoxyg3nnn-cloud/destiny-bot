@@ -13,6 +13,7 @@ import {
   MessageFlagsBitField
 } from 'discord.js';
 import { db } from '../../database/supabase.js';
+import { config } from '../../config/index.js';
 import { redis } from '../../redis/client.js';
 import { matchmakingManager } from '../../core/matchmaking/manager.js';
 import { embedService, COLORS } from '../embeds/index.js';
@@ -140,7 +141,13 @@ export const slashCommands = [
       opt.setName('opt_out').setDescription('Opt out of all automated prompts').setRequired(false)
     ),
 
-  // 14. /setup
+  // 13. /owner — platform-owner-only controls, separate from guild setup.
+  new SlashCommandBuilder()
+    .setName('owner')
+    .setDescription('Bot-owner-only platform diagnostics')
+    .addSubcommand((sub) => sub.setName('status').setDescription('Show global bot, database and worker status')),
+
+  // 14. /setup — scoped to the current Discord server.
   new SlashCommandBuilder()
     .setName('setup')
     .setDescription('Server administrator onboarding and matchmaking portal configuration')
@@ -458,6 +465,36 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
   }
 
   // 14. SETUP (Administrator)
+  if (commandName === 'owner') {
+    const owners = config.BOT_OWNER_IDS;
+    if (!owners.includes(interaction.user.id)) {
+      await respond({ content: '⛔ This command is reserved for the Destiny bot owner.', ephemeral: true });
+      return;
+    }
+    const [guildShards, workerIds] = await Promise.all([
+      redis.sMembers('bot:guild-shards'),
+      redis.sMembers('worker:instances'),
+    ]);
+    const workerHeartbeats = await Promise.all(workerIds.map((id) => redis.get(`worker:heartbeat:${id}`)));
+    const onlineWorkers = workerHeartbeats.filter(Boolean).length;
+    const dbOnline = !db.isUsingMock() && await db.assertConnection().then(() => true).catch(() => false);
+    const embed = new EmbedBuilder()
+      .setColor(COLORS.DARK)
+      .setTitle('Destiny — Platform Owner Controls')
+      .setDescription('Global diagnostics only. Per-server configuration remains under `/setup` and requires Discord Administrator permission.')
+      .addFields(
+        { name: 'Owner authorization', value: 'Verified', inline: true },
+        { name: 'Bot shards reporting', value: String(guildShards.length), inline: true },
+        { name: 'Workers online', value: `${onlineWorkers}/${workerIds.length}`, inline: true },
+        { name: 'Supabase', value: dbOnline ? 'Connected' : 'Unavailable', inline: true },
+        { name: 'Redis', value: redis.isHealthy() ? 'Connected' : 'Unavailable', inline: true },
+        { name: 'Configured owner IDs', value: String(owners.length), inline: true },
+      )
+      .setFooter({ text: 'Platform owner scope is separate from Discord server administration.' });
+    await respond({ embeds: [embed], ephemeral: true });
+    return;
+  }
+
   if (commandName === 'setup') {
     if (!interaction.guild) {
       await respond({ content: '⚠️ The `/setup` command can only be executed inside a Discord server.', ephemeral: true });
@@ -503,12 +540,14 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
     if (sub === 'cross_server') {
       const enabled = interaction.options.getBoolean('enabled', true);
-      const settings = await db.getGuildSettings(interaction.guild.id);
-      if (settings) {
-        settings.crossServerEnabled = enabled;
+      const saved = await db.setGuildCrossServerEnabled(interaction.guild.id, enabled, interaction.guild.name);
+      if (!saved) {
+        await respond({ content: '⚠️ Could not save this server setting. Please try again; no success was reported.', ephemeral: true });
+        return;
       }
+      await db.logAdminAction(interaction.user.id, 'SET_GUILD_CROSS_SERVER', 'GUILD', interaction.guild.id, { enabled });
       await respond({
-        content: `✅ Cross-server matchmaking has been **${enabled ? 'ENABLED' : 'DISABLED'}** for ${interaction.guild.name}.`,
+        content: `✅ Cross-server matchmaking has been **${enabled ? 'ENABLED' : 'DISABLED'}** for ${interaction.guild.name}. This setting is saved.`,
         ephemeral: true
       });
       return;
