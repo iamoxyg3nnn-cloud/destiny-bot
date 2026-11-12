@@ -35,7 +35,6 @@ import {
 import { buildProfileModal, normalizeGender, parseList } from '../profile-modal.js';
 import { refreshBotPresence } from '../presence-manager.js';
 import { createRevealResultContainer, resolveRevealPair } from '../reveal-view.js';
-import { pickIcebreaker } from '../icebreakers.js';
 import { handleCommand } from '../commands/definitions.js';
 import { sendCleanDmPanel } from '../dm-cleanup.js';
 
@@ -131,6 +130,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
     'destiny_btn_claim_daily',
     'destiny_btn_shop',
     'destiny_btn_wardrobe',
+    'destiny_btn_icebreaker',
   ]);
   const retiredSelectIds = new Set(['destiny_select_theme', 'destiny_select_badges']);
   const retiredMessage = 'This control is no longer available. Use /match to start an anonymous chat or /profile to manage your profile.';
@@ -565,41 +565,6 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       );
       const container = embedService.createMainMenuContainer(discordUser.displayName || discordUser.username, user, isProfileComplete);
       await safeEditReply(btn, { components: [container] });
-      return;
-    }
-
-    // --- Conversation Icebreaker ---
-    if (customId === 'destiny_btn_icebreaker') {
-      const ok = await safeDeferReply(btn);
-      if (!ok) return;
-
-      const user = await db.getUserByDiscordId(discordUser.id, true);
-      let activeRoomId = user?.activeRoomId;
-      if (!activeRoomId && user) {
-        activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
-      }
-
-      const room = activeRoomId ? await db.getRoomById(activeRoomId).catch(() => null) : null;
-      const inRoom = Boolean(room && room.status === 'active');
-      const prompt = pickIcebreaker();
-
-      const container = embedService.createIcebreakerContainer(prompt, inRoom);
-      await safeEditReply(btn, { components: [container] });
-
-      if (inRoom && room && user) {
-        const isUser1 = room.user1Id === user.id;
-        const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
-        if (partnerDiscordId) {
-          const partnerUser = await btn.client.users.fetch(partnerDiscordId).catch(() => null);
-          if (partnerUser) {
-            const partnerPrompt = embedService.createIcebreakerContainer(prompt, true);
-            await sendCleanDmPanel(partnerUser, {
-              components: [partnerPrompt],
-              flags: [MessageFlags.IsComponentsV2],
-            }).catch(() => {});
-          }
-        }
-      }
       return;
     }
 
