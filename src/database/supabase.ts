@@ -1273,33 +1273,6 @@ export class DatabaseService {
     return true;
   }
 
-  async setGuildAdminChannel(guildId: string, channelId: string, guildName?: string): Promise<boolean> {
-    const existing = this.guildSettingsCache.get(guildId)?.settings;
-    if (existing) {
-      existing.matchChannelId = channelId;
-      existing.modLogChannelId = channelId;
-      if (guildName) existing.guildName = guildName;
-      this.guildSettingsCache.set(guildId, { settings: existing, expires: Date.now() + 300_000 });
-    } else {
-      this.guildSettingsCache.delete(guildId);
-    }
-
-    if (this.isMockMode || !this.client) {
-      return true;
-    }
-    const { error } = await this.client
-      .from('guild_settings')
-      .upsert({
-        guild_id: guildId,
-        guild_name: guildName || 'Discord Guild',
-        match_channel_id: channelId,
-        mod_log_channel_id: channelId,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'guild_id' });
-
-    return !error;
-  }
-
   async clearGuildChannels(guildId: string): Promise<boolean> {
     const existing = this.guildSettingsCache.get(guildId)?.settings;
     if (existing) {
