@@ -1246,6 +1246,31 @@ export class DatabaseService {
     return !error;
   }
 
+  async setGuildModLogChannel(guildId: string, channelId: string, guildName?: string): Promise<boolean> {
+    if (!/^[0-9]{17,20}$/.test(guildId) || !/^[0-9]{17,20}$/.test(channelId)) return false;
+    const cached = this.guildSettingsCache.get(guildId)?.settings;
+    if (cached) {
+      cached.modLogChannelId = channelId;
+      if (guildName) cached.guildName = guildName;
+      this.guildSettingsCache.set(guildId, { settings: cached, expires: Date.now() + 300_000 });
+    } else {
+      this.guildSettingsCache.delete(guildId);
+    }
+    if (this.isMockMode || !this.client) return true;
+    const { error } = await this.client.from('guild_settings').upsert({
+      guild_id: guildId,
+      ...(guildName ? { guild_name: guildName } : {}),
+      mod_log_channel_id: channelId,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'guild_id' });
+    if (error) {
+      this.guildSettingsCache.delete(guildId);
+      console.error('[Database] Failed to persist guild moderation channel:', error.message);
+      return false;
+    }
+    return true;
+  }
+
   async setGuildAdminChannel(guildId: string, channelId: string, guildName?: string): Promise<boolean> {
     const existing = this.guildSettingsCache.get(guildId)?.settings;
     if (existing) {
