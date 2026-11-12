@@ -275,40 +275,47 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       await interaction.editReply({ content: '⛔ This command is reserved for configured Destiny bot owners.' });
       return;
     }
-    try {
-      const [shardIds, workerIds] = await Promise.all([
-        redis.sMembers('bot:guild-shards'),
-        redis.sMembers('worker:instances'),
-      ]);
-      const [shardSnapshots, workerHeartbeats] = await Promise.all([
-        Promise.all(shardIds.map((id) => redis.get('bot:guilds:' + id))),
-        Promise.all(workerIds.map((id) => redis.get('worker:heartbeat:' + id))),
-      ]);
-      const staleShards = shardIds.filter((_id, index) => !shardSnapshots[index]);
-      const staleWorkers = workerIds.filter((_id, index) => !workerHeartbeats[index]);
-      await Promise.all([
-        ...staleShards.map((id) => redis.sRem('bot:guild-shards', id)),
-        ...staleWorkers.map((id) => redis.sRem('worker:instances', id)),
-      ]);
-      const dbOnline = !db.isUsingMock() && await db.assertConnection().then(() => true).catch(() => false);
-      const embed = new EmbedBuilder()
-        .setColor(COLORS.DARK)
-        .setTitle('Destiny — Platform Owner Controls')
-        .setDescription('Global diagnostics only. Per-server configuration remains under /setup and requires Discord Administrator permission.')
-        .addFields(
-          { name: 'Owner authorization', value: 'Verified', inline: true },
-          { name: 'Bot shards online', value: String(shardSnapshots.filter(Boolean).length), inline: true },
-          { name: 'Workers online', value: String(workerHeartbeats.filter(Boolean).length), inline: true },
-          { name: 'Supabase', value: dbOnline ? 'Connected' : 'Unavailable', inline: true },
-          { name: 'Redis', value: redis.isHealthy() ? 'Connected' : 'Unavailable', inline: true },
-          { name: 'Configured owner IDs', value: String(config.BOT_OWNER_IDS.length), inline: true },
-        )
-        .setFooter({ text: 'Platform owner scope is separate from Discord server administration.' });
-      await interaction.editReply({ embeds: [embed] });
-    } catch (error: any) {
-      console.error('[Owner] Could not collect platform diagnostics:', error?.message || error);
-      await interaction.editReply({ content: '⚠️ Platform diagnostics are temporarily unavailable. Check the bot logs and Redis connection.' });
+    let redisOnline = redis.isHealthy();
+    let shardCount = 'Unavailable';
+    let workerCount = 'Unavailable';
+    if (redisOnline) {
+      try {
+        const [shardIds, workerIds] = await Promise.all([
+          redis.sMembers('bot:guild-shards'),
+          redis.sMembers('worker:instances'),
+        ]);
+        const [shardSnapshots, workerHeartbeats] = await Promise.all([
+          Promise.all(shardIds.map((id) => redis.get('bot:guilds:' + id))),
+          Promise.all(workerIds.map((id) => redis.get('worker:heartbeat:' + id))),
+        ]);
+        const staleShards = shardIds.filter((_id, index) => !shardSnapshots[index]);
+        const staleWorkers = workerIds.filter((_id, index) => !workerHeartbeats[index]);
+        await Promise.all([
+          ...staleShards.map((id) => redis.sRem('bot:guild-shards', id)),
+          ...staleWorkers.map((id) => redis.sRem('worker:instances', id)),
+        ]);
+        shardCount = String(shardSnapshots.filter(Boolean).length);
+        workerCount = String(workerHeartbeats.filter(Boolean).length);
+      } catch (error: any) {
+        redisOnline = false;
+        console.error('[Owner] Redis diagnostics failed:', error?.message || error);
+      }
     }
+    const dbOnline = !db.isUsingMock() && await db.assertConnection().then(() => true).catch(() => false);
+    const embed = new EmbedBuilder()
+      .setColor(COLORS.DARK)
+      .setTitle('Destiny — Platform Owner Controls')
+      .setDescription('Global diagnostics only. Per-server configuration remains under /setup and requires Discord Administrator permission.')
+      .addFields(
+        { name: 'Owner authorization', value: 'Verified', inline: true },
+        { name: 'Bot shards online', value: shardCount, inline: true },
+        { name: 'Workers online', value: workerCount, inline: true },
+        { name: 'Supabase', value: dbOnline ? 'Connected' : 'Unavailable', inline: true },
+        { name: 'Redis', value: redisOnline ? 'Connected' : 'Unavailable', inline: true },
+        { name: 'Configured owner IDs', value: String(config.BOT_OWNER_IDS.length), inline: true },
+      )
+      .setFooter({ text: 'Platform owner scope is separate from Discord server administration.' });
+    await interaction.editReply({ embeds: [embed] });
     return;
   }
 
