@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { RefreshCw, Radio, Zap, Shield, Sparkles, LogOut } from 'lucide-react';
+import { RefreshCw, LogOut } from 'lucide-react';
 import { CommandMenu } from './ui/command-menu';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -25,8 +25,6 @@ export function Header() {
         return 'Moderation & Safety Desk';
       case '/verification':
         return 'Gender Verification Queue';
-      case '/economy':
-        return 'Economy & Currency Ledger';
       case '/settings':
         return 'System Settings & Automation';
       case '/logs':
