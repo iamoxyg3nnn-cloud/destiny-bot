@@ -952,8 +952,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
     }
   }
 
-  // A generic fallback safely acknowledges stale controls from removed features
-  // without keeping feature-specific economy or Icebreaker handlers in source.
+  // A generic fallback safely acknowledges unknown or stale component controls.
   if (interaction.isRepliable() && (
     interaction.isButton() ||
     interaction.isStringSelectMenu() ||
