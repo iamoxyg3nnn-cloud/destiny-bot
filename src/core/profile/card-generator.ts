@@ -1,6 +1,6 @@
 import { createCanvas, GlobalFonts, Path2D, Image, loadImage } from '@napi-rs/canvas';
 import * as path from 'path';
-import { UserProfile, ConnectionTier } from '../types.js';
+import { UserProfile } from '../types.js';
 import { redis } from '../../redis/client.js';
 
 // Register Google Inter and JetBrains Mono fonts
@@ -23,7 +23,6 @@ export interface LiveProfileStats {
   level?: number;
   matchIntent?: string;
   bio?: string;
-  equippedBadges?: string[];
 }
 
 export interface RenderCardParams {
@@ -1602,9 +1601,9 @@ export class ProfileCardGenerator {
       }
     }
 
-    const currentXp = stats.currentXp ?? 9500;
-    const nextLevelXp = stats.nextLevelXp ?? 10000;
-    const level = stats.level ?? 1;
+    const currentXp = 0;
+    const nextLevelXp = 0;
+    const level = 0;
 
     return {
       displayName: stats.personaName || 'Midnight Wolf',
@@ -1613,13 +1612,11 @@ export class ProfileCardGenerator {
       age: user.age || 18,
       gender: user.gender || 'unspecified',
       isVerified: Boolean(user.genderVerified),
-      tierName: user.connectionTier || 'Strangers',
+      tierName: 'Anonymous',
       level,
       currentXp,
       nextLevelXp,
       totalXp: currentXp,
-      coins: user.destinyCoins || 100,
-      streakCount: user.streakCount || 0,
       sessionsCount: stats.sessionsCount || 0,
       talkTime: stats.chatHoursText || '0h 00m',
       reputationScore: user.reputationScore ?? 100,
@@ -1628,8 +1625,8 @@ export class ProfileCardGenerator {
       timezone: stats.timezone || 'UTC+05:30',
       matchIntent: stats.matchIntent || user.matchIntent || 'LATE NIGHT CHAT',
       bio: stats.bio || user.bio || 'Looking for late-night gaming friends & deep talks',
-      cardTheme: user.cardTheme || 'obsidian',
-      equippedBadges: stats.equippedBadges || user.equippedBadges || [],
+      cardTheme: 'obsidian',
+      equippedBadges: [],
       avatarImage,
     };
   }
