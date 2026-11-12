@@ -471,8 +471,9 @@ export function createApiServer(): express.Express {
       const hasMatch = Object.prototype.hasOwnProperty.call(body, 'matchChannelId');
       const hasModLog = Object.prototype.hasOwnProperty.call(body, 'modLogChannelId');
       const hasCrossServer = Object.prototype.hasOwnProperty.call(body, 'crossServerEnabled');
-      if (!hasMatch && !hasModLog && !hasCrossServer) {
-        return res.status(400).json({ error: 'Provide at least one server setting to update.' });
+      const settingCount = Number(hasMatch) + Number(hasModLog) + Number(hasCrossServer);
+      if (settingCount !== 1) {
+        return res.status(400).json({ error: 'Update exactly one server setting per request so a partial database failure cannot leave mixed configuration.' });
       }
       if (hasCrossServer && typeof crossServerEnabled !== 'boolean') {
         return res.status(400).json({ error: 'crossServerEnabled must be a boolean.' });
