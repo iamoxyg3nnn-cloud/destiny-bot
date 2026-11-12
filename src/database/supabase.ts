@@ -1252,9 +1252,12 @@ export class DatabaseService {
       }
     }
 
-    if (this.isMockMode || !this.client) {
-      return null;
+    if (this.isMockMode) {
+      const settings = this.mockGuildSettings.get(guildId) || null;
+      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 300_000 });
+      return settings;
     }
+    if (!this.client) throw new Error('Supabase is unavailable; guild settings cannot be loaded.');
     const { data, error } = await this.client
       .from('guild_settings')
       .select('*')
@@ -1287,16 +1290,16 @@ export class DatabaseService {
 
   async setGuildCrossServerEnabled(guildId: string, enabled: boolean, guildName?: string): Promise<boolean> {
     if (!/^[0-9]{17,20}$/.test(guildId)) return false;
-    const cached = this.guildSettingsCache.get(guildId)?.settings;
-    if (cached) {
-      cached.crossServerEnabled = enabled;
-      if (guildName) cached.guildName = guildName;
-      this.guildSettingsCache.set(guildId, { settings: cached, expires: Date.now() + 300_000 });
-    } else {
-      this.guildSettingsCache.delete(guildId);
+    if (this.isMockMode) {
+      const settings = this.mockGuildSettings.get(guildId) || { guildId, crossServerEnabled: true };
+      settings.crossServerEnabled = enabled;
+      if (guildName) settings.guildName = guildName;
+      settings.updatedAt = new Date().toISOString();
+      this.mockGuildSettings.set(guildId, settings);
+      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 300_000 });
+      return true;
     }
-
-    if (this.isMockMode || !this.client) return true;
+    if (!this.client) return false;
     const { error } = await this.client.from('guild_settings').upsert({
       guild_id: guildId,
       ...(guildName ? { guild_name: guildName } : {}),
@@ -1308,23 +1311,39 @@ export class DatabaseService {
       console.error('[Database] Failed to persist guild matchmaking scope:', error.message);
       return false;
     }
+    const cached = this.guildSettingsCache.get(guildId)?.settings;
+    if (cached) {
+      cached.crossServerEnabled = enabled;
+      if (guildName) cached.guildName = guildName;
+      this.guildSettingsCache.set(guildId, { settings: cached, expires: Date.now() + 300_000 });
+    } else {
+      this.guildSettingsCache.delete(guildId);
+    }
     return true;
   }
 
   async setGuildMatchChannel(guildId: string, channelId: string | null, guildName?: string): Promise<boolean> {
     if (!/^[0-9]{17,20}$/.test(guildId) || (channelId !== null && !/^[0-9]{17,20}$/.test(channelId))) return false;
-    if (!this.isMockMode && this.client) {
-      const { error } = await this.client.from('guild_settings').upsert({
-        guild_id: guildId,
-        ...(guildName ? { guild_name: guildName } : {}),
-        match_channel_id: channelId,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'guild_id' });
-      if (error) {
-        this.guildSettingsCache.delete(guildId);
-        console.error('[Database] Failed to persist guild portal channel:', error.message);
-        return false;
-      }
+    if (this.isMockMode) {
+      const settings = this.mockGuildSettings.get(guildId) || { guildId, crossServerEnabled: true };
+      settings.matchChannelId = channelId;
+      if (guildName) settings.guildName = guildName;
+      settings.updatedAt = new Date().toISOString();
+      this.mockGuildSettings.set(guildId, settings);
+      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 300_000 });
+      return true;
+    }
+    if (!this.client) return false;
+    const { error } = await this.client.from('guild_settings').upsert({
+      guild_id: guildId,
+      ...(guildName ? { guild_name: guildName } : {}),
+      match_channel_id: channelId,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'guild_id' });
+    if (error) {
+      this.guildSettingsCache.delete(guildId);
+      console.error('[Database] Failed to persist guild portal channel:', error.message);
+      return false;
     }
     const cached = this.guildSettingsCache.get(guildId)?.settings;
     if (cached) {
@@ -1339,18 +1358,26 @@ export class DatabaseService {
 
   async setGuildModLogChannel(guildId: string, channelId: string | null, guildName?: string): Promise<boolean> {
     if (!/^[0-9]{17,20}$/.test(guildId) || (channelId !== null && !/^[0-9]{17,20}$/.test(channelId))) return false;
-    if (!this.isMockMode && this.client) {
-      const { error } = await this.client.from('guild_settings').upsert({
-        guild_id: guildId,
-        ...(guildName ? { guild_name: guildName } : {}),
-        mod_log_channel_id: channelId,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'guild_id' });
-      if (error) {
-        this.guildSettingsCache.delete(guildId);
-        console.error('[Database] Failed to persist guild moderation channel:', error.message);
-        return false;
-      }
+    if (this.isMockMode) {
+      const settings = this.mockGuildSettings.get(guildId) || { guildId, crossServerEnabled: true };
+      settings.modLogChannelId = channelId;
+      if (guildName) settings.guildName = guildName;
+      settings.updatedAt = new Date().toISOString();
+      this.mockGuildSettings.set(guildId, settings);
+      this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 300_000 });
+      return true;
+    }
+    if (!this.client) return false;
+    const { error } = await this.client.from('guild_settings').upsert({
+      guild_id: guildId,
+      ...(guildName ? { guild_name: guildName } : {}),
+      mod_log_channel_id: channelId,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'guild_id' });
+    if (error) {
+      this.guildSettingsCache.delete(guildId);
+      console.error('[Database] Failed to persist guild moderation channel:', error.message);
+      return false;
     }
     const cached = this.guildSettingsCache.get(guildId)?.settings;
     if (cached) {
