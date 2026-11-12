@@ -14,7 +14,7 @@ export interface UserProfile {
   gender: Gender;
   genderVerified: boolean;
   genderVerificationStatus: GenderVerificationStatus;
-  genderVerificationEvidence?: string;
+  genderVerificationEvidence?: string | null;
   interests: string[];
   languages: string[];
   preferredGender: string[];
