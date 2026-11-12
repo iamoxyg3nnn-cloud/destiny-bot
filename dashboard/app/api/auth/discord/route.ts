@@ -10,7 +10,12 @@ function redirectUri(): string {
 export async function GET() {
   const clientId = process.env.DISCORD_CLIENT_ID || '';
   const owners = (process.env.BOT_OWNER_IDS || '').split(',').map((id) => id.trim()).filter((id) => /^[0-9]{17,20}$/.test(id));
-  const publicOrigin = new URL(process.env.NEXTAUTH_URL || 'http://localhost:3000');
+  let publicOrigin: URL;
+  try {
+    publicOrigin = new URL(process.env.NEXTAUTH_URL || 'http://localhost:3000');
+  } catch {
+    return NextResponse.json({ error: 'NEXTAUTH_URL must be a valid absolute URL.' }, { status: 503 });
+  }
   if (!clientId || !process.env.DISCORD_CLIENT_SECRET || owners.length === 0 ||
       (process.env.NODE_ENV === 'production' && publicOrigin.protocol !== 'https:')) {
     return NextResponse.json({ error: 'Discord owner sign-in requires BOT_OWNER_IDS, Discord OAuth credentials and a public HTTPS NEXTAUTH_URL in production.' }, { status: 503 });
