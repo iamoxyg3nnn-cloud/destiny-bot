@@ -117,6 +117,17 @@ async function botCanSendToChannel(rest: REST, guildId: string, channel: any): P
     (permissions & sendMessages) === sendMessages;
 }
 
+function everyoneCanViewChannel(guildId: string, channel: any, roles: any[]): boolean {
+  const everyoneRole = roles.find((role) => role.id === guildId);
+  let permissions = BigInt(everyoneRole?.permissions || '0');
+  const overwrite = (Array.isArray(channel.permission_overwrites) ? channel.permission_overwrites : [])
+    .find((entry: any) => entry.id === guildId && Number(entry.type) === 0);
+  if (overwrite) {
+    permissions = (permissions & ~BigInt(overwrite.deny || '0')) | BigInt(overwrite.allow || '0');
+  }
+  return (permissions & 1024n) === 1024n;
+}
+
 export function createApiServer(): express.Express {
   const app = express();
   app.use(cors());
@@ -362,7 +373,10 @@ export function createApiServer(): express.Express {
     const shardIds = await redis.sMembers('bot:guild-shards');
     const snapshots = await Promise.all(shardIds.map(async (shardId) => {
       const raw = await redis.get(`bot:guilds:${shardId}`);
-      if (!raw) return [];
+      if (!raw) {
+        await redis.sRem('bot:guild-shards', shardId);
+        return [];
+      }
       try {
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [];
@@ -378,6 +392,7 @@ export function createApiServer(): express.Express {
         ...guild,
         matchChannelId: settings?.matchChannelId || null,
         modLogChannelId: settings?.modLogChannelId || null,
+        crossServerEnabled: settings?.crossServerEnabled !== false,
       };
     }));
     res.json(enriched);
@@ -386,37 +401,67 @@ export function createApiServer(): express.Express {
   app.post('/api/guilds/:id/settings', async (req: Request, res: Response) => {
     try {
       const guildId = req.params.id as string;
-      const { channelId, guildName } = req.body || {};
+      const body = req.body || {};
+      const { guildName, matchChannelId, modLogChannelId, crossServerEnabled } = body;
       if (!/^[0-9]{17,20}$/.test(guildId)) return res.status(400).json({ error: 'Invalid guild ID.' });
       if (guildName !== undefined && (typeof guildName !== 'string' || guildName.length > 100)) {
         return res.status(400).json({ error: 'Invalid guild name.' });
       }
+      const hasMatch = Object.prototype.hasOwnProperty.call(body, 'matchChannelId');
+      const hasModLog = Object.prototype.hasOwnProperty.call(body, 'modLogChannelId');
+      const hasCrossServer = Object.prototype.hasOwnProperty.call(body, 'crossServerEnabled');
+      if (!hasMatch && !hasModLog && !hasCrossServer) {
+        return res.status(400).json({ error: 'Provide at least one server setting to update.' });
+      }
+      if (hasCrossServer && typeof crossServerEnabled !== 'boolean') {
+        return res.status(400).json({ error: 'crossServerEnabled must be a boolean.' });
+      }
 
-      if (channelId) {
-        if (typeof channelId !== 'string' || !/^[0-9]{17,20}$/.test(channelId)) {
-          return res.status(400).json({ error: 'Invalid channel ID.' });
-        }
+      const channelIds = [hasMatch ? matchChannelId : undefined, hasModLog ? modLogChannelId : undefined]
+        .filter((value) => value !== undefined && value !== null);
+      if (channelIds.some((value) => typeof value !== 'string' || !/^[0-9]{17,20}$/.test(value))) {
+        return res.status(400).json({ error: 'Channel IDs must be valid Discord snowflakes or null.' });
+      }
+
+      if (channelIds.length > 0) {
         if (!config.DISCORD_TOKEN || config.DISCORD_TOKEN.startsWith('mock_')) {
           return res.status(503).json({ error: 'Discord bot credentials are not configured.' });
         }
         const rest = new REST({ version: '10' }).setToken(config.DISCORD_TOKEN);
-        const channels = await rest.get(Routes.guildChannels(guildId)) as any[];
-        const channel = channels.find((entry) => entry.id === channelId);
-        if (!channel || ![0, 5].includes(Number(channel.type))) {
-          return res.status(400).json({ error: 'Channel must be a text or announcement channel in the selected server.' });
+        const [channels, roles] = await Promise.all([
+          rest.get(Routes.guildChannels(guildId)) as Promise<any[]>,
+          rest.get(Routes.guildRoles(guildId)) as Promise<any[]>,
+        ]);
+        for (const channelId of channelIds) {
+          const channel = channels.find((entry) => entry.id === channelId);
+          if (!channel || ![0, 5].includes(Number(channel.type))) {
+            return res.status(400).json({ error: 'Each channel must be a text or announcement channel in the selected server.' });
+          }
+          if (!(await botCanSendToChannel(rest, guildId, channel))) {
+            return res.status(403).json({ error: 'Destiny needs View Channel and Send Messages permissions in each selected channel.' });
+          }
+          if (hasModLog && modLogChannelId === channelId && everyoneCanViewChannel(guildId, channel, roles)) {
+            return res.status(403).json({ error: 'The moderation channel must be private from @everyone.' });
+          }
         }
-        if (!(await botCanSendToChannel(rest, guildId, channel))) {
-          return res.status(403).json({ error: 'Destiny needs View Channel and Send Messages permissions in that channel.' });
-        }
-        const saved = await db.setGuildAdminChannel(guildId, channelId, guildName);
-        if (!saved) return res.status(500).json({ error: 'Could not save guild channel settings.' });
-      } else {
-        const cleared = await db.clearGuildChannels(guildId);
-        if (!cleared) return res.status(500).json({ error: 'Could not clear guild channel settings.' });
       }
-      res.json({ success: true, guildId, channelId: channelId || null });
+
+      const results = await Promise.all([
+        hasMatch ? db.setGuildMatchChannel(guildId, matchChannelId ?? null, guildName) : Promise.resolve(true),
+        hasModLog ? db.setGuildModLogChannel(guildId, modLogChannelId ?? null, guildName) : Promise.resolve(true),
+        hasCrossServer ? db.setGuildCrossServerEnabled(guildId, crossServerEnabled, guildName) : Promise.resolve(true),
+      ]);
+      if (results.some((saved) => !saved)) {
+        return res.status(500).json({ error: 'One or more server settings could not be saved. Refresh the page before retrying.' });
+      }
+      await db.logAdminAction('dashboard_owner', 'UPDATE_GUILD_SETTINGS', 'GUILD', guildId, {
+        ...(hasMatch ? { matchChannelId: matchChannelId ?? null } : {}),
+        ...(hasModLog ? { modLogChannelId: modLogChannelId ?? null } : {}),
+        ...(hasCrossServer ? { crossServerEnabled } : {}),
+      });
+      res.json({ success: true, guildId });
     } catch (err: any) {
-      console.error('[API] Failed to update guild channel settings:', err?.message || err);
+      console.error('[API] Failed to update guild settings:', err?.message || err);
       res.status(500).json({ error: 'Failed to update guild settings' });
     }
   });
