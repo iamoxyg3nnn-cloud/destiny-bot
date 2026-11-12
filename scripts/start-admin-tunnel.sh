@@ -66,22 +66,23 @@ validate_secret() {
 
   normalized="${value,,}"
   case "$normalized" in
-    admin|password|change_me|change-me|changeme|replace_with|replace-with|your_password|your_admin_password|your_secret|your_session_secret|destiny_dashboard_secret_key_32bytes!)
+    admin|password|change_me|change-me|changeme|replace_with|replace-with|your_password|your_admin_password|your_secret|your_session_secret|destiny_dashboard_secret_key_32bytes!|destiny_internal_secret_32bytes_min_key!)
       echo "::error::$name is a known placeholder. Replace it with a unique secret." >&2
       return 1
       ;;
   esac
 }
 
-validate_secret DASHBOARD_ADMIN_PASSWORD 12
-validate_secret DASHBOARD_SESSION_SECRET 32
-if [ -z "${API_SECRET_KEY:-}" ]; then
-  echo "::error::API_SECRET_KEY is missing. Add it as a GitHub Actions repository secret." >&2
+if [ "${DASHBOARD_OWNER_OAUTH_ENABLED:-false}" = "true" ]; then
+  echo "::error::This launcher creates a rotating quick tunnel. Discord owner OAuth requires a stable named tunnel; disable DASHBOARD_OWNER_OAUTH_ENABLED here." >&2
   exit 1
 fi
+validate_secret DASHBOARD_ADMIN_PASSWORD 12
+validate_secret DASHBOARD_SESSION_SECRET 32
+validate_secret API_SECRET_KEY 32
 
 if [ "$CHECK_CONFIG" -eq 1 ]; then
-  echo "✓ Dashboard credentials are valid (secret values hidden)."
+  echo "✓ Bootstrap password and dashboard secrets are valid (secret values hidden)."
   exit 0
 fi
 
@@ -138,7 +139,7 @@ trap cleanup EXIT INT TERM
 # Check the actual HTTP status. curl without --fail treats HTTP 500 as a
 # successful transfer, which previously allowed broken pages to pass readiness.
 wait_for_http() {
-  local url="$1" name="$2" attempts="${3:-90}" code=""
+  local url="$1" name="$2" attempts="${3:-90}" allow_degraded="${4:-0}" code=""
   for _ in $(seq 1 "$attempts"); do
     code="$(curl -sS -o /dev/null -w '%{http_code}' \
       -H "x-api-key: ${API_SECRET_KEY}" --connect-timeout 3 --max-time 8 \
@@ -147,6 +148,12 @@ wait_for_http() {
       2??|3??)
         echo "✓ $name is up (HTTP $code)"
         return 0
+        ;;
+      503)
+        if [ "$allow_degraded" -eq 1 ]; then
+          echo "✓ $name is listening but degraded (HTTP 503)"
+          return 0
+        fi
         ;;
     esac
     sleep 1
@@ -197,10 +204,10 @@ check_root_route() {
 }
 
 if [ "$REUSE_API" -eq 1 ]; then
-  wait_for_http "http://127.0.0.1:${API_PORT}/api/health" "admin API" 180 || \
+  wait_for_http "http://127.0.0.1:${API_PORT}/api/health" "admin API" 180 1 || \
     echo "::warning::Reused admin API never became ready." >&2
 else
-  wait_for_http "http://127.0.0.1:${API_PORT}/api/health" "admin API" || {
+  wait_for_http "http://127.0.0.1:${API_PORT}/api/health" "admin API" 90 1 || {
     echo "--- logs/api.log ---" >&2
     tail -80 "$ROOT/logs/api.log" >&2 2>/dev/null || true
     exit 1
