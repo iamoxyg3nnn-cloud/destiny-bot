@@ -20,7 +20,6 @@ import { UserProfile } from '../../core/types.js';
 import { buildProfileCard, createProfileActionRow, isProfileComplete } from '../profile-view.js';
 import { refreshBotPresence } from '../presence-manager.js';
 import { createRevealResultContainer, resolveRevealPair } from '../reveal-view.js';
-import { pickIcebreaker } from '../icebreakers.js';
 import { sendCleanDmPanel } from '../dm-cleanup.js';
 
 /**
@@ -256,11 +255,6 @@ export class MessageCommandHandler {
           return await this.handleProfile(message, user);
         }
 
-        // Subcase A3: Conversation icebreaker while chatting
-        if (/^\s*(?:destiny\s+icebreaker|icebreaker|prompt|conversation\s+starter)\s*$/i.test(rawContent)) {
-          return await this.handleIcebreaker(message, user, true);
-        }
-
 
         // Subcase A3: Verification while chatting
         if (/^\s*(?:destiny\s+verify|verify)\s*$/i.test(rawContent)) {
@@ -381,11 +375,6 @@ export class MessageCommandHandler {
       return await this.handleStart(message, user);
     }
 
-
-    // Subcase C3: Conversation icebreaker ("icebreaker", "prompt", "destiny icebreaker")
-    if (/^\s*(?:destiny\s+icebreaker|icebreaker|prompt|conversation\s+starter)\s*$/i.test(rawContent)) {
-      return await this.handleIcebreaker(message, user, false);
-    }
 
     // Subcase C4: Report command after chatting ("report", "destiny report")
     if (/^\s*(?:destiny\s+report|report)\s*$/i.test(rawContent)) {
@@ -641,43 +630,6 @@ export class MessageCommandHandler {
 
     matchmakingManager.processMatchCycle().catch(() => {});
     await safeV2Reply(message, embedService.createSearchingContainer(user));
-    return true;
-  }
-
-  /**
-   * Handle Conversation Icebreaker in DM (Components V2)
-   */
-  async handleIcebreaker(message: Message, existingUser?: UserProfile | null, inRoom = false): Promise<boolean> {
-    const user = existingUser !== undefined ? existingUser : await db.getUserByDiscordId(message.author.id);
-    const prompt = pickIcebreaker();
-    const container = embedService.createIcebreakerContainer(prompt, inRoom);
-    await safeV2Reply(message, container);
-
-    if (inRoom && user) {
-      let activeRoomId = user.activeRoomId;
-      if (!activeRoomId) {
-        activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
-      }
-
-      if (activeRoomId) {
-        const room = await db.getRoomById(activeRoomId).catch(() => null);
-        if (room && room.status === 'active') {
-          const isUser1 = room.user1Id === user.id;
-          const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
-          if (partnerDiscordId) {
-            const partner = await message.client.users.fetch(partnerDiscordId).catch(() => null);
-            if (partner) {
-              const partnerContainer = embedService.createIcebreakerContainer(prompt, true);
-              await sendCleanDmPanel(partner, {
-                components: [partnerContainer],
-                flags: [MessageFlags.IsComponentsV2],
-              }).catch(() => {});
-            }
-          }
-        }
-      }
-    }
-
     return true;
   }
 
