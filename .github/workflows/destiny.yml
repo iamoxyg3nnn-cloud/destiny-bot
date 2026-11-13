@@ -38,7 +38,6 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       REDIS_HOST: ${{ secrets.REDIS_HOST }}
       REDIS_PORT: ${{ secrets.REDIS_PORT || '6379' }}
       REDIS_USERNAME: ${{ secrets.REDIS_URL && secrets.REDIS_USERNAME || (secrets.REDIS_HOST && secrets.REDIS_HOST != '127.0.0.1' && secrets.REDIS_USERNAME) || '' }}
@@ -79,64 +78,29 @@ jobs:
       - name: Build TypeScript Project
         run: pnpm run build
 
-      - name: Resolve Supabase database connection
+      - name: Check required runtime secrets
         env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          # Accept either the legacy DATABASE_URL secret (now password-only)
-          # or the clearer SUPABASE_DB_PASSWORD secret.
-          DATABASE_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD || secrets.DATABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BOT_OWNER_IDS: ${{ secrets.BOT_OWNER_IDS }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          REDIS_HOST: ${{ secrets.REDIS_HOST }}
         run: |
           set -euo pipefail
-          if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_ACCESS_TOKEN}" ] || [ -z "${DATABASE_PASSWORD}" ]; then
-            echo "::error::Set SUPABASE_URL, SUPABASE_ACCESS_TOKEN, and either SUPABASE_DB_PASSWORD or DATABASE_URL (password only) in GitHub Actions secrets."
+          missing=()
+          for key in DISCORD_TOKEN DISCORD_CLIENT_ID SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY BOT_OWNER_IDS; do
+            if [ -z "${!key:-}" ]; then missing+=("${key}"); fi
+          done
+          if [ -z "${REDIS_URL}" ] && { [ -z "${REDIS_HOST}" ] || [ "${REDIS_HOST}" = "127.0.0.1" ] || [ "${REDIS_HOST}" = "localhost" ]; }; then
+            missing+=("REDIS_URL (or a non-local REDIS_HOST with credentials)")
+          fi
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf '::error::Missing GitHub Actions runtime secrets: %s. Add these under Settings > Secrets and variables > Actions, then enable the bot workflows.\n' "$(IFS=', '; echo "${missing[*]}")"
             exit 1
           fi
-
-          project_ref="$(node -e 'const u=new URL(process.env.SUPABASE_URL); const s=".supabase.co"; if(!u.hostname.endsWith(s)) throw new Error("SUPABASE_URL must be a standard Supabase project URL"); process.stdout.write(u.hostname.slice(0,-s.length));')"
-          echo "Resolving the assigned Supabase pooler hostname from the Management API..."
-          pooler_json="$(curl --fail --silent --show-error \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-            "https://api.supabase.com/v1/projects/${project_ref}/config/database/pooler")"
-
-          # The pooler hostname includes a cluster index; it cannot safely be
-          # guessed from the project region. Use the assigned db_host returned
-          # by Supabase and force session mode (5432) for migrations.
-          DATABASE_URL="$(POOLER_JSON="${pooler_json}" node -e '
-            const rows=JSON.parse(process.env.POOLER_JSON);
-            const list=Array.isArray(rows)?rows:(Array.isArray(rows.data)?rows.data:(Array.isArray(rows.data?.attributes)?rows.data.attributes:[]));
-            const row=list.find(x=>x.db_host || x.host) || rows.data?.attributes || rows;
-            const host=row.db_host || row.host;
-            if(!host || !host.endsWith(".pooler.supabase.com")) throw new Error("Supabase API did not return a valid shared pooler host; check SUPABASE_ACCESS_TOKEN permissions (database_pooling_config_read).");
-            const ref=new URL(process.env.SUPABASE_URL).hostname.split(".")[0];
-            let password=process.env.DATABASE_PASSWORD;
-            if(password.startsWith("postgres://") || password.startsWith("postgresql://")) password=decodeURIComponent(new URL(password).password);
-            if(!password) throw new Error("Database password secret is empty.");
-            const url=new URL("postgresql://postgres@"+host+":5432/postgres");
-            url.username="postgres."+ref;
-            url.password=password;
-            url.searchParams.set("sslmode","require");
-            process.stdout.write(url.toString());
-          ')" 
-          echo "::add-mask::${DATABASE_URL}"
-          echo "DATABASE_URL=${DATABASE_URL}" >> "${GITHUB_ENV}"
-          echo "Resolved Supabase session-pooler endpoint successfully (credentials hidden)."
-
-      - name: Apply Supabase schema migrations
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-        run: |
-          set -euo pipefail
-          if [ -z "${DATABASE_URL:-}" ]; then
-            echo "::error::DATABASE_URL was not generated by the connection-resolution step."
-            exit 1
-          fi
-          # Run psql from the PostgreSQL client image instead of installing
-          # packages from Ubuntu mirrors on every bot session.
-          docker run --rm --network host \
-            -e DATABASE_URL="${DATABASE_URL}" \
-            -v "${GITHUB_WORKSPACE}:/workspace" \
-            -w /workspace postgres:16-alpine sh /workspace/scripts/apply-migrations.sh
+          echo "Required bot runtime secrets are configured."
 
       - name: Prepare Environment Configuration
         env:
