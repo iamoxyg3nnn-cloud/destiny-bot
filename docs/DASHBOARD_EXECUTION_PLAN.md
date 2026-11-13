@@ -180,3 +180,13 @@ Updated: 2026-11-13 (Asia/Kolkata)
 - Deployed the update to `destiny.chuglii.in`; deployment `82688f37-b3dc-4f0f-8407-9b011b9bd023` (2026-11-13 11:22:08 UTC). Production checks returned HTTP 200 for `/`, `/dashboard.js`, and all eight `/assets/destiny_*.gif` paths with `image/gif` content type.
 - GitHub sync remains blocked by the `imcaffeineeee` suspension. These sticker changes and this note are saved locally; do not include the untracked root `destiny stickers/` folder when staging.
 
+## Latest continuation: transparent stickers and loading screen
+
+Updated: 2026-11-13 (Asia/Kolkata)
+
+- Applied a green-screen transparency key to the served sticker copies in `apps/shared/assets/` with FFmpeg. The original supplied files in root `destiny stickers/` remain unchanged. All eight output GIFs retain their 24 frames and loop timing, and transparent GIF frame controls are present.
+- Replaced the basic connecting text with a branded loading scene: transparent animated sticker in a paired orbit, concise loading status, and an indeterminate mint progress line. Light and dark theme variables apply immediately at script startup; orbit/progress motion respects `prefers-reduced-motion`.
+- Rebuilt the Cloudflare Worker (`pnpm run build:cloudflare`, TypeScript build passed; `node --check apps/shared/dashboard.js` passed; `git diff --check` clean). The bundle is 1,927,014 bytes.
+- Deployed to `destiny.chuglii.in`; deployment `7b926866-2511-469b-b48c-16db2c9dcd50` (2026-11-13 13:41:42 UTC). Live checks returned HTTP 200 for `/`, `/dashboard.js`, `/dashboard.css`, and all eight GIF assets. Hosted GIFs retain transparent-frame controls.
+- GitHub cannot receive the latest source while account `imcaffeineeee` remains suspended; the production Cloudflare Worker is live and local progress is recorded here.
+

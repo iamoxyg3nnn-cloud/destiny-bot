@@ -43,6 +43,28 @@ html[data-theme="dark"] .public-site{--site-ink:#e0e8e2;--site-muted:#a6b1a9;--s
 .destiny-emoji{display:inline-block;width:18px;height:18px;object-fit:contain;vertical-align:middle}
 .brand-mark .destiny-emoji{width:27px;height:27px}
 .brand-mark .destiny-brand-sticker{display:block;width:100%;height:100%;object-fit:cover;border-radius:inherit}
+.loading-view{--loading-bg:#f1f7f3;--loading-ink:#29352f;--loading-muted:#6e7a73;--loading-line:rgba(48,76,61,.14);--loading-mint:#75c6a6;--loading-amber:#dfaa5e;position:relative;isolation:isolate;overflow:hidden;min-height:100vh;min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:32px;text-align:center;color:var(--loading-ink);background:radial-gradient(ellipse at 50% 43%,rgba(180,225,205,.3),transparent 42%),var(--loading-bg)}
+.loading-view::before{position:absolute;z-index:-1;content:'';width:min(82vw,480px);aspect-ratio:1;border:1px solid var(--loading-line);border-radius:50%;box-shadow:0 0 0 38px rgba(255,255,255,.12),0 0 0 76px rgba(255,255,255,.08);pointer-events:none}
+.loading-orbit{position:relative;display:grid;place-items:center;width:116px;height:116px;margin:0 0 26px}
+.loading-orbit__track{position:absolute;border:1px solid var(--loading-line);border-radius:50%;pointer-events:none}
+.loading-orbit__track::after{position:absolute;content:'';width:8px;height:8px;border:2px solid var(--loading-bg);border-radius:50%}
+.loading-orbit__track--outer{inset:3px;animation:destiny-orbit 9s linear infinite}
+.loading-orbit__track--outer::after{top:11px;right:8px;background:var(--loading-mint)}
+.loading-orbit__track--inner{inset:17px;border-style:dashed;animation:destiny-orbit 14s linear infinite reverse}
+.loading-orbit__track--inner::after{bottom:7px;left:8px;background:var(--loading-amber)}
+.loading-view .brand-mark{width:62px;height:62px;border:1px solid var(--loading-line);border-radius:20px;background:var(--loading-bg)!important;box-shadow:0 8px 24px rgba(55,86,68,.12)!important}
+.loading-copy{position:relative;z-index:1;display:grid;justify-items:center;gap:0}
+.loading-eyebrow{margin:0 0 8px;color:var(--loading-muted);font-size:11px;font-weight:600;letter-spacing:.045em}
+.loading-copy h1{margin:0;color:var(--loading-ink);font-size:clamp(21px,3vw,25px);font-weight:620;line-height:1.25;letter-spacing:-.035em}
+.loading-caption{margin:8px 0 0;color:var(--loading-muted);font-size:13px}
+.loading-indicator{position:relative;display:block;overflow:hidden;width:148px;height:3px;margin-top:25px;border-radius:999px;background:var(--loading-line)}
+.loading-indicator>span{position:absolute;inset:0 auto 0 0;width:42%;border-radius:inherit;background:var(--loading-mint);animation:destiny-loading 1.35s ease-in-out infinite}
+html[data-theme="dark"] .loading-view{--loading-bg:#131916;--loading-ink:#e7eee9;--loading-muted:#a2afa7;--loading-line:rgba(219,235,224,.16);--loading-mint:#80cfad;--loading-amber:#e6b56d;background:radial-gradient(ellipse at 50% 43%,rgba(80,137,108,.2),transparent 42%),var(--loading-bg)}
+html[data-theme="dark"] .loading-view::before{box-shadow:0 0 0 38px rgba(255,255,255,.018),0 0 0 76px rgba(255,255,255,.012)}
+html[data-theme="dark"] .loading-view .brand-mark{box-shadow:0 8px 24px rgba(0,0,0,.2)!important}
+@keyframes destiny-orbit{to{transform:rotate(1turn)}}
+@keyframes destiny-loading{0%{transform:translateX(-110%)}55%{transform:translateX(145%)}100%{transform:translateX(360%)}}
+@media(prefers-reduced-motion:reduce){.loading-orbit__track--outer,.loading-orbit__track--inner,.loading-indicator>span{animation:none}.loading-indicator>span{left:0;width:100%;transform:none}}
 .feature-index{display:flex;align-items:center;gap:6px}
 .feature-index .destiny-emoji{width:19px;height:19px}
 .cta-spark .destiny-emoji{width:34px;height:34px}

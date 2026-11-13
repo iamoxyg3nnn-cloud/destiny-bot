@@ -802,4 +802,5 @@ async function boot() {
   }
 }
 
+setTheme(getTheme());
 boot();
