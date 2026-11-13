@@ -11,7 +11,7 @@ import {
 } from 'discord.js';
 import { config } from '../config/index.js';
 import { db } from '../database/supabase.js';
-import { redis } from '../redis/client.js';
+import { stateStore } from '../storage/state-store.js';
 import { ECLAIRS_GUILD_IDS, checkOtherEclairsMembership, isReputationRestriction } from '../core/moderation/reputation.js';
 import { matchmakingManager } from '../core/matchmaking/manager.js';
 import { embedService } from './embeds/index.js';
@@ -88,8 +88,8 @@ async function publishGuildSnapshot(client: Client): Promise<void> {
   }));
 
   await Promise.all([
-    redis.set(`bot:guilds:${shardId}`, JSON.stringify(guilds), 180),
-    redis.sAdd('bot:guild-shards', String(shardId)),
+    stateStore.set(`bot:guilds:${shardId}`, JSON.stringify(guilds), 180),
+    stateStore.sAdd('bot:guild-shards', String(shardId)),
   ]);
 }
 

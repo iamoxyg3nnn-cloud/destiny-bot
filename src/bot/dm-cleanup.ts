@@ -1,12 +1,12 @@
 import { Message, MessageCreateOptions, User } from 'discord.js';
-import { lockManager } from '../redis/locks.js';
-import { redis } from '../redis/client.js';
+import { lockManager } from '../storage/locks.js';
+import { stateStore } from '../storage/state-store.js';
 
 const PANEL_KEY_PREFIX = 'dm:active-panel:';
 const PANEL_LOCK_PREFIX = 'lock:dm-active-panel:';
 const PANEL_LOCK_TTL_MS = 30_000;
 const panelQueues = new Map<string, Promise<void>>();
-// Best-effort process-local journal for panels sent while Redis is unavailable.
+// Best-effort process-local journal for panels sent while Supabase is unavailable.
 const pendingPanelIds = new Map<string, Set<string>>();
 
 function isMessageId(value: unknown): value is string {
@@ -56,7 +56,7 @@ async function sendWithoutCleanup(user: User, payload: MessageCreateOptions): Pr
 /**
  * Send a replaceable Destiny UI panel in a user's DM.
  *
- * A Redis distributed lock coordinates shards/processes; the local queue avoids
+ * A Supabase distributed lock coordinates shards/processes; the local queue avoids
  * unnecessary lock contention within one process. Only explicitly tracked message
  * IDs are considered for deletion. Ordinary relay messages are never scanned.
  */
@@ -93,9 +93,9 @@ export async function sendCleanDmPanel(
 
           let stored: string | null;
           try {
-            stored = await redis.get(key);
+            stored = await stateStore.get(key);
           } catch (error: any) {
-            console.warn('[DM cleanup] Could not read panel references; preserving Redis state:', error?.message || error);
+            console.warn('[DM cleanup] Could not read panel references; preserving runtime state:', error?.message || error);
             const sent = await channel.send(payload);
             rememberPending(user.id, [sent.id]);
             return sent;
@@ -110,11 +110,11 @@ export async function sendCleanDmPanel(
           const sent = await channel.send(payload);
           const allTrackedIds = uniqueIds([...previousIds, sent.id]);
 
-          // Write-ahead record: do not delete any previous panel unless Redis has
+          // Write-ahead record: do not delete any previous panel unless Supabase has
           // durably recorded the new ID alongside every old ID.
           try {
-            const saved = await redis.set(key, JSON.stringify(allTrackedIds));
-            if (!saved) throw new Error('Redis did not confirm saving panel references.');
+            const saved = await stateStore.set(key, JSON.stringify(allTrackedIds));
+            if (!saved) throw new Error('Supabase did not confirm saving panel references.');
             pendingPanelIds.delete(user.id);
           } catch (error: any) {
             rememberPending(user.id, [sent.id]);
@@ -153,8 +153,8 @@ export async function sendCleanDmPanel(
           // arbitrary cap: failed references must not silently become untracked.
           const remainingIds = uniqueIds([...failedIds, sent.id]);
           try {
-            const saved = await redis.set(key, JSON.stringify(remainingIds));
-            if (!saved) throw new Error('Redis did not confirm saving pruned panel references.');
+            const saved = await stateStore.set(key, JSON.stringify(remainingIds));
+            if (!saved) throw new Error('Supabase did not confirm saving pruned panel references.');
           } catch (error: any) {
             // The write-ahead value remains safe: it contains every old ID and the
             // new panel, so later calls can prune already-deleted IDs (10008).
@@ -166,7 +166,7 @@ export async function sendCleanDmPanel(
         PANEL_LOCK_TTL_MS
       );
     } catch (error: any) {
-      // If the callback started, never send a duplicate panel. Otherwise Redis lock
+      // If the callback started, never send a duplicate panel. Otherwise lock
       // acquisition failed: preserve UX, skip cleanup, and journal the new ID locally.
       if (enteredLock) throw error;
       console.warn('[DM cleanup] Distributed lock unavailable; sending without cleanup:', error?.message || error);

@@ -58,8 +58,8 @@
 ## Session and request controls implemented
 
 - Discord authorization-code OAuth uses state and PKCE. The server app requests `identify guilds`; the owner app requests `identify` only.
-- Server and owner cookies use different names, Redis namespaces, and independently configured HMAC session-key secrets. Production cookies use `__Host-`, `Secure`, `HttpOnly`, `Path=/`, and `SameSite=Lax`.
-- Session IDs are random opaque values; only an HMAC digest is used in Redis keys. OAuth access/refresh tokens are stored server-side, refreshed as needed, and the refresh token is revoked on logout.
+- Server and owner cookies use different names, runtime-state namespaces, and independently configured HMAC session-key secrets. Production cookies use `__Host-`, `Secure`, `HttpOnly`, `Path=/`, and `SameSite=Lax`.
+- Session IDs are random opaque values; only an HMAC digest is used in Supabase keys. OAuth access/refresh tokens are encrypted and stored server-side, refreshed as needed, and the refresh token is revoked on logout.
 - Mutations require exact configured Origin and a session-bound CSRF token. The server rejects unexpected Host values and returns restrictive CSP/frame/referrer headers.
 - Sensitive channel writes verify current bot guild roles and channel overwrites directly through Discord REST, rather than relying on the cached guild snapshot.
 
@@ -72,7 +72,7 @@
 
 ## Current gaps
 
-Delegated global capabilities are implemented with root-only management and immediate per-request revocation. Migration 020 and grant/audit transaction behavior were applied and validated only in the isolated `destiny-dashboard-validation` Supabase project; production remains unmigrated. Guild role managers, a standalone global ban/unban API, and room termination remain unavailable. Setting persistence and audit insertion are not transactional; dashboard rollback is limited to supported setting events and reports when audit persistence fails after the setting is saved. The configuration update invalidates only the local database cache; the five-second TTL remains the cross-process propagation bound, with no outbox or verified sync signal. Production OAuth callback configuration and live Redis/Discord role/channel response handling still need deployment-environment verification. HTTP tests cover host isolation, unauthenticated denial, current guild-membership revocation, cross-guild denial, root-owner allowlisting, owner/server cookie separation, delegated capability grants, scoped access, and immediate revocation.
+Delegated global capabilities are implemented with root-only management and immediate per-request revocation. Migrations 020–022 are applied to the active Supabase project. Guild role managers, a standalone global ban/unban API, and room termination remain unavailable. Setting persistence and audit insertion are not transactional; dashboard rollback is limited to supported setting events and reports when audit persistence fails after the setting is saved. The configuration update invalidates only the local database cache; the five-second TTL remains the cross-process propagation bound, with no outbox or verified sync signal. Production OAuth callback configuration and live Discord role/channel response handling still need deployment-environment verification. HTTP tests cover host isolation, unauthenticated denial, current guild-membership revocation, cross-guild denial, root-owner allowlisting, owner/server cookie separation, delegated capability grants, scoped access, and immediate revocation.
 
 ## Database/RLS review for dashboard work
 

@@ -1,5 +1,5 @@
 import { db } from '../../database/supabase.js';
-import { lockManager } from '../../redis/locks.js';
+import { lockManager } from '../../storage/locks.js';
 import { ProfileField, RoomSession, UserProfile } from '../types.js';
 
 export interface RevealConsentResult {

@@ -1,7 +1,6 @@
 import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
 import * as path from 'path';
 import { UserProfile } from '../types.js';
-import { redis } from '../../redis/client.js';
 
 try {
   GlobalFonts.registerFromPath(path.resolve('assets/fonts/Inter.ttf'), 'Inter');
@@ -24,15 +23,13 @@ export interface LiveProfileStats {
 export class ProfileCardGenerator {
   public readonly width = 960;
   public readonly height = 480;
+  private readonly cache = new Map<string, { buffer: Buffer; expiresAt: number }>();
 
   public async generateCardPng(user: UserProfile, stats: LiveProfileStats): Promise<Buffer> {
     const cacheKey = `card:anonymous:${user.id}:${user.updatedAt}:${stats.sessionsCount}:${stats.reputationPercent}`;
-    try {
-      const cached = await redis.getBuffer(cacheKey);
-      if (cached) return cached;
-    } catch {
-      // Continue on cache miss.
-    }
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.buffer;
+    if (cached) this.cache.delete(cacheKey);
 
     const canvas = createCanvas(this.width, this.height);
     const ctx = canvas.getContext('2d');
@@ -103,11 +100,8 @@ export class ProfileCardGenerator {
     ctx.fillText('YOUR DISCORD IDENTITY STAYS PRIVATE', this.width - 48, this.height - 42);
 
     const buffer = canvas.toBuffer('image/png');
-    try {
-      await redis.setBuffer(cacheKey, buffer, 900);
-    } catch {
-      // Cache writes are best-effort.
-    }
+    if (this.cache.size >= 64) this.cache.delete(this.cache.keys().next().value!);
+    this.cache.set(cacheKey, { buffer, expiresAt: Date.now() + 15 * 60_000 });
     return buffer;
   }
 }

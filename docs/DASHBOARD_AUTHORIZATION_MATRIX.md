@@ -9,7 +9,7 @@ This matrix records current route access and capability boundaries. All API rout
 | Route | Current access check | Operation | Additional controls |
 |---|---|---|---|
 | `GET /api/session` | Valid server-dashboard session | Read own session identity and CSRF token | Does not return Discord tokens |
-| `GET /api/guilds` | Fresh Discord OAuth guild list; only owner, Administrator, or Manage Server guilds returned | List manageable guilds | Bot connection status comes from Redis shard snapshots |
+| `GET /api/guilds` | Fresh Discord OAuth guild list; only owner, Administrator, or Manage Server guilds returned | List manageable guilds | Bot connection status comes from Supabase-backed shard snapshots |
 | `GET /api/guilds/:guildId` | Fresh Discord guild membership and manager permission; Destiny bot must be in guild | Read supported settings and current bot channel permissions | Guild ID must be a 17–20 digit Discord snowflake |
 | `GET /api/guilds/:guildId/audit` | Same current guild authorization | Read guild-scoped audit history | Bounded pagination; stored IP omitted; sensitive change keys redacted |
 | `GET /api/guilds/:guildId/export` | Same current guild authorization; bot snapshot must be fresh and guild connected | Export supported configuration | Export event must persist before response; no import endpoint |

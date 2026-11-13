@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/database/supabase.js';
 import { matchmakingManager } from '../../src/core/matchmaking/manager.js';
-import { redis } from '../../src/redis/client.js';
+import { stateStore } from '../../src/storage/state-store.js';
 
 const createdUserIds: string[] = [];
 
 afterEach(async () => {
   await Promise.all(createdUserIds.splice(0).map(async (userId) => {
     await matchmakingManager.leaveQueue(userId).catch(() => false);
-    await redis.del(`user:origin_guild:${userId}`).catch(() => false);
+    await stateStore.del(`user:origin_guild:${userId}`).catch(() => false);
   }));
 });
 

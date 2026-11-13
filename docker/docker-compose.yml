@@ -1,19 +1,6 @@
 version: '3.8'
 
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: destiny-redis
-    restart: unless-stopped
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   bot:
     build:
       context: ..
@@ -26,10 +13,6 @@ services:
       NODE_ENV: production
       RUN_SHARDS: "true"
       RUN_BOT: "true"
-      REDIS_HOST: redis
-    depends_on:
-      redis:
-        condition: service_healthy
 
   workers:
     build:
@@ -43,10 +26,3 @@ services:
       NODE_ENV: production
       RUN_WORKERS: "true"
       DISABLE_MATCHMAKING_WORKER: "true"
-      REDIS_HOST: redis
-    depends_on:
-      redis:
-        condition: service_healthy
-
-volumes:
-  redis_data:

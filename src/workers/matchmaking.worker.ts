@@ -1,14 +1,10 @@
-import { Worker, Job } from 'bullmq';
 import { matchmakingManager } from '../core/matchmaking/manager.js';
-import { redis } from '../redis/client.js';
-import { QUEUE_NAMES } from '../redis/queues.js';
-import { resolveRedisConnection } from '../redis/connection.js';
+import { stateStore } from '../storage/state-store.js';
 import { config } from '../config/index.js';
 import { getDiscordClient } from '../bot/client-registry.js';
 import { startWorkerHeartbeat, stopWorkerHeartbeat } from './heartbeat.js';
 
 export class MatchmakingWorker {
-  private worker: Worker | null = null;
   private intervalTimer: NodeJS.Timeout | null = null;
   private cycleInFlight = false;
   private cyclePromise: Promise<void> | null = null;
@@ -28,7 +24,7 @@ export class MatchmakingWorker {
   }
 
   async start(): Promise<void> {
-    if (this.shuttingDown || this.intervalTimer || this.worker) return;
+    if (this.shuttingDown || this.intervalTimer) return;
     if (this.startPromise) return this.startPromise;
 
     // Matchmaking creates a room and immediately DMs both participants. It
@@ -47,14 +43,12 @@ export class MatchmakingWorker {
     }
 
     this.startPromise = (async () => {
-      // Each shard has its own RedisService instance. The coordinator's Redis
-      // readiness does not guarantee that this child shard has connected yet.
-      // Wait for this process's connection instead of crashing the ready shard
-      // on a transient startup race.
+      // Each shard owns its Supabase client. Check this process's connection
+      // before starting the polling loop.
       if (config.NODE_ENV === 'production') {
-        const connected = await redis.waitForConnection(15_000);
+        const connected = await stateStore.waitForConnection();
         if (!connected) {
-          console.error('[Worker:Matchmaking] Redis is still unavailable in the primary Discord shard; retrying worker startup in 5 seconds.');
+          console.error('[Worker:Matchmaking] Supabase is unavailable in the primary Discord shard; retrying worker startup in 5 seconds.');
           this.scheduleRetry();
           return;
         }
@@ -62,23 +56,22 @@ export class MatchmakingWorker {
 
       const readyClient = getDiscordClient();
       if (!readyClient || !readyClient.isReady()) {
-        console.warn('[Worker:Matchmaking] Discord client disconnected while waiting for Redis; retrying worker startup in 5 seconds.');
+        console.warn('[Worker:Matchmaking] Discord client disconnected while waiting for Supabase; retrying worker startup in 5 seconds.');
         this.scheduleRetry();
         return;
       }
 
-      if (!redis.isHealthy() && config.NODE_ENV === 'production') {
-        throw new Error('Redis is required for the production matchmaking worker.');
+      if (!stateStore.isHealthy() && config.NODE_ENV === 'production') {
+        throw new Error('Supabase is required for the production matchmaking worker.');
       }
 
       console.log(`👷 [Worker] Starting Matchmaking Worker for ready Discord client ${readyClient.user?.tag || readyClient.user?.id || 'unknown'}...`);
-      const redisConnection = resolveRedisConnection();
-
-      // 1. High frequency polling fallback loop (every 2.5 seconds)
+      // Poll every 2.5 seconds. Matchmaking is driven by the live Discord
+      // process so room creation and participant DMs stay in one place.
       startWorkerHeartbeat('matchmaking');
       this.intervalTimer = setInterval(() => {
         // Prevent overlapping local polls from competing for the same distributed
-        // cycle lock and flooding Redis while a slow room/DM operation is active.
+        // cycle lock and flooding Postgres while a slow room/DM operation is active.
         if (this.cycleInFlight) return;
         this.cycleInFlight = true;
         const cycle = matchmakingManager.processMatchCycle()
@@ -93,33 +86,6 @@ export class MatchmakingWorker {
         this.cyclePromise = cycle;
       }, 2500);
 
-      // 2. BullMQ Distributed Job Worker
-      if (redis.isHealthy()) {
-        try {
-          this.worker = new Worker(
-            QUEUE_NAMES.MATCHMAKING,
-            async (job: Job) => {
-              if (job.name === 'process-cycle') {
-                return await matchmakingManager.processMatchCycle();
-              }
-            },
-            {
-              connection: {
-                ...redisConnection,
-                maxRetriesPerRequest: null,
-              },
-              concurrency: 5,
-            }
-          );
-
-          this.worker.on('error', (err) => console.error('[Worker:Matchmaking] BullMQ worker error:', err));
-          this.worker.on('failed', (job, err) => {
-            console.error(`[Worker:Matchmaking] Job ${job?.id} failed:`, err);
-          });
-        } catch (err) {
-          console.warn('[Worker:Matchmaking] BullMQ worker startup fallback:', err);
-        }
-      }
     })().finally(() => {
       this.startPromise = null;
     });
@@ -140,9 +106,6 @@ export class MatchmakingWorker {
       const cycle = this.cyclePromise;
       if (cycle) await cycle;
 
-      const worker = this.worker;
-      this.worker = null;
-      if (worker) await worker.close();
     } finally {
       if (this.retryTimer) clearTimeout(this.retryTimer);
       this.retryTimer = null;

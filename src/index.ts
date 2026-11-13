@@ -1,6 +1,6 @@
 import { config } from './config/index.js';
 import { db } from './database/supabase.js';
-import { redis } from './redis/client.js';
+import { stateStore } from './storage/state-store.js';
 import { startAllWorkers, stopAllWorkers } from './workers/index.js';
 import { bot } from './bot/index.js';
 import { stopPresence } from './bot/presence-manager.js';
@@ -18,7 +18,7 @@ async function bootstrap() {
   console.log(`[Database] Supabase Mode: ${db.isUsingMock() ? 'In-Memory Testing Store' : 'Connected to Supabase'}`);
   // 1. Start Workers
   await startAllWorkers({ includeMatchmaking: true });
-  console.log(`[Cache/Locks] Redis Mode: ${redis.isHealthy() ? 'Connected' : 'High-Speed Memory Fallback'}`);
+  console.log(`[Runtime State] Supabase Mode: ${stateStore.isHealthy() ? 'Connected' : 'Unavailable'}`);
 
   // 2. Start Discord Bot
   if (config.DISCORD_TOKEN && !config.DISCORD_TOKEN.startsWith('mock_')) {
@@ -55,7 +55,6 @@ async function bootstrap() {
           process.exitCode = 1;
         }
       }
-      await redis.close();
     } catch (error) {
       console.error('[Shutdown] Unexpected shutdown error:', error);
       process.exitCode = 1;

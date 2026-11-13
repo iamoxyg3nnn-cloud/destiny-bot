@@ -186,7 +186,7 @@ export interface SystemMetrics {
   shardsOnline: number;
   workersActive: number;
   supabaseConnected: boolean;
-  redisConnected: boolean;
+  runtimeStateConnected: boolean;
   cpuUsagePercent: number;
   memoryUsageMb: number;
   uptimeSeconds: number;

@@ -7,13 +7,13 @@
   "scripts": {
     "build": "tsc",
     "build:vercel": "pnpm run build && node scripts/build-vercel-dashboard.mjs",
+    "build:cloudflare": "pnpm run build && node scripts/build-cloudflare-dashboard.mjs",
     "bot": "tsx src/bot/index.ts",
     "shards": "tsx src/bot/sharding.ts",
     "dashboard:server": "tsx src/dashboard/server.ts",
     "dashboard:owner": "tsx src/dashboard/owner.ts",
     "worker": "tsx src/workers/index.ts",
     "start": "tsx src/index.ts",
-    "redis:check": "tsx scripts/check-redis.ts",
     "test": "vitest run",
     "test:load": "tsx tests/load/load-benchmark.ts"
   },
@@ -21,9 +21,7 @@
     "discord-bot",
     "anonymous-chat",
     "matchmaking",
-    "redis",
     "supabase",
-    "bullmq",
     "postgresql"
   ],
   "author": "Destiny Team",
@@ -34,10 +32,8 @@
   "dependencies": {
     "@napi-rs/canvas": "^1.1.0",
     "@supabase/supabase-js": "^2.48.1",
-    "bullmq": "^5.41.4",
     "discord.js": "^14.18.0",
     "dotenv": "^16.4.7",
-    "ioredis": "^5.5.0",
     "sharp": "^0.35.5",
     "uuid": "^11.1.0",
     "zod": "^3.24.2"
@@ -45,6 +41,7 @@
   "devDependencies": {
     "@types/node": "^22.13.5",
     "@types/uuid": "^10.0.0",
+    "esbuild": "^0.28.2",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3",
     "vitest": "^3.0.6"

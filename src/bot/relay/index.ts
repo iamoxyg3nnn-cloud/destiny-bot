@@ -1,10 +1,10 @@
 import { Client, Message, AttachmentBuilder, EmbedBuilder } from 'discord.js';
 import { sendCleanDmPanel } from '../dm-cleanup.js';
 import { db } from '../../database/supabase.js';
-import { redis } from '../../redis/client.js';
+import { stateStore } from '../../storage/state-store.js';
 import { sanitizer } from '../../core/sanitizer.js';
 import { embedService, COLORS } from '../embeds/index.js';
-import { lockManager } from '../../redis/locks.js';
+import { lockManager } from '../../storage/locks.js';
 import { RoomSession, UserProfile } from '../../core/types.js';
 
 export class MessageRelayService {
@@ -20,7 +20,7 @@ export class MessageRelayService {
     if (!authorUser) return false;
 
     const activeRoomId = authorUser.activeRoomId ||
-      (await redis.get(`user:active_room:${authorUser.id}`)) || undefined;
+      (await stateStore.get(`user:active_room:${authorUser.id}`)) || undefined;
     if (!activeRoomId) return false;
 
     const room = await db.getRoomById(activeRoomId);
@@ -64,7 +64,7 @@ export class MessageRelayService {
     authorUser: UserProfile,
     room: RoomSession
   ): Promise<boolean> {
-    const rateLimit = await redis.checkRateLimit(`relay:${authorUser.id}`, 5, 3);
+    const rateLimit = await stateStore.checkRateLimit(`relay:${authorUser.id}`, 5, 3);
     if (!rateLimit.allowed) {
       await message.reply('⚠️ Slow down! You are sending messages too quickly.');
       return true;

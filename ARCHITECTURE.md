@@ -29,11 +29,11 @@ Destiny is a focused, distributed anonymous-chat system for matchmaking compatib
           +------------------------------+----------------------------------+
                                          |
 +----------------------------------+                   +-----------------------------------+
-|    Redis Coordination & Cache    |                   |    Supabase PostgreSQL (Permanent)|
-| • Redlock (Reveal, Match)        |                   | • Users & Profiles (Destiny ID)   |
-| • Sliding-Window Rate Limiting   |                   | • Rooms & Message Audit Trails    |
-| • Active Room State & Pub/Sub    |                   | • Reports, Blocks & Verifications |
-| • BullMQ Durable Job Queues      |                   | • Audit & Server Settings         |
+|      Supabase PostgreSQL         |                   |   Runtime + Permanent State       |
+| • Atomic distributed locks       |                   | • Users & Profiles (Destiny ID)   |
+| • Sliding-window rate limits     |                   | • Rooms & Message Audit Trails    |
+| • Matchmaking tickets and rooms  |                   | • Reports, Blocks & Verifications |
+| • Worker/dashboard runtime state |                   | • Audit & Server Settings         |
 +----------------------------------+                   +-----------------------------------+
 ```
 
@@ -56,7 +56,7 @@ Destiny is a focused, distributed anonymous-chat system for matchmaking compatib
   6. `ATTACHMENT_FILTER`: Strips `.exe`, `.bat`, `.cmd`, `.scr`, `.vbs`, `.js`.
 - If a partner has Discord DMs closed, the bot notifies the sender immediately and logs the status without crashing.
 
-### C. Mutual-Consent Profile Reveal (Redlock Guarded)
+### C. Mutual-Consent Profile Reveal (Supabase Lock Guarded)
 - Reveal requires mutual explicit consent.
 - Users choose specific fields to share: `age`, `gender`, `interests`, `destinyId`, `discordTag`.
 - **Field Intersection Guarantee**: A field is only revealed if BOTH users independently select it.

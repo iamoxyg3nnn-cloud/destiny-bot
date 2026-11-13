@@ -3,7 +3,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { config } from '../../src/config/index.js';
-import { redis } from '../../src/redis/client.js';
+import { stateStore } from '../../src/storage/state-store.js';
 
 let server: Server;
 let port: number;
@@ -102,10 +102,10 @@ describe('dashboard HTTP boundary', () => {
     const sessionDigest = createHmac('sha256', config.SERVER_DASHBOARD_SESSION_SECRET)
       .update(sessionId)
       .digest('hex');
-    const redisSessionKey = `dashboard:session:server:${sessionDigest}`;
-    const storedSession = JSON.parse((await redis.get(redisSessionKey)) || '{}');
+    const stateSessionKey = `dashboard:session:server:${sessionDigest}`;
+    const storedSession = JSON.parse((await stateStore.get(stateSessionKey)) || '{}');
     storedSession.tokenExpiresAt = Date.now() - 1000;
-    await redis.set(redisSessionKey, JSON.stringify(storedSession), 2400);
+    await stateStore.set(stateSessionKey, JSON.stringify(storedSession), 2400);
     const refreshedSession = await request('/api/session', { cookie });
     const replay = await request(`/auth/callback?code=mock-code&state=${encodeURIComponent(state)}`);
     const logout = await request('/auth/logout', { method: 'POST', body: '{}', cookie, csrf: JSON.parse(session.body).csrfToken });
@@ -136,7 +136,7 @@ describe('dashboard HTTP boundary', () => {
     const sessionKey = createHmac('sha256', config.SERVER_DASHBOARD_SESSION_SECRET || 'local-development-only')
       .update(sessionId)
       .digest('hex');
-    const redisSessionKey = `dashboard:session:server:${sessionKey}`;
+    const stateSessionKey = `dashboard:session:server:${sessionKey}`;
     const guildA = '12345678901234567';
     const guildB = '22345678901234567';
     const shardSetKey = 'bot:guild-shards';
@@ -149,9 +149,9 @@ describe('dashboard HTTP boundary', () => {
       csrfToken: 'test-csrf-token',
       createdAt: new Date().toISOString(),
     };
-    await redis.set(redisSessionKey, JSON.stringify(session), 2400);
-    await redis.sAdd(shardSetKey, '0');
-    await redis.set(shardSnapshotKey, JSON.stringify([{ id: guildA, name: 'Guild A', icon: null, memberCount: 12, channels: [] }]), 180);
+    await stateStore.set(stateSessionKey, JSON.stringify(session), 2400);
+    await stateStore.sAdd(shardSetKey, '0');
+    await stateStore.set(shardSnapshotKey, JSON.stringify([{ id: guildA, name: 'Guild A', icon: null, memberCount: 12, channels: [] }]), 180);
     let currentGuilds = [{ id: guildA, name: 'Guild A', icon: null, owner: false, permissions: '32' }];
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(currentGuilds), { status: 200, headers: { 'Content-Type': 'application/json' } })));
     const cookie = `destiny_admin=${sessionId}`;
@@ -168,9 +168,9 @@ describe('dashboard HTTP boundary', () => {
       expect(JSON.parse(revoked.body).guilds).toEqual([]);
     } finally {
       await Promise.all([
-        redis.del(redisSessionKey),
-        redis.del(shardSnapshotKey),
-        redis.sRem(shardSetKey, '0'),
+        stateStore.del(stateSessionKey),
+        stateStore.del(shardSnapshotKey),
+        stateStore.sRem(shardSetKey, '0'),
       ]);
     }
   });
@@ -180,7 +180,7 @@ describe('dashboard HTTP boundary', () => {
     const sessionKey = createHmac('sha256', config.SERVER_DASHBOARD_SESSION_SECRET || 'local-development-only')
       .update(sessionId)
       .digest('hex');
-    const redisSessionKey = `dashboard:session:server:${sessionKey}`;
+    const stateSessionKey = `dashboard:session:server:${sessionKey}`;
     const guildId = '62345678901234567';
     const channelId = '72345678901234567';
     const shardSetKey = 'bot:guild-shards';
@@ -193,9 +193,9 @@ describe('dashboard HTTP boundary', () => {
       csrfToken: 'test-csrf-token',
       createdAt: new Date().toISOString(),
     };
-    await redis.set(redisSessionKey, JSON.stringify(session), 2400);
-    await redis.sAdd(shardSetKey, '0');
-    await redis.set(shardSnapshotKey, JSON.stringify([{ id: guildId, name: 'Settings Test Guild', icon: null, memberCount: 5, channels: [] }]), 180);
+    await stateStore.set(stateSessionKey, JSON.stringify(session), 2400);
+    await stateStore.sAdd(shardSetKey, '0');
+    await stateStore.set(shardSnapshotKey, JSON.stringify([{ id: guildId, name: 'Settings Test Guild', icon: null, memberCount: 5, channels: [] }]), 180);
     const guildMembership = [{ id: guildId, name: 'Settings Test Guild', icon: null, owner: false, permissions: '32' }];
     vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
       const url = new URL(String(input));
@@ -273,9 +273,9 @@ describe('dashboard HTTP boundary', () => {
       ]));
     } finally {
       await Promise.all([
-        redis.del(redisSessionKey),
-        redis.del(shardSnapshotKey),
-        redis.sRem(shardSetKey, '0'),
+        stateStore.del(stateSessionKey),
+        stateStore.del(shardSnapshotKey),
+        stateStore.sRem(shardSetKey, '0'),
       ]);
     }
   });

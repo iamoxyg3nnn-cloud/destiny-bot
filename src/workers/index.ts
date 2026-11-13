@@ -1,20 +1,19 @@
 import { matchmakingWorker } from './matchmaking.worker.js';
 import { notificationWorker } from './notification.worker.js';
 import { cleanupWorker } from './cleanup.worker.js';
-import { redis } from '../redis/client.js';
+import { stateStore } from '../storage/state-store.js';
 import { config } from '../config/index.js';
 import { db } from '../database/supabase.js';
 import { startWorkerHeartbeat, stopWorkerHeartbeat } from './heartbeat.js';
-import { queueManager } from '../redis/queues.js';
 
 let workersStarted = false;
 
 export async function startAllWorkers(options: { includeMatchmaking?: boolean } = {}): Promise<void> {
   if (workersStarted) return;
   await db.assertConnection();
-  const connected = await redis.waitForConnection();
+  const connected = await stateStore.waitForConnection();
   if (!connected && config.NODE_ENV === 'production') {
-    throw new Error('Redis is required in production for distributed queues, rate limits, and locks.');
+    throw new Error('Supabase runtime state is required in production for distributed rate limits and locks.');
   }
   console.log('⚡ Launching Destiny Worker Ecosystem...');
   try {
@@ -39,7 +38,6 @@ export async function stopAllWorkers(): Promise<void> {
     notificationWorker.stop(),
     cleanupWorker.stop(),
     stopWorkerHeartbeat('workers'),
-    queueManager.close(),
   ]);
   workersStarted = false;
 

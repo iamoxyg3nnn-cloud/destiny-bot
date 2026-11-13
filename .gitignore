@@ -42,3 +42,4 @@ coverage/
 
 # Downloaded tooling (e.g. the cloudflared binary)
 .tools/
+cloudflare/dist/

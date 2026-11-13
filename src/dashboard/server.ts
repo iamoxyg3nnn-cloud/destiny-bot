@@ -5,8 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config/index.js';
 import { db } from '../database/supabase.js';
-import { redis } from '../redis/client.js';
-import { queueManager } from '../redis/queues.js';
+import { stateStore } from '../storage/state-store.js';
 import { verificationService } from '../core/moderation/verification.js';
 import { PLATFORM_OPERATOR_CAPABILITIES, type PlatformOperatorCapability } from '../core/types.js';
 import { computeChannelPermissions, isServerManager } from './security.js';
@@ -14,7 +13,7 @@ import {
   consumeDashboardState,
   deleteDashboardState,
   incrementDashboardRateLimit,
-  isVercelDashboardRuntime,
+  isPersistentDashboardRuntime,
   readDashboardState,
   writeDashboardState,
 } from './persistence.js';
@@ -30,7 +29,9 @@ const SESSION_TTL_SECONDS = 4 * 60 * 60;
 const SESSION_SECRET = APP === 'owner' ? config.OWNER_DASHBOARD_SESSION_SECRET : config.SERVER_DASHBOARD_SESSION_SECRET;
 const OAUTH_STATE_TTL_SECONDS = 5 * 60;
 const MAX_BODY_BYTES = 8 * 1024;
-const STATIC_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../apps', `${APP}-dashboard`, 'public');
+const STATIC_ROOT = process.env.CLOUDFLARE_WORKER === '1'
+  ? '/cloudflare-worker/static-assets-are-served-by-the-fetch-handler'
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../apps', `${APP}-dashboard`, 'public');
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -180,18 +181,14 @@ async function apiRateLimit(req: IncomingMessage, bucket: string, max: number): 
     : typeof forwardedFor === 'string'
       ? forwardedFor.split(',')[0]
       : '').trim() || req.socket.remoteAddress || 'unknown';
-  if (isVercelDashboardRuntime()) {
+  if (isPersistentDashboardRuntime()) {
     try { return await incrementDashboardRateLimit(APP, bucket, ip, SESSION_SECRET) <= max; }
     catch { return false; }
   }
   const key = `dashboard:rate:${APP}:${bucket}:${ip}`;
-  const raw = redis.getRawClient();
-  if (redis.isHealthy() && raw) {
-    try {
-      const count = await raw.incr(key);
-      if (count === 1) await raw.expire(key, 60);
-      return count <= max;
-    } catch { return false; }
+  if (config.SUPABASE_SERVICE_ROLE_KEY && !config.SUPABASE_SERVICE_ROLE_KEY.startsWith('mock_')) {
+    try { return (await stateStore.checkRateLimit(key, max, 60)).allowed; }
+    catch { return false; }
   }
   if (config.NODE_ENV === 'production') return false;
   const counter = fallbackRateLimits.get(key);
@@ -207,30 +204,30 @@ async function apiRateLimit(req: IncomingMessage, bucket: string, max: number): 
 const fallbackRateLimits = new Map<string, { count: number; expiresAt: number }>();
 
 async function readState(key: string): Promise<string | null> {
-  if (isVercelDashboardRuntime()) return readDashboardState(APP, key, SESSION_SECRET);
-  return redis.get(key);
+  if (isPersistentDashboardRuntime()) return readDashboardState(APP, key, SESSION_SECRET);
+  return stateStore.get(key);
 }
 
 async function writeState(key: string, value: string, ttlSeconds: number): Promise<boolean> {
-  if (isVercelDashboardRuntime()) {
+  if (isPersistentDashboardRuntime()) {
     await writeDashboardState(APP, key, value, ttlSeconds, SESSION_SECRET);
     return true;
   }
-  return redis.set(key, value, ttlSeconds);
+  return stateStore.set(key, value, ttlSeconds);
 }
 
 async function deleteState(key: string): Promise<boolean> {
-  if (isVercelDashboardRuntime()) {
+  if (isPersistentDashboardRuntime()) {
     await deleteDashboardState(APP, key);
     return true;
   }
-  return redis.del(key);
+  return stateStore.del(key);
 }
 
 async function consumeState(key: string): Promise<string | null> {
-  if (isVercelDashboardRuntime()) return consumeDashboardState(APP, key, SESSION_SECRET);
-  const value = await redis.get(key);
-  if (value) await redis.del(key);
+  if (isPersistentDashboardRuntime()) return consumeDashboardState(APP, key, SESSION_SECRET);
+  const value = await stateStore.get(key);
+  if (value) await stateStore.del(key);
   return value;
 }
 
@@ -325,8 +322,8 @@ async function getDiscordGuilds(session: DashboardSession): Promise<{ session: D
 }
 
 async function loadBotGuilds(): Promise<{ guilds: BotGuild[]; stale: boolean }> {
-  const shardIds = await redis.sMembers('bot:guild-shards');
-  const snapshots = await Promise.all(shardIds.map((id) => redis.get(`bot:guilds:${id}`)));
+  const shardIds = await stateStore.sMembers('bot:guild-shards');
+  const snapshots = await Promise.all(shardIds.map((id) => stateStore.get(`bot:guilds:${id}`)));
   const fresh = snapshots.filter((value): value is string => Boolean(value));
   if (fresh.length === 0) return { guilds: [], stale: true };
   const guilds: BotGuild[] = [];
@@ -540,17 +537,17 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
     if (APP === 'owner' && method === 'GET' && url.pathname === '/api/owner/overview') {
       if (!await hasOwnerCapability(session.user.id, 'platform.health.read')) return json(res, 403, { error: 'Platform owner access required.' });
+      await stateStore.waitForConnection();
       const [database, shardIds, workerIds] = await Promise.all([
         db.isUsingMock() ? Promise.resolve(false) : db.assertConnection().then(() => true).catch(() => false),
-        redis.isHealthy() ? redis.sMembers('bot:guild-shards').catch(() => []) : Promise.resolve([]),
-        redis.isHealthy() ? redis.sMembers('worker:instances').catch(() => []) : Promise.resolve([]),
+        stateStore.isHealthy() ? stateStore.sMembers('bot:guild-shards').catch(() => []) : Promise.resolve([]),
+        stateStore.isHealthy() ? stateStore.sMembers('worker:instances').catch(() => []) : Promise.resolve([]),
       ]);
       const [shardSnapshots, workerHeartbeats] = await Promise.all([
-        Promise.all(shardIds.map((id) => redis.get(`bot:guilds:${id}`).catch(() => null))),
-        Promise.all(workerIds.map((id) => redis.get(`worker:heartbeat:${id}`).catch(() => null))),
+        Promise.all(shardIds.map((id) => stateStore.get(`bot:guilds:${id}`).catch(() => null))),
+        Promise.all(workerIds.map((id) => stateStore.get(`worker:heartbeat:${id}`).catch(() => null))),
       ]);
-      const queueStats = redis.isHealthy() ? await queueManager.getQueueStats().catch(() => null) : null;
-      const botSnapshot = redis.isHealthy()
+      const botSnapshot = stateStore.isHealthy()
         ? await loadBotGuilds().catch(() => ({ guilds: [], stale: true }))
         : { guilds: [], stale: true };
       const [registeredUsers, activeConversations] = database
@@ -584,11 +581,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         },
         services: {
           database: database ? 'connected' : 'unavailable',
-          redis: redis.isHealthy() ? 'connected' : 'unavailable',
-          discordShards: redis.isHealthy() ? String(shardSnapshots.filter(Boolean).length) : 'unavailable',
-          workers: redis.isHealthy() ? String(workerHeartbeats.filter(Boolean).length) : 'unavailable',
+          runtimeState: stateStore.isHealthy() ? 'connected' : 'unavailable',
+          discordShards: stateStore.isHealthy() ? String(shardSnapshots.filter(Boolean).length) : 'unavailable',
+          workers: stateStore.isHealthy() ? String(workerHeartbeats.filter(Boolean).length) : 'unavailable',
         },
-        diagnostics: { workers, shards, queues: queueStats },
+        diagnostics: { workers, shards },
       });
     }
 
@@ -1047,7 +1044,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   return json(res, 404, { error: 'Not found.' });
 }
 
-if (config.NODE_ENV === 'production' && (!config.DISCORD_CLIENT_SECRET || SESSION_SECRET.length < 32)) {
+if (config.NODE_ENV === 'production' && process.env.CLOUDFLARE_WORKER !== '1' && (!config.DISCORD_CLIENT_SECRET || SESSION_SECRET.length < 32)) {
   throw new Error(`Dashboard startup requires DISCORD_CLIENT_SECRET and a 32-character ${APP.toUpperCase()}_DASHBOARD_SESSION_SECRET in production.`);
 }
 
@@ -1067,7 +1064,7 @@ export function createDashboardServer() {
   return createServer((req, res) => { void handleDashboardRequest(req, res); });
 }
 
-if (config.NODE_ENV !== 'test' && process.env.VERCEL !== '1') {
+if (config.NODE_ENV !== 'test' && process.env.VERCEL !== '1' && process.env.CLOUDFLARE_WORKER !== '1') {
   const server = createDashboardServer();
   server.listen(port, () => console.log(`[Dashboard:${APP}] Listening on ${port} for ${ORIGIN}`));
 }

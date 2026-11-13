@@ -38,18 +38,8 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      REDIS_HOST: ${{ secrets.REDIS_HOST }}
-      REDIS_PORT: ${{ secrets.REDIS_PORT || '6379' }}
-      REDIS_USERNAME: ${{ secrets.REDIS_URL && secrets.REDIS_USERNAME || (secrets.REDIS_HOST && secrets.REDIS_HOST != '127.0.0.1' && secrets.REDIS_USERNAME) || '' }}
-      REDIS_PASSWORD: ${{ secrets.REDIS_URL && secrets.REDIS_PASSWORD || (secrets.REDIS_HOST && secrets.REDIS_HOST != '127.0.0.1' && secrets.REDIS_PASSWORD) || '' }}
-      REDIS_TOKEN: ${{ secrets.REDIS_URL && secrets.REDIS_TOKEN || (secrets.REDIS_HOST && secrets.REDIS_HOST != '127.0.0.1' && secrets.REDIS_TOKEN) || '' }}
-      REDIS_URL: ${{ secrets.REDIS_URL }}
-      REDIS_DB: ${{ secrets.REDIS_DB || '0' }}
-      REDIS_TLS: ${{ (secrets.REDIS_URL || (secrets.REDIS_HOST && secrets.REDIS_HOST != '127.0.0.1')) && secrets.REDIS_TLS || 'false' }}
-      REDIS_KEY_PREFIX: "destiny:"
       REMINDER_CRON_SCHEDULE: "30 19 * * *"
       REMINDER_DEFAULT_TIMEZONE: "Asia/Kolkata"
-      BULLMQ_CONCURRENCY: "50"
       ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
       AUTO_MOD_ENABLED: "true"
       MAX_MESSAGE_RATE_PER_3S: "5"
@@ -85,17 +75,12 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           BOT_OWNER_IDS: ${{ secrets.BOT_OWNER_IDS }}
-          REDIS_URL: ${{ secrets.REDIS_URL }}
-          REDIS_HOST: ${{ secrets.REDIS_HOST }}
         run: |
           set -euo pipefail
           missing=()
           for key in DISCORD_TOKEN DISCORD_CLIENT_ID SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY BOT_OWNER_IDS; do
             if [ -z "${!key:-}" ]; then missing+=("${key}"); fi
           done
-          if [ -z "${REDIS_URL}" ] && { [ -z "${REDIS_HOST}" ] || [ "${REDIS_HOST}" = "127.0.0.1" ] || [ "${REDIS_HOST}" = "localhost" ]; }; then
-            missing+=("REDIS_URL (or a non-local REDIS_HOST with credentials)")
-          fi
           if [ "${#missing[@]}" -gt 0 ]; then
             printf '::error::Missing GitHub Actions runtime secrets: %s. Add these under Settings > Secrets and variables > Actions, then enable the bot workflows.\n' "$(IFS=', '; echo "${missing[*]}")"
             exit 1
@@ -108,25 +93,6 @@ jobs:
         run: |
           node scripts/setup-env.js
           chmod 0600 .env
-
-      - name: Require the configured persistent Redis instance
-        env:
-          REDIS_URL: ${{ secrets.REDIS_URL }}
-          REDIS_HOST: ${{ secrets.REDIS_HOST }}
-        run: |
-          set -euo pipefail
-          if [ -z "${REDIS_URL}" ] && [ -z "${REDIS_HOST}" ]; then
-            echo "::error::Configure REDIS_URL or REDIS_HOST in repository Actions secrets. The runner no longer substitutes an ephemeral local Redis service."
-            exit 1
-          fi
-          if [ -z "${REDIS_URL}" ] && { [ "${REDIS_HOST}" = "127.0.0.1" ] || [ "${REDIS_HOST}" = "localhost" ]; }; then
-            echo "::error::REDIS_HOST must point to your persistent hosted Redis instance, not localhost."
-            exit 1
-          fi
-
-      - name: Verify Redis Connection
-        id: redis_check
-        run: pnpm run redis:check
 
       - name: Run Destiny Bot Session
         env:
@@ -171,14 +137,11 @@ jobs:
 
       - name: Session Summary
         if: always()
-        env:
-          REDIS_CHECK_OUTCOME: ${{ steps.redis_check.outcome }}
         run: |
           {
             echo "### 🌌 Destiny Bot Session"
             echo ""
             echo "- **Status:** Session ended; completion watcher schedules the successor"
             echo "- **Runner:** ${RUNNER_NAME} (GitHub Actions Ubuntu)"
-            echo "- **Redis connectivity check:** ${REDIS_CHECK_OUTCOME:-not-run}"
-            echo "- **Supabase:** Connected"
+            echo "- **Runtime storage:** Supabase PostgreSQL"
           } >> "${GITHUB_STEP_SUMMARY}"

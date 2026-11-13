@@ -2,7 +2,7 @@
 
 ## Current state
 
-No dashboard-specific production service or operator-grant schema migration is deployed yet. Migration 020 was validated on the isolated `destiny-dashboard-validation` Supabase project only; production remains unchanged. Local dashboard services use Redis for OAuth state and sessions; ensure dashboard failure or Redis recovery does not alter the existing bot/worker state. Existing Destiny recovery obligations include keeping database migrations ordered and preserving chat/session/report data.
+The production dashboard runs on Cloudflare Workers with OAuth state and encrypted sessions stored in Supabase. Migrations 020–022 are applied to the active project. Recovery should preserve the Supabase migration order and existing chat/session/report data. Bot runtime state, locks, rate limits, and worker heartbeats also live in Supabase PostgreSQL.
 
 ## Before introducing dashboard migrations
 

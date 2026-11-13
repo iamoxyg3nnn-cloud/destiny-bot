@@ -1,7 +1,7 @@
 import { ShardingManager } from 'discord.js';
 import { config } from '../config/index.js';
 import { db } from '../database/supabase.js';
-import { redis } from '../redis/client.js';
+import { stateStore } from '../storage/state-store.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -22,8 +22,8 @@ export class ShardCoordinator {
     }
 
     await db.assertConnection();
-    if (config.NODE_ENV === 'production' && !(await redis.waitForConnection())) {
-      throw new Error('Redis is required before the Discord shard cluster can start.');
+    if (config.NODE_ENV === 'production' && !(await stateStore.waitForConnection())) {
+      throw new Error('Supabase runtime state is required before the Discord shard cluster can start.');
     }
 
     const botFile = path.join(__dirname, 'index.js');

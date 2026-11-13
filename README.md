@@ -1,11 +1,10 @@
 # 🌌 Destiny — Anonymous Chat & Matchmaking Discord Bot
 
-> A scalable, production-grade anonymous social connection and matchmaking Discord bot powered by **TypeScript**, **Discord.js v14**, **Supabase PostgreSQL**, **Redis**, and **BullMQ**.
+> A scalable anonymous social connection and matchmaking Discord bot powered by **TypeScript**, **Discord.js v14**, and **Supabase PostgreSQL**.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![Discord.js](https://img.shields.io/badge/Discord.js-v14.18-5865F2.svg)](https://discord.js.org/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E.svg)](https://supabase.com/)
-[![Redis](https://img.shields.io/badge/Redis-Redlock-DC382D.svg)](https://redis.io/)
 
 ---
 
@@ -14,7 +13,7 @@
 ### 🔒 Step 1 & 2 — Privacy & Matchmaking Architecture
 - **Complete Anonymity**: Discord usernames, user IDs, avatars, and server origins are completely masked. Each conversation generates a unique celestial persona (e.g. `Celestial Fox 🦊`, `Lunar Wolf 🐺`).
 - **Multi-Criteria Matching Engine**: Enforces adult age ranges, shared-language compatibility, and mutual global block lists; shared interests rank compatible candidates. Legacy preferred-gender fields are retained for profile compatibility but are not currently used as match filters.
-- **Race Condition Safeguards**: Distributed Redlock (`lock:reveal:${roomId}`) ensures simultaneous interactions cannot duplicate rooms or leak identities.
+- **Race Condition Safeguards**: Atomic Supabase-backed distributed locks ensure simultaneous interactions cannot duplicate rooms or leak identities.
 - **Sanitization Pipeline**: Masks Discord invites and mentions, scrubs Discord tokens, blocks known phishing/IP-logger domains, and allows only trusted Discord CDN image, video, audio, and PDF attachments up to 10 MB.
 - **Mutual-Consent Profile Reveal**: Fine-grained field selection (`age`, `gender`, `interests`, `destinyId`, `discordTag`). A field is **only revealed if both partners agree**.
 - **Global Cross-Server Safety**: Blocking and abuse restrictions apply globally across all joined Discord servers.
@@ -29,7 +28,7 @@
 - **102 curated statuses** with live `{members}` and `{servers}` counts computed in real time.
 - **Uninterrupted rotation**: matchmaking queue depth and active conversations
   never override or pause the curated status rotation.
-- **Shard-aware**: presence rotation runs in the bot shard process, while queue processing uses a renewable distributed Redis lock.
+- **Shard-aware**: presence rotation runs in the bot shard process, while queue processing uses a renewable Supabase-backed lock.
 - **20-second rotation**, staggered per shard so gateway presence updates stay
   spread out; counts are cached for 30s so the rotation never hammers the database.
 
@@ -40,8 +39,7 @@
 ### 1. Prerequisites
 - **Node.js**: v20.18+ (Node 22 LTS recommended)
 - **pnpm** (recommended) or **npm**
-- **Redis Server** (required in production for shared queues, rate limits, and distributed locks; in-memory fallback is development/test only)
-- **Supabase Account** (or local PostgreSQL)
+- **Supabase project** with the application migrations applied.
 
 ### 2. Environment Configuration
 Copy `.env.example` to `.env`:
@@ -55,36 +53,14 @@ DISCORD_CLIENT_ID=your_client_id_here
 BOT_OWNER_IDS=123456789012345678,234567890123456789
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_secret
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6379
 DESTINY_STREAM_URL=https://www.twitch.tv/ninja
 ```
 
 `BOT_OWNER_IDS` is a comma-separated allowlist of Discord IDs with global bot-owner authority; it supports multiple owners. See [Administration setup](docs/ADMINISTRATION.md) for bot-owner, server-admin and moderator boundaries.
 
-#### Connecting Redis
-
-Redis is required in production. Development and tests can use the in-memory fallback, but it is not safe for multi-process deployments. Three ways to point the bot at an instance, checked in this order:
-
-| Variable | Use |
-|---|---|
-| `REDIS_URL` | Full URL for hosted providers, e.g. `rediss://default:<token>@my-db.upstash.io:6379`. Overrides host/port/password. |
-| `REDIS_USERNAME` | Optional Redis ACL username. Also read from `REDIS_URL` when present. |
-| `REDIS_TOKEN` | Access token used as the password (Upstash-style). Takes precedence over `REDIS_PASSWORD`. |
-| `REDIS_PASSWORD` | Plain password, when the provider uses one. |
-
-Also supported: `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_TLS=true`,
-`REDIS_KEY_PREFIX`. The same resolved connection is shared by the ioredis client and
-the BullMQ queues, so both always talk to the same instance. Credentials are never
-logged — the startup line only reports the target host, port and whether auth is on.
-The GitHub Actions runner requires a persistent hosted Redis configuration: set
-`REDIS_URL` (recommended for hosted providers) or `REDIS_HOST` plus its port and
-credentials in repository Actions secrets. The runner intentionally does not start
-a temporary local Redis service, because that would make `PING` pass while losing
-queue, lock, rate-limit and reminder state when the job ends. Before startup,
-`redis:check` verifies `PING` and a real `SET`/`GET`/`DEL` round trip using the
-same logical database and `destiny:` key prefix as the application. Redis monitoring tools
-usually show keys within a logical database, not a separately created database object.
+The application stores durable profiles, rooms, messages, queue state, runtime locks,
+rate limits, worker heartbeats, and dashboard sessions in Supabase PostgreSQL. Profile
+card image caching remains process-local and expires after 15 minutes.
 
 ### 3. Database Schema Setup
 Execute the SQL migrations located in `supabase/migrations/` in order. Migrations `001`–`015` contain the original economy and progression schema for historical compatibility; migration `016` permanently removes those tables, records, columns, functions and triggers. The active application is anonymous chat and matchmaking only:
@@ -108,7 +84,11 @@ Execute the SQL migrations located in `supabase/migrations/` in order. Migration
 18. `018_deny_public_table_access.sql` — Explicitly deny direct `anon` and `authenticated` access to backend-only application tables.
 19. `019_temporary_safety_bans.sql` — Add 24-hour report suspensions while preserving permanent bans.
 
-**Deployment note:** Fresh databases must apply all migrations `001`–`019` in order. Existing deployments use `scripts/apply-migrations.sh`, which tracks completed files in the private `destiny_internal.schema_migrations` schema and skips them on subsequent restarts. The connected production database has been baselined after verifying its final schema and all 19 migration versions. Do not run `supabase db push` until the separate Supabase CLI migration history is reconciled.
+20. `020_platform_operator_capabilities.sql` — Store scoped platform-operator grants and audit them transactionally.
+21. `021_dashboard_runtime_state.sql` — Store encrypted dashboard sessions and rate-limit state.
+22. `022_runtime_state_and_limits.sql` — Store bot runtime state, distributed locks, and atomic rate-limit events.
+
+**Deployment note:** Fresh databases must apply all migrations `001`–`022` in order. Existing deployments use `scripts/apply-migrations.sh`, which tracks completed files in the private `destiny_internal.schema_migrations` schema and skips them on subsequent restarts. Do not run `supabase db push` until the separate Supabase CLI migration history is reconciled.
 
 ### 4. Running Destiny
 ```bash

@@ -20,7 +20,7 @@ import {
 } from 'discord.js';
 import { db } from '../../database/supabase.js';
 import { config } from '../../config/index.js';
-import { redis } from '../../redis/client.js';
+import { stateStore } from '../../storage/state-store.js';
 import { matchmakingManager } from '../../core/matchmaking/manager.js';
 import { revealService } from '../../core/moderation/reveal.js';
 import { reporterService } from '../../core/moderation/reporter.js';
@@ -501,7 +501,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       const user = await db.getUserByDiscordId(discordUser.id, true);
       let activeRoomId = user?.activeRoomId;
       if (!activeRoomId && user) {
-        activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+        activeRoomId = (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
       }
       if (activeRoomId) {
         const room = await db.getRoomById(activeRoomId);
@@ -558,7 +558,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       const user = await db.getUserByDiscordId(discordUser.id, true);
       let roomId = user?.activeRoomId;
       if (!roomId && user) {
-        roomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+        roomId = (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
       }
 
       if (user && roomId) {
@@ -657,7 +657,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       const user = await db.getUserByDiscordId(discordUser.id, true);
       let activeRoomId = user?.activeRoomId;
       if (!activeRoomId && user) {
-        activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+        activeRoomId = (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
       }
 
       if (!user || !activeRoomId) {
@@ -731,7 +731,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       const user = await db.getUserByDiscordId(discordUser.id, true);
       let activeRoomId = user?.activeRoomId;
       if (!activeRoomId && user) {
-        activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+        activeRoomId = (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
       }
 
       if (!user || !activeRoomId) {
@@ -786,7 +786,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       const user = await db.getUserByDiscordId(discordUser.id, true);
       let activeRoomId = user?.activeRoomId;
       if (!activeRoomId && user) {
-        activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+        activeRoomId = (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
       }
 
       const room = activeRoomId ? await db.getRoomById(activeRoomId) : null;
@@ -829,10 +829,10 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         : user.activeRoomId;
 
       if (!roomId) {
-        roomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+        roomId = (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
       }
       if (!roomId) {
-        roomId = (await redis.get(`user:last_room:${user.id}`)) || undefined;
+        roomId = (await stateStore.get(`user:last_room:${user.id}`)) || undefined;
       }
 
       let room = roomId ? await db.getRoomById(roomId) : null;
@@ -1083,7 +1083,7 @@ async function handleStartMatchButton(btn: ButtonInteraction): Promise<void> {
 
   let activeRoomId = user.activeRoomId;
   if (!activeRoomId) {
-    activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+    activeRoomId = (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
   }
   if (activeRoomId) {
     const room = await db.getRoomById(activeRoomId);

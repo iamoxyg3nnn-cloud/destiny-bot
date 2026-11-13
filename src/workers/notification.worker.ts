@@ -1,9 +1,6 @@
-import { Worker, Job } from 'bullmq';
 import { REST, Routes } from 'discord.js';
 import { db } from '../database/supabase.js';
-import { redis } from '../redis/client.js';
-import { QUEUE_NAMES } from '../redis/queues.js';
-import { resolveRedisConnection } from '../redis/connection.js';
+import { stateStore } from '../storage/state-store.js';
 import { config } from '../config/index.js';
 import { randomUUID } from 'node:crypto';
 
@@ -64,16 +61,14 @@ function isQuietNow(current: number, start?: string, end?: string): boolean {
 }
 
 export class NotificationWorker {
-  private worker: Worker | null = null;
   private cronTimer: NodeJS.Timeout | null = null;
   private rest: REST | null = null;
   private schedulerInFlight = false;
   private schedulerPromise: Promise<void> | null = null;
 
   start() {
-    if (this.cronTimer || this.worker) return;
+    if (this.cronTimer) return;
     console.log('⏰ [Worker] Starting timezone-aware daily notification scheduler...');
-    const redisConnection = resolveRedisConnection();
 
     this.cronTimer = setInterval(() => {
       if (this.schedulerInFlight) return;
@@ -91,23 +86,6 @@ export class NotificationWorker {
     }, 60 * 1000);
     this.cronTimer.unref?.();
 
-    if (redis.isHealthy()) {
-      this.worker = new Worker(
-        QUEUE_NAMES.NOTIFICATIONS,
-        async (job: Job) => {
-          if (job.name === 'send-reminder') {
-            await this.sendUserReminder(job.data.userId, job.data.discordUserId);
-          }
-        },
-        {
-          connection: { ...redisConnection, maxRetriesPerRequest: null },
-          concurrency: 10,
-        }
-      );
-      this.worker.on('error', (error: Error) => console.error('[Worker:Notifications] Queue worker error:', error));
-    } else if (config.NODE_ENV === 'production') {
-      throw new Error('Redis is required for the notification worker in production.');
-    }
   }
 
   async dispatchScheduledReminders() {
@@ -134,25 +112,25 @@ export class NotificationWorker {
         if (isQuietNow(local.minutes, settings?.quietHoursStart, settings?.quietHoursEnd)) continue;
 
         const sentKey = `reminder:sent:${user.id}:${local.date}`;
-        if (await redis.get(sentKey)) continue;
+        if (await stateStore.get(sentKey)) continue;
         const lockKey = `reminder:lock:${user.id}:${local.date}`;
         const lockToken = randomUUID();
-        if (!(await redis.setIfAbsent(lockKey, lockToken, 120))) continue;
+        if (!(await stateStore.setIfAbsent(lockKey, lockToken, 120))) continue;
 
         try {
-          if (await redis.get(sentKey)) continue;
+          if (await stateStore.get(sentKey)) continue;
           await this.sendUserReminder(user.id, user.discordUserId);
-          await redis.set(sentKey, '1', 26 * 60 * 60);
+          await stateStore.set(sentKey, '1', 26 * 60 * 60);
         } catch (err: any) {
           const status = Number(err?.status || err?.httpStatus || 0);
           // Retry transient Discord failures on the next scheduler tick.
           // Permanent DM/privacy failures are recorded for the day to avoid spam.
           if (status !== 0 && status !== 401 && status !== 429 && status < 500) {
-            await redis.set(sentKey, '1', 26 * 60 * 60).catch(() => {});
+            await stateStore.set(sentKey, '1', 26 * 60 * 60).catch(() => {});
           }
           console.warn(`[Notification] Reminder delivery failed for ${user.discordUserId}:`, err?.message || err);
         } finally {
-          await redis.delIfValue(lockKey, lockToken).catch(() => {});
+          await stateStore.delIfValue(lockKey, lockToken).catch(() => {});
         }
       }
 
@@ -183,9 +161,6 @@ export class NotificationWorker {
     const cycle = this.schedulerPromise;
     if (cycle) await cycle;
 
-    const worker = this.worker;
-    this.worker = null;
-    if (worker) await worker.close();
   }
 }
 

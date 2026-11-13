@@ -14,18 +14,8 @@ const keys = [
   'SUPABASE_SERVICE_ROLE_KEY',
   'SUPABASE_ACCESS_TOKEN',
   'DATABASE_URL',
-  'REDIS_HOST',
-  'REDIS_PORT',
-  'REDIS_USERNAME',
-  'REDIS_PASSWORD',
-  'REDIS_TOKEN',
-  'REDIS_URL',
-  'REDIS_DB',
-  'REDIS_TLS',
-  'REDIS_KEY_PREFIX',
   'REMINDER_CRON_SCHEDULE',
   'REMINDER_DEFAULT_TIMEZONE',
-  'BULLMQ_CONCURRENCY',
   'ENCRYPTION_KEY',
   'AUTO_MOD_ENABLED',
   'MAX_MESSAGE_RATE_PER_3S',
@@ -58,7 +48,7 @@ const lines = keys.map((key) => {
 
 // Retain custom variables that are not managed by this script.
 for (const [key, value] of existing) {
-  if (!keys.includes(key)) lines.push(`${key}=${value}`);
+  if (!keys.includes(key) && !key.startsWith('REDIS_') && key !== 'BULLMQ_CONCURRENCY') lines.push(`${key}=${value}`);
 }
 
 fs.writeFileSync('.env', lines.join('\n') + '\n', { mode: 0o600 });

@@ -9,7 +9,7 @@ const ordinaryUserId = '42345678901234567';
 let server: Server;
 let port: number;
 let host: string;
-let redis: (typeof import('../../src/redis/client.js'))['redis'];
+let stateStore: (typeof import('../../src/storage/state-store.js'))['stateStore'];
 let ownerOrigin: string;
 let ownerSessionSecret = '';
 let ownerSessionKeys: string[] = [];
@@ -44,7 +44,7 @@ async function createSession(userId: string): Promise<string> {
   const digest = createHmac('sha256', ownerSessionSecret || 'local-development-only').update(sessionId).digest('hex');
   const key = `dashboard:session:owner:${digest}`;
   ownerSessionKeys.push(key);
-  await redis.set(key, JSON.stringify({
+  await stateStore.set(key, JSON.stringify({
     user: { id: userId, username: 'Owner Test' },
     accessToken: 'test-access-token',
     refreshToken: 'test-refresh-token',
@@ -64,17 +64,12 @@ beforeAll(async () => {
   process.env.DISCORD_CLIENT_SECRET = 'test-owner-client-secret';
   process.env.SUPABASE_URL = 'https://mock-supabase.test';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'mock-service-role-key';
-  process.env.REDIS_URL = '';
-  process.env.REDIS_HOST = '127.0.0.1';
-  process.env.REDIS_PASSWORD = '';
-  process.env.REDIS_TOKEN = '';
-  process.env.REDIS_USERNAME = '';
-  const [{ config }, redisModule, { createDashboardServer }] = await Promise.all([
+  const [{ config }, stateStoreModule, { createDashboardServer }] = await Promise.all([
     import('../../src/config/index.js'),
-    import('../../src/redis/client.js'),
+    import('../../src/storage/state-store.js'),
     import('../../src/dashboard/server.js'),
   ]);
-  redis = redisModule.redis;
+  stateStore = stateStoreModule.stateStore;
   ownerSessionSecret = config.OWNER_DASHBOARD_SESSION_SECRET;
   ownerOrigin = new URL(config.OWNER_DASHBOARD_ORIGIN).origin;
   host = new URL(ownerOrigin).host;
@@ -91,7 +86,7 @@ beforeAll(async () => {
 afterEach(() => vi.restoreAllMocks());
 
 afterAll(async () => {
-  await Promise.all(ownerSessionKeys.map((key) => redis.del(key)));
+  await Promise.all(ownerSessionKeys.map((key) => stateStore.del(key)));
   if (server?.listening) await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
 

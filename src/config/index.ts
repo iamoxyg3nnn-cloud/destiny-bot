@@ -33,33 +33,9 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().default('mock-service-role-key'),
   DATABASE_URL: z.string().optional(),
 
-  // Redis
-  REDIS_HOST: z.string().default('127.0.0.1'),
-  REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
-  REDIS_USERNAME: z.string().default(''),
-  REDIS_PASSWORD: z.string().default(''),
-  /**
-   * Access token for hosted Redis providers (e.g. Upstash). Used as the
-   * password when set; takes precedence over REDIS_PASSWORD.
-   */
-  REDIS_TOKEN: z.string().default(''),
-  /**
-   * Full connection URL for hosted Redis, e.g.
-   * `rediss://default:<token>@my-db.upstash.io:6379`. Overrides the discrete
-   * host/port/password variables when set.
-   */
-  REDIS_URL: z.string().default(''),
-  REDIS_DB: z.coerce.number().int().nonnegative().default(0),
-  REDIS_TLS: z.string().transform((v) => v.toLowerCase() === 'true').default('false'),
-  // Explicit single-instance fallback for the standalone dashboards only.
-  // Bot and worker processes must keep production Redis enabled.
-  REDIS_DISABLED_FOR_DASHBOARD: z.string().transform((v) => v.toLowerCase() === 'true').default('false'),
-  REDIS_KEY_PREFIX: z.string().default('destiny:'),
-
   // Notifications
   REMINDER_CRON_SCHEDULE: z.string().default('30 19 * * *'), // 7:30 PM
   REMINDER_DEFAULT_TIMEZONE: z.string().default('Asia/Kolkata'), // IST
-  BULLMQ_CONCURRENCY: z.coerce.number().int().min(1).max(1000).default(50),
 
   // Moderation & Anonymity
   ENCRYPTION_KEY: z.string().default(''),

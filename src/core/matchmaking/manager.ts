@@ -1,9 +1,9 @@
 import { MatchTicket, RoomSession, UserProfile } from '../types.js';
 import { matchmakingEngine } from './engine.js';
 import { db } from '../../database/supabase.js';
-import { redis } from '../../redis/client.js';
+import { stateStore } from '../../storage/state-store.js';
 import { config } from '../../config/index.js';
-import { lockManager } from '../../redis/locks.js';
+import { lockManager } from '../../storage/locks.js';
 import { anonymizer } from '../anonymizer.js';
 import { MessageFlags, ContainerBuilder, TextDisplayBuilder } from 'discord.js';
 import { embedService, COLORS } from '../../bot/embeds/index.js';
@@ -86,7 +86,7 @@ export class MatchmakingManager {
    * Enqueue a user into the matchmaking queue
    */
   async joinQueue(user: UserProfile, guildId?: string): Promise<{ success: boolean; message: string; ticket?: MatchTicket }> {
-    // Fast preflight validation avoids unnecessary Redis work. The full checks
+    // Fast preflight validation avoids unnecessary database work. The full checks
     // are repeated against a force-refreshed profile inside the ticket lock.
     if (user.isBanned) {
       return { success: false, message: 'Your account is currently restricted from matchmaking.' };
@@ -98,7 +98,7 @@ export class MatchmakingManager {
     // 2. Sliding rate limit check (max 1 join per 2 seconds, relaxed for mood switching)
     const alreadyQueued = await this.isQueued(user.id);
     if (!alreadyQueued) {
-      const rateLimit = await redis.checkRateLimit(`queue:${user.id}`, 1, 2);
+      const rateLimit = await stateStore.checkRateLimit(`queue:${user.id}`, 1, 2);
       if (!rateLimit.allowed) {
         return { success: false, message: 'You are queuing too quickly. Please wait a moment.' };
       }
@@ -157,7 +157,7 @@ export class MatchmakingManager {
 
       // Refresh profile compatibility data without resetting FIFO position or
       // extending the original 15-minute queue lease on duplicate start clicks.
-      const existingRaw = await redis.get(ticketKey);
+      const existingRaw = await stateStore.get(ticketKey);
       if (existingRaw) {
         try {
           const existingTicket = JSON.parse(existingRaw) as MatchTicket;
@@ -175,14 +175,14 @@ export class MatchmakingManager {
         }
       }
       if (!effectiveGuildId) {
-        effectiveGuildId = (await redis.get(guildContextKey)) || undefined;
+        effectiveGuildId = (await stateStore.get(guildContextKey)) || undefined;
       }
       if (effectiveGuildId) {
         // DM buttons have no guildId. Preserve the user's last explicit server
         // context so a re-match from DMs cannot silently escape that server's
         // cross-server matchmaking policy. Starting /match in another guild
         // explicitly replaces this context.
-        await redis.set(guildContextKey, effectiveGuildId, 30 * 24 * 60 * 60);
+        await stateStore.set(guildContextKey, effectiveGuildId, 30 * 24 * 60 * 60);
       }
       if (ticketTtlSeconds <= 0) {
         queuedAt = Date.now();
@@ -206,14 +206,14 @@ export class MatchmakingManager {
 
       const serialized = JSON.stringify(ticket);
       try {
-        await redis.set(ticketKey, serialized, ticketTtlSeconds);
-        await redis.sAdd('matchmaking:queue', latestProfile.id);
+        await stateStore.set(ticketKey, serialized, ticketTtlSeconds);
+        await stateStore.sAdd('matchmaking:queue', latestProfile.id);
       } catch (error) {
         // Do not leave an orphaned ticket/set member when the second write
         // fails. Conditional deletion cannot erase a newer replacement.
         await Promise.allSettled([
-          redis.delIfValue(ticketKey, serialized),
-          redis.sRem('matchmaking:queue', latestProfile.id),
+          stateStore.delIfValue(ticketKey, serialized),
+          stateStore.sRem('matchmaking:queue', latestProfile.id),
         ]);
         throw error;
       }
@@ -257,8 +257,8 @@ export class MatchmakingManager {
 
   /** Remove a ticket when the caller already holds this user's ticket lock. */
   async removeQueueTicketUnderLock(userId: string): Promise<void> {
-    await redis.del(`ticket:${userId}`);
-    await redis.sRem('matchmaking:queue', userId);
+    await stateStore.del(`ticket:${userId}`);
+    await stateStore.sRem('matchmaking:queue', userId);
     this.inMemoryQueue.delete(userId);
     this.savePersistentQueue();
   }
@@ -277,10 +277,10 @@ export class MatchmakingManager {
    * Returns whether a user is currently queued (auto-evicts expired tickets)
    */
   async isQueued(userId: string): Promise<boolean> {
-    if (redis.isHealthy()) {
+    if (stateStore.isHealthy()) {
       return this.withTicketLock(userId, async () => {
         const key = `ticket:${userId}`;
-        const raw = await redis.get(key);
+        const raw = await stateStore.get(key);
         if (!raw) {
           this.inMemoryQueue.delete(userId);
           return false;
@@ -301,8 +301,8 @@ export class MatchmakingManager {
         ) {
           // We are holding the same lock as join/leave/reserve, so only the
           // exact current value can be evicted; no newer rejoin can be lost.
-          const removed = await redis.delIfValue(key, raw);
-          if (removed) await redis.sRem('matchmaking:queue', userId);
+          const removed = await stateStore.delIfValue(key, raw);
+          if (removed) await stateStore.sRem('matchmaking:queue', userId);
           this.inMemoryQueue.delete(userId);
           return false;
         }
@@ -313,7 +313,7 @@ export class MatchmakingManager {
     }
 
     if (config.NODE_ENV === 'production') {
-      throw new Error('Redis is required to check the shared matchmaking queue in production.');
+      throw new Error('Supabase is required to check the shared matchmaking queue in production.');
     }
 
     const memoryTicket = this.inMemoryQueue.get(userId);
@@ -335,13 +335,13 @@ export class MatchmakingManager {
    */
   async getQueueTickets(): Promise<MatchTicket[]> {
     const now = Date.now();
-    if (config.NODE_ENV === 'production' && !redis.isHealthy()) {
-      throw new Error('Redis is required to read the shared matchmaking queue in production.');
+    if (config.NODE_ENV === 'production' && !stateStore.isHealthy()) {
+      throw new Error('Supabase is required to read the shared matchmaking queue in production.');
     }
 
-    if (redis.isHealthy()) {
-      let ids = await redis.sMembers('matchmaking:queue');
-      if (redis.isHealthy()) {
+    if (stateStore.isHealthy()) {
+      let ids = await stateStore.sMembers('matchmaking:queue');
+      if (stateStore.isHealthy()) {
         // One-time migration for tickets restored from the legacy local JSON file.
         if (!this.legacyQueueMigrationAttempted) {
           this.legacyQueueMigrationAttempted = true;
@@ -349,11 +349,11 @@ export class MatchmakingManager {
             for (const [userId, ticket] of this.inMemoryQueue) {
               const remaining = Math.ceil((ticket.queuedAt + TICKET_TTL_MS - now) / 1000);
               if (remaining > 0 && isValidMatchTicket(ticket)) {
-                await redis.set(`ticket:${userId}`, JSON.stringify(ticket), remaining);
-                await redis.sAdd('matchmaking:queue', userId);
+                await stateStore.set(`ticket:${userId}`, JSON.stringify(ticket), remaining);
+                await stateStore.sAdd('matchmaking:queue', userId);
               }
             }
-            ids = await redis.sMembers('matchmaking:queue');
+            ids = await stateStore.sMembers('matchmaking:queue');
           }
         }
 
@@ -372,9 +372,9 @@ export class MatchmakingManager {
 
             for (const userId of batch) {
               const key = `ticket:${userId}`;
-              const raw = await redis.get(key);
+              const raw = await stateStore.get(key);
               if (!raw) {
-                await redis.sRem('matchmaking:queue', userId);
+                await stateStore.sRem('matchmaking:queue', userId);
                 this.inMemoryQueue.delete(userId);
                 continue;
               }
@@ -383,8 +383,8 @@ export class MatchmakingManager {
               try {
                 ticket = JSON.parse(raw) as MatchTicket;
               } catch {
-                const removed = await redis.delIfValue(key, raw);
-                if (removed) await redis.sRem('matchmaking:queue', userId);
+                const removed = await stateStore.delIfValue(key, raw);
+                if (removed) await stateStore.sRem('matchmaking:queue', userId);
                 this.inMemoryQueue.delete(userId);
                 continue;
               }
@@ -421,9 +421,9 @@ export class MatchmakingManager {
                 ticket.userId !== userId ||
                 !profileEligible
               ) {
-                const removed = await redis.delIfValue(key, raw);
+                const removed = await stateStore.delIfValue(key, raw);
                 if (removed) {
-                  await redis.sRem('matchmaking:queue', userId);
+                  await stateStore.sRem('matchmaking:queue', userId);
                   this.inMemoryQueue.delete(userId);
                 }
                 continue;
@@ -456,16 +456,16 @@ export class MatchmakingManager {
               };
 
               if (!isValidMatchTicket(refreshedTicket)) {
-                const removed = await redis.delIfValue(key, raw);
+                const removed = await stateStore.delIfValue(key, raw);
                 if (removed) {
-                  await redis.sRem('matchmaking:queue', userId);
+                  await stateStore.sRem('matchmaking:queue', userId);
                   this.inMemoryQueue.delete(userId);
                 }
                 continue;
               }
 
               const serialized = JSON.stringify(refreshedTicket);
-              if (serialized !== raw) await redis.set(key, serialized, remainingSeconds);
+              if (serialized !== raw) await stateStore.set(key, serialized, remainingSeconds);
               this.inMemoryQueue.set(userId, refreshedTicket);
               activeIds.add(userId);
               activeTickets.push(refreshedTicket);
@@ -531,7 +531,7 @@ export class MatchmakingManager {
 
   /**
    * Reserve a pair against concurrent leave/rejoin requests. Locks are always
-   * acquired in sorted user-id order to avoid deadlocks. The Redis values are
+   * acquired in sorted user-id order to avoid deadlocks. The state values are
    * compared with the cycle snapshot before either ticket is consumed.
    */
   private async reserveTicketsAndCreateRoom(
@@ -546,8 +546,8 @@ export class MatchmakingManager {
       return await lockManager.withLock(`lock:ticket:${ordered[0].userId}`, async () =>
         lockManager.withLock(`lock:ticket:${ordered[1].userId}`, async () => {
           const [rawA, rawB] = await Promise.all([
-            redis.get(`ticket:${ticketA.userId}`),
-            redis.get(`ticket:${ticketB.userId}`),
+            stateStore.get(`ticket:${ticketA.userId}`),
+            stateStore.get(`ticket:${ticketB.userId}`),
           ]);
           const matchesSnapshot = (raw: string | null, expected: MatchTicket) => {
             if (!raw) return false;
@@ -629,27 +629,27 @@ export class MatchmakingManager {
           const latestCompatibility = await matchmakingEngine.evaluateMatch(freshTicketA, freshTicketB);
           if (!latestCompatibility.isEligible) return null;
 
-          const removedA = await redis.delIfValue(`ticket:${ticketA.userId}`, rawA!);
+          const removedA = await stateStore.delIfValue(`ticket:${ticketA.userId}`, rawA!);
           if (!removedA) return null;
-          const removedB = await redis.delIfValue(`ticket:${ticketB.userId}`, rawB!);
+          const removedB = await stateStore.delIfValue(`ticket:${ticketB.userId}`, rawB!);
           if (!removedB) {
-            await redis.set(`ticket:${ticketA.userId}`, rawA!, 900);
-            await redis.sAdd('matchmaking:queue', ticketA.userId);
+            await stateStore.set(`ticket:${ticketA.userId}`, rawA!, 900);
+            await stateStore.sAdd('matchmaking:queue', ticketA.userId);
             return null;
           }
 
           try {
             await Promise.all([
-              redis.sRem('matchmaking:queue', ticketA.userId),
-              redis.sRem('matchmaking:queue', ticketB.userId),
+              stateStore.sRem('matchmaking:queue', ticketA.userId),
+              stateStore.sRem('matchmaking:queue', ticketB.userId),
             ]);
           } catch (error) {
             // Restore both tickets if queue-set cleanup fails partway through.
             await Promise.allSettled([
-              redis.set(`ticket:${ticketA.userId}`, rawA!, 900),
-              redis.set(`ticket:${ticketB.userId}`, rawB!, 900),
-              redis.sAdd('matchmaking:queue', ticketA.userId),
-              redis.sAdd('matchmaking:queue', ticketB.userId),
+              stateStore.set(`ticket:${ticketA.userId}`, rawA!, 900),
+              stateStore.set(`ticket:${ticketB.userId}`, rawB!, 900),
+              stateStore.sAdd('matchmaking:queue', ticketA.userId),
+              stateStore.sAdd('matchmaking:queue', ticketB.userId),
             ]);
             throw error;
           }
@@ -693,7 +693,7 @@ export class MatchmakingManager {
       const blockLists = await matchmakingEngine.preloadBlockLists(tickets);
       // Randomize who gets considered first in this cycle as well as each
       // user's eligible partner selection; no one is permanently favored by
-      // Redis set iteration order or FIFO queue position.
+      // Database set iteration order or FIFO queue position.
       const unmatched = [...tickets];
       for (let i = unmatched.length - 1; i > 0; i -= 1) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -719,7 +719,7 @@ export class MatchmakingManager {
               continue;
             }
             // The DB room is committed under both ticket locks. Release them
-            // before Redis caching and Discord DM delivery.
+            // before state persistence and Discord DM delivery.
             const createdRoom = await this.createMatchRoom(
               ticketA,
               ticketB,
@@ -756,13 +756,13 @@ export class MatchmakingManager {
   ): Promise<RoomSession> {
     const room = precreatedRoom ?? await this.createMatchRoomRecord(ticketA, ticketB);
 
-    // Cache active room session in Redis. If any cache write fails, roll back
+    // Cache active room session in Supabase. If any write fails, roll back
     // the newly-created database room so participants are not stranded.
     try {
       const cacheResults = await Promise.allSettled([
-        redis.set(`room:${room.id}`, JSON.stringify(room), 86400),
-        redis.set(`user:active_room:${ticketA.userId}`, room.id, 86400),
-        redis.set(`user:active_room:${ticketB.userId}`, room.id, 86400),
+        stateStore.set(`room:${room.id}`, JSON.stringify(room), 86400),
+        stateStore.set(`user:active_room:${ticketA.userId}`, room.id, 86400),
+        stateStore.set(`user:active_room:${ticketB.userId}`, room.id, 86400),
       ]);
       const failedCacheWrite = cacheResults.find((result) => result.status === 'rejected');
       if (failedCacheWrite?.status === 'rejected') throw failedCacheWrite.reason;

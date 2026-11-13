@@ -17,8 +17,8 @@ import {
 } from '../core/types.js';
 import { isBanActive } from '../core/moderation/ban-policy.js';
 import { v4 as uuidv4 } from 'uuid';
-import { redis } from '../redis/client.js';
-import { lockManager } from '../redis/locks.js';
+import { stateStore } from '../storage/state-store.js';
+import { lockManager } from '../storage/locks.js';
 
 export class DatabaseService {
   private client: SupabaseClient | null = null;
@@ -43,6 +43,7 @@ export class DatabaseService {
 
   constructor() {
     if (
+      config.NODE_ENV !== 'test' &&
       config.SUPABASE_URL && 
       config.SUPABASE_SERVICE_ROLE_KEY && 
       !config.SUPABASE_URL.includes('mock-supabase')
@@ -89,7 +90,7 @@ export class DatabaseService {
   }
 
   private async enrichProfileExtensions(user: UserProfile): Promise<UserProfile> {
-    // Profile extensions are first-class users-table columns; Redis is not an
+    // Profile extensions are first-class users-table columns; runtime state is not an
     // authority for profile fields because it can outlive an intentional clear.
     return user;
   }
@@ -411,9 +412,9 @@ export class DatabaseService {
       if (!user || user.activeRoomId !== expectedRoomId) return false;
       user.activeRoomId = null;
       try {
-        await redis.delIfValue(`user:active_room:${userId}`, expectedRoomId);
+        await stateStore.delIfValue(`user:active_room:${userId}`, expectedRoomId);
       } catch (cacheError) {
-        console.warn('[Database] Cleared mock active room reference but Redis cleanup failed:', cacheError);
+        console.warn('[Database] Cleared mock active room reference but Supabase runtime cleanup failed:', cacheError);
       }
       return true;
     }
@@ -433,9 +434,9 @@ export class DatabaseService {
       this.discordUserCache.set(user.discordUserId, { user, expires: Date.now() + 60_000 });
     }
     try {
-      await redis.delIfValue(`user:active_room:${userId}`, expectedRoomId);
+      await stateStore.delIfValue(`user:active_room:${userId}`, expectedRoomId);
     } catch (cacheError) {
-      console.warn('[Database] Cleared stale room reference but Redis cleanup failed:', cacheError);
+        console.warn('[Database] Cleared stale room reference but Supabase runtime cleanup failed:', cacheError);
     }
     return cleared;
   }
@@ -747,14 +748,14 @@ export class DatabaseService {
         if (room.user2DiscordId) this.discordUserCache.delete(room.user2DiscordId);
         try {
           await Promise.all([
-            redis.delIfValue(`user:active_room:${room.user1Id}`, roomId),
-            redis.delIfValue(`user:active_room:${room.user2Id}`, roomId),
-            redis.del(`room:${roomId}`),
-            redis.set(`user:last_room:${room.user1Id}`, roomId, 3600),
-            redis.set(`user:last_room:${room.user2Id}`, roomId, 3600),
+            stateStore.delIfValue(`user:active_room:${room.user1Id}`, roomId),
+            stateStore.delIfValue(`user:active_room:${room.user2Id}`, roomId),
+            stateStore.del(`room:${roomId}`),
+            stateStore.set(`user:last_room:${room.user1Id}`, roomId, 3600),
+            stateStore.set(`user:last_room:${room.user2Id}`, roomId, 3600),
           ]);
         } catch (cacheError) {
-          console.warn('[Database] Inactive room ended but Redis cache cleanup failed:', cacheError);
+          console.warn('[Database] Inactive room ended but runtime state cleanup failed:', cacheError);
         }
       }
       return true;
@@ -784,14 +785,14 @@ export class DatabaseService {
 
       try {
         await Promise.all([
-          redis.delIfValue(`user:active_room:${room.user1Id}`, roomId),
-          redis.delIfValue(`user:active_room:${room.user2Id}`, roomId),
-          redis.del(`room:${roomId}`),
-          redis.set(`user:last_room:${room.user1Id}`, roomId, 3600),
-          redis.set(`user:last_room:${room.user2Id}`, roomId, 3600),
+          stateStore.delIfValue(`user:active_room:${room.user1Id}`, roomId),
+          stateStore.delIfValue(`user:active_room:${room.user2Id}`, roomId),
+          stateStore.del(`room:${roomId}`),
+          stateStore.set(`user:last_room:${room.user1Id}`, roomId, 3600),
+          stateStore.set(`user:last_room:${room.user2Id}`, roomId, 3600),
         ]);
       } catch (cacheError) {
-        console.warn('[Database] Mock room ended but Redis cache cleanup failed:', cacheError);
+        console.warn('[Database] Mock room ended but runtime state cleanup failed:', cacheError);
       }
       return true;
     }
@@ -830,14 +831,14 @@ export class DatabaseService {
       if (room.user2DiscordId) this.discordUserCache.delete(room.user2DiscordId);
       try {
         await Promise.all([
-          redis.delIfValue(`user:active_room:${room.user1Id}`, roomId),
-          redis.delIfValue(`user:active_room:${room.user2Id}`, roomId),
-          redis.del(`room:${roomId}`),
-          redis.set(`user:last_room:${room.user1Id}`, roomId, 3600),
-          redis.set(`user:last_room:${room.user2Id}`, roomId, 3600),
+          stateStore.delIfValue(`user:active_room:${room.user1Id}`, roomId),
+          stateStore.delIfValue(`user:active_room:${room.user2Id}`, roomId),
+          stateStore.del(`room:${roomId}`),
+          stateStore.set(`user:last_room:${room.user1Id}`, roomId, 3600),
+          stateStore.set(`user:last_room:${room.user2Id}`, roomId, 3600),
         ]);
       } catch (cacheError) {
-        console.warn('[Database] Room ended but Redis cache cleanup failed:', cacheError);
+        console.warn('[Database] Room ended but runtime state cleanup failed:', cacheError);
       }
     }
     return true;

@@ -11,7 +11,7 @@ import {
   SeparatorBuilder
 } from 'discord.js';
 import { db } from '../../database/supabase.js';
-import { redis } from '../../redis/client.js';
+import { stateStore } from '../../storage/state-store.js';
 import { revealService } from '../../core/moderation/reveal.js';
 import { matchmakingManager } from '../../core/matchmaking/manager.js';
 import { handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
@@ -114,7 +114,7 @@ export class MessageCommandHandler {
 
     let activeRoomId = user?.activeRoomId;
     if (!activeRoomId && user) {
-      activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+      activeRoomId = (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
     }
 
     // -------------------------------------------------------------
@@ -372,7 +372,7 @@ export class MessageCommandHandler {
     // Subcase C4: Report command after chatting ("report", "destiny report")
     if (/^\s*(?:destiny\s+report|report)\s*$/i.test(rawContent)) {
       if (user) {
-        let lastRoomId = await redis.get(`user:last_room:${user.id}`);
+        let lastRoomId = await stateStore.get(`user:last_room:${user.id}`);
         let lastRoom = lastRoomId ? await db.getRoomById(lastRoomId) : null;
         if (!lastRoom) {
           lastRoom = await db.getLastRoomForUser(user.id);
@@ -592,7 +592,7 @@ export class MessageCommandHandler {
     // Active room check
     let activeRoomId = user.activeRoomId;
     if (!activeRoomId) {
-      activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+      activeRoomId = (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
     }
     if (activeRoomId) {
       const room = await db.getRoomById(activeRoomId);

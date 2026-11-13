@@ -14,7 +14,7 @@ import {
 } from 'discord.js';
 import { db } from '../../database/supabase.js';
 import { config } from '../../config/index.js';
-import { redis } from '../../redis/client.js';
+import { stateStore } from '../../storage/state-store.js';
 import { matchmakingManager } from '../../core/matchmaking/manager.js';
 import { embedService, COLORS } from '../embeds/index.js';
 import { reporterService } from '../../core/moderation/reporter.js';
@@ -275,30 +275,30 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       await interaction.editReply({ content: '⛔ This command is reserved for configured Destiny bot owners.' });
       return;
     }
-    let redisOnline = redis.isHealthy();
+    let runtimeStateOnline = stateStore.isHealthy();
     let shardCount = 'Unavailable';
     let workerCount = 'Unavailable';
-    if (redisOnline) {
+    if (runtimeStateOnline) {
       try {
         const [shardIds, workerIds] = await Promise.all([
-          redis.sMembers('bot:guild-shards'),
-          redis.sMembers('worker:instances'),
+          stateStore.sMembers('bot:guild-shards'),
+          stateStore.sMembers('worker:instances'),
         ]);
         const [shardSnapshots, workerHeartbeats] = await Promise.all([
-          Promise.all(shardIds.map((id) => redis.get('bot:guilds:' + id))),
-          Promise.all(workerIds.map((id) => redis.get('worker:heartbeat:' + id))),
+          Promise.all(shardIds.map((id) => stateStore.get('bot:guilds:' + id))),
+          Promise.all(workerIds.map((id) => stateStore.get('worker:heartbeat:' + id))),
         ]);
         const staleShards = shardIds.filter((_id, index) => !shardSnapshots[index]);
         const staleWorkers = workerIds.filter((_id, index) => !workerHeartbeats[index]);
         await Promise.all([
-          ...staleShards.map((id) => redis.sRem('bot:guild-shards', id)),
-          ...staleWorkers.map((id) => redis.sRem('worker:instances', id)),
+          ...staleShards.map((id) => stateStore.sRem('bot:guild-shards', id)),
+          ...staleWorkers.map((id) => stateStore.sRem('worker:instances', id)),
         ]);
         shardCount = String(shardSnapshots.filter(Boolean).length);
         workerCount = String(workerHeartbeats.filter(Boolean).length);
       } catch (error: any) {
-        redisOnline = false;
-        console.error('[Owner] Redis diagnostics failed:', error?.message || error);
+        runtimeStateOnline = false;
+        console.error('[Owner] Supabase runtime diagnostics failed:', error?.message || error);
       }
     }
     const dbOnline = !db.isUsingMock() && await db.assertConnection().then(() => true).catch(() => false);
@@ -311,7 +311,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         { name: 'Bot shards online', value: shardCount, inline: true },
         { name: 'Workers online', value: workerCount, inline: true },
         { name: 'Supabase', value: dbOnline ? 'Connected' : 'Unavailable', inline: true },
-        { name: 'Redis', value: redisOnline ? 'Connected' : 'Unavailable', inline: true },
+        { name: 'Runtime state (Supabase)', value: runtimeStateOnline ? 'Connected' : 'Unavailable', inline: true },
         { name: 'Configured owner IDs', value: String(config.BOT_OWNER_IDS.length), inline: true },
       )
       .setFooter({ text: 'Platform owner scope is separate from Discord server administration.' });
@@ -410,7 +410,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
   if (commandName === 'leave') {
     let activeRoomId = user.activeRoomId;
     if (!activeRoomId) {
-      activeRoomId = (await redis.get(`user:active_room:${user.id}`)) || undefined;
+      activeRoomId = (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
     }
 
     if (activeRoomId) {

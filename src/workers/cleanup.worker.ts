@@ -1,4 +1,5 @@
 import { db } from '../database/supabase.js';
+import { stateStore } from '../storage/state-store.js';
 
 const ROOM_INACTIVITY_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -33,6 +34,9 @@ export class CleanupWorker {
   }
 
   private async performCleanup(): Promise<{ staleRoomsClosed: number }> {
+    await stateStore.pruneExpired().catch((error) => {
+      console.warn('[Cleanup] Could not prune expired Supabase runtime state:', error?.message || error);
+    });
     const activeRooms = await db.getActiveRooms();
     const cutoff = Date.now() - ROOM_INACTIVITY_TTL_MS;
     let staleRoomsClosed = 0;

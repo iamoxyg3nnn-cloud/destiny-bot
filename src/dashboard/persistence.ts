@@ -9,7 +9,7 @@ type EncryptedValue = {
   ciphertext: string;
 };
 
-const VERCEL_RUNTIME = process.env.VERCEL === '1';
+const PERSISTENT_DASHBOARD_RUNTIME = process.env.VERCEL === '1' || process.env.CLOUDFLARE_WORKER === '1';
 let serviceClient: SupabaseClient | null = null;
 
 function getServiceClient(): SupabaseClient {
@@ -55,7 +55,7 @@ function decrypt(value: unknown, secret: string, app: string): string {
 }
 
 export async function readDashboardState(app: string, key: string, secret: string): Promise<string | null> {
-  if (!VERCEL_RUNTIME) return null;
+  if (!PERSISTENT_DASHBOARD_RUNTIME) return null;
   const { data, error } = await getServiceClient()
     .from('dashboard_runtime_state')
     .select('payload')
@@ -69,7 +69,7 @@ export async function readDashboardState(app: string, key: string, secret: strin
 }
 
 export async function writeDashboardState(app: string, key: string, value: string, ttlSeconds: number, secret: string): Promise<void> {
-  if (!VERCEL_RUNTIME) return;
+  if (!PERSISTENT_DASHBOARD_RUNTIME) return;
   if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds < 1) throw new Error('Dashboard state TTL is invalid.');
   const { error } = await getServiceClient()
     .from('dashboard_runtime_state')
@@ -83,7 +83,7 @@ export async function writeDashboardState(app: string, key: string, value: strin
 }
 
 export async function deleteDashboardState(app: string, key: string): Promise<void> {
-  if (!VERCEL_RUNTIME) return;
+  if (!PERSISTENT_DASHBOARD_RUNTIME) return;
   const { error } = await getServiceClient()
     .from('dashboard_runtime_state')
     .delete()
@@ -93,7 +93,7 @@ export async function deleteDashboardState(app: string, key: string): Promise<vo
 }
 
 export async function consumeDashboardState(app: string, key: string, secret: string): Promise<string | null> {
-  if (!VERCEL_RUNTIME) return null;
+  if (!PERSISTENT_DASHBOARD_RUNTIME) return null;
   const { data, error } = await getServiceClient().rpc('consume_dashboard_runtime_state', {
     p_app: app,
     p_key: key,
@@ -103,7 +103,7 @@ export async function consumeDashboardState(app: string, key: string, secret: st
 }
 
 export async function incrementDashboardRateLimit(app: string, bucket: string, ip: string, secret: string): Promise<number> {
-  if (!VERCEL_RUNTIME) throw new Error('Persistent dashboard rate limiting is only available on Vercel.');
+  if (!PERSISTENT_DASHBOARD_RUNTIME) throw new Error('Persistent dashboard rate limiting requires a persistent dashboard runtime.');
   const ipHash = createHmac('sha256', encryptionKey(secret, app)).update(ip).digest('hex');
   const { data, error } = await getServiceClient().rpc('increment_dashboard_rate_limit', {
     p_app: app,
@@ -115,6 +115,6 @@ export async function incrementDashboardRateLimit(app: string, bucket: string, i
   return Number(data);
 }
 
-export function isVercelDashboardRuntime(): boolean {
-  return VERCEL_RUNTIME;
+export function isPersistentDashboardRuntime(): boolean {
+  return PERSISTENT_DASHBOARD_RUNTIME;
 }
