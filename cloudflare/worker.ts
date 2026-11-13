@@ -15,6 +15,14 @@ import matchEmojiBase64 from '../apps/shared/assets/destiny_match.png?base64';
 import profileEmojiBase64 from '../apps/shared/assets/destiny_profile.png?base64';
 import shieldEmojiBase64 from '../apps/shared/assets/destiny_shield.png?base64';
 import sparkEmojiBase64 from '../apps/shared/assets/destiny_spark.png?base64';
+import blinkStickerBase64 from '../apps/shared/assets/destiny_blink.gif?base64';
+import cuteStickerBase64 from '../apps/shared/assets/destiny_cute.gif?base64';
+import heartsStickerBase64 from '../apps/shared/assets/destiny_hearts.gif?base64';
+import kissStickerBase64 from '../apps/shared/assets/destiny_kiss.gif?base64';
+import shockStickerBase64 from '../apps/shared/assets/destiny_shock.gif?base64';
+import sleepyStickerBase64 from '../apps/shared/assets/destiny_sleepy.gif?base64';
+import talkStickerBase64 from '../apps/shared/assets/destiny_talk.gif?base64';
+import winkStickerBase64 from '../apps/shared/assets/destiny_wink.gif?base64';
 
 type WorkerEnv = Record<string, string>;
 type NodeRequestLike = {
@@ -56,6 +64,14 @@ const staticFiles: Record<string, { body: string | Uint8Array; type: string }> =
   '/assets/destiny_profile.png': { body: decodeBase64(profileEmojiBase64), type: 'image/png' },
   '/assets/destiny_shield.png': { body: decodeBase64(shieldEmojiBase64), type: 'image/png' },
   '/assets/destiny_spark.png': { body: decodeBase64(sparkEmojiBase64), type: 'image/png' },
+  '/assets/destiny_blink.gif': { body: decodeBase64(blinkStickerBase64), type: 'image/gif' },
+  '/assets/destiny_cute.gif': { body: decodeBase64(cuteStickerBase64), type: 'image/gif' },
+  '/assets/destiny_hearts.gif': { body: decodeBase64(heartsStickerBase64), type: 'image/gif' },
+  '/assets/destiny_kiss.gif': { body: decodeBase64(kissStickerBase64), type: 'image/gif' },
+  '/assets/destiny_shock.gif': { body: decodeBase64(shockStickerBase64), type: 'image/gif' },
+  '/assets/destiny_sleepy.gif': { body: decodeBase64(sleepyStickerBase64), type: 'image/gif' },
+  '/assets/destiny_talk.gif': { body: decodeBase64(talkStickerBase64), type: 'image/gif' },
+  '/assets/destiny_wink.gif': { body: decodeBase64(winkStickerBase64), type: 'image/gif' },
 };
 
 function responseFromNodeAdapter(request: Request, url: URL): Promise<Response> {

@@ -169,3 +169,14 @@ Updated: 2026-11-13 (Asia/Kolkata)
 - The workflows are visible and active, but the first push created no run. A manual `destiny.yml` dispatch was rejected by GitHub with HTTP 422: `Actions has been disabled for this user`, despite repository Actions permissions being enabled. Bot deployment remains blocked until GitHub restores Actions for the token-owning account `imcaffeineeee`.
 - GitHub then rejected a push of the follow-up handoff note with HTTP 403: `Your account is suspended.` Remote `main` remains at `540011e`; the handoff note is saved in the local workspace. No Actions run was created, so the bot is not deployed from this repository yet.
 
+## Latest continuation: rotating Destiny sticker icon
+
+Updated: 2026-11-13 (Asia/Kolkata)
+
+- Added the eight supplied animated GIF stickers to `apps/shared/assets/`. On each full page load, the dashboard picks a sticker other than the previous one in that tab and uses it for the public brand mark, footer mark, loading mark, and signed-in dashboard mark.
+- Added a GIF favicon link to both server and owner dashboard HTML entry points. The dashboard script updates the browser tab icon to the same sticker chosen for that load.
+- Added the GIF MIME type to the local dashboard server and embedded all eight assets into the Cloudflare Worker static routes. The Vercel build already copies every file in the shared asset folder.
+- `pnpm run build:cloudflare` and `node --check apps/shared/dashboard.js` passed. The Worker bundle is 2,630,507 bytes.
+- Deployed the update to `destiny.chuglii.in`; deployment `82688f37-b3dc-4f0f-8407-9b011b9bd023` (2026-11-13 11:22:08 UTC). Production checks returned HTTP 200 for `/`, `/dashboard.js`, and all eight `/assets/destiny_*.gif` paths with `image/gif` content type.
+- GitHub sync remains blocked by the `imcaffeineeee` suspension. These sticker changes and this note are saved locally; do not include the untracked root `destiny stickers/` folder when staging.
+
