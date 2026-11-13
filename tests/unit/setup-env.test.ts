@@ -26,6 +26,8 @@ describe('setup-env script', () => {
     const contents = readFileSync(join(tempDirectory, '.env'), 'utf8');
     expect(contents).toContain('DISCORD_TOKEN=keep-this-token');
     expect(contents).toContain('CUSTOM_VALUE=keep-this-setting');
-    expect(statSync(join(tempDirectory, '.env')).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') {
+      expect(statSync(join(tempDirectory, '.env')).mode & 0o777).toBe(0o600);
+    }
   });
 });

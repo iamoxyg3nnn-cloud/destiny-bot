@@ -80,7 +80,11 @@ async function publishGuildSnapshot(client: Client): Promise<void> {
     memberCount: guild.memberCount,
     channels: Array.from(guild.channels.cache.values())
       .filter((channel: any) => channel && (channel.type === 0 || channel.type === 5))
-      .map((channel: any) => ({ id: channel.id, name: channel.name })),
+      .map((channel: any) => ({
+        id: channel.id,
+        name: channel.name,
+        botPermissions: guild.members.me?.permissionsIn(channel).bitfield.toString() || '0',
+      })),
   }));
 
   await Promise.all([

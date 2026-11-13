@@ -74,15 +74,24 @@ export class QueueManager {
     await Promise.allSettled(queues.map((queue) => queue.close()));
   }
 
-  async getQueueStats(): Promise<Record<string, { waiting: number; active: number; completed: number; failed: number }>> {
+  async getQueueStats(): Promise<Record<string, { waiting: number; active: number; completed: number; failed: number } | null>> {
     this.ensureQueues();
-    const stats: Record<string, any> = {};
-    for (const [name, q] of this.queues.entries()) {
+    const stats: Record<string, { waiting: number; active: number; completed: number; failed: number } | null> = {};
+    for (const name of Object.values(QUEUE_NAMES)) {
+      const q = this.queues.get(name);
+      if (!q) {
+        stats[name] = null;
+        continue;
+      }
       try {
         const counts = await q.getJobCounts('waiting', 'active', 'completed', 'failed');
-        stats[name] = counts;
+        if ([counts.waiting, counts.active, counts.completed, counts.failed].some((count) => typeof count !== 'number')) {
+          stats[name] = null;
+        } else {
+          stats[name] = { waiting: counts.waiting, active: counts.active, completed: counts.completed, failed: counts.failed };
+        }
       } catch {
-        stats[name] = { waiting: 0, active: 0, completed: 0, failed: 0 };
+        stats[name] = null;
       }
     }
     return stats;

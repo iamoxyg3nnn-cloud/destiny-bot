@@ -11,6 +11,13 @@ const envSchema = z.object({
   DISCORD_TOKEN: z.string().default(''),
   DISCORD_CLIENT_ID: z.string().default(''),
   DISCORD_PUBLIC_KEY: z.string().default(''),
+  DISCORD_CLIENT_SECRET: z.string().default(''),
+  DASHBOARD_APP: z.enum(['server', 'owner']).default('server'),
+  DASHBOARD_PROCESS: z.string().transform((v) => v.toLowerCase() === 'true').default('false'),
+  SERVER_DASHBOARD_ORIGIN: z.string().url().default('http://localhost:4173'),
+  OWNER_DASHBOARD_ORIGIN: z.string().url().default('http://localhost:4174'),
+  SERVER_DASHBOARD_SESSION_SECRET: z.string().default(''),
+  OWNER_DASHBOARD_SESSION_SECRET: z.string().default(''),
   // Comma-separated Discord user IDs allowed to operate the bot globally.
   BOT_OWNER_IDS: z.string().default('').transform((value) => value.split(',').map((id) => id.trim()).filter(Boolean)).refine((ids) => ids.every((id) => /^[0-9]{17,20}$/.test(id)), 'BOT_OWNER_IDS must contain only valid 17–20 digit Discord user IDs.').transform((ids) => Array.from(new Set(ids))),
   DISCORD_SHARDS_TOTAL: z.string().default('1').refine((value) => value === 'auto' || (/^[1-9][0-9]*$/.test(value) && Number(value) <= 1000)),
@@ -44,6 +51,9 @@ const envSchema = z.object({
   REDIS_URL: z.string().default(''),
   REDIS_DB: z.coerce.number().int().nonnegative().default(0),
   REDIS_TLS: z.string().transform((v) => v.toLowerCase() === 'true').default('false'),
+  // Explicit single-instance fallback for the standalone dashboards only.
+  // Bot and worker processes must keep production Redis enabled.
+  REDIS_DISABLED_FOR_DASHBOARD: z.string().transform((v) => v.toLowerCase() === 'true').default('false'),
   REDIS_KEY_PREFIX: z.string().default('destiny:'),
 
   // Notifications

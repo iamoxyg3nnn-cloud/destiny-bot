@@ -9,6 +9,9 @@ import {
   UserBlock, 
   NotificationSettings, 
   AdminAuditLog,
+  PlatformOperatorCapability,
+  PlatformOperatorGrant,
+  PLATFORM_OPERATOR_CAPABILITIES,
   GuildSettings,
   GenderVerificationStatus
 } from '../core/types.js';
@@ -36,6 +39,7 @@ export class DatabaseService {
   public mockBlocks: UserBlock[] = [];
   public mockAuditLogs: AdminAuditLog[] = [];
   public mockNotifications: Map<string, NotificationSettings> = new Map();
+  public mockPlatformOperatorGrants: Map<string, Map<PlatformOperatorCapability, { grantedBy: string; grantedAt: string }>> = new Map();
 
   constructor() {
     if (
@@ -374,6 +378,32 @@ export class DatabaseService {
     return mapped;
   }
 
+  async getPendingVerificationQueue(options: { limit?: number; offset?: number } = {}): Promise<Array<Pick<UserProfile, 'id' | 'destinyId' | 'age' | 'gender' | 'createdAt'>>> {
+    const limit = Math.min(Math.max(Math.trunc(options.limit ?? 25), 1), 100);
+    const offset = Math.min(Math.max(Math.trunc(options.offset ?? 0), 0), 10_000);
+    if (this.isMockMode || !this.client) {
+      return Array.from(this.mockUsers.values())
+        .filter((user) => user.genderVerificationStatus === 'pending')
+        .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+        .slice(offset, offset + limit)
+        .map(({ id, destinyId, age, gender, createdAt }) => ({ id, destinyId, age, gender, createdAt }));
+    }
+    const { data, error } = await this.client
+      .from('users')
+      .select('id,destiny_id,age,gender,created_at')
+      .eq('gender_verification_status', 'pending')
+      .order('updated_at', { ascending: true })
+      .range(offset, offset + limit - 1);
+    if (error) throw new Error(`Failed to load verification queue: ${error.message}`);
+    return (data || []).map((row) => ({
+      id: row.id,
+      destinyId: row.destiny_id,
+      age: row.age,
+      gender: row.gender,
+      createdAt: row.created_at,
+    }));
+  }
+
   async clearActiveRoom(userId: string, expectedRoomId?: string): Promise<boolean> {
     if (!expectedRoomId) return false;
     if (this.isMockMode || !this.client) {
@@ -638,6 +668,45 @@ export class DatabaseService {
     const { data, error } = await this.client.from('rooms').select('*').eq('status', 'active');
     if (error) throw new Error(`Failed to load active rooms: ${error.message}`);
     return (data || []).map(this.mapRoom);
+  }
+
+  async getActiveRoomSummaries(options: { limit?: number; offset?: number } = {}): Promise<Array<Pick<RoomSession, 'roomCode' | 'user1Pseudonym' | 'user2Pseudonym' | 'status' | 'startedAt' | 'updatedAt'>>> {
+    const limit = Math.min(Math.max(Math.trunc(options.limit ?? 25), 1), 100);
+    const offset = Math.min(Math.max(Math.trunc(options.offset ?? 0), 0), 10_000);
+    if (this.isMockMode || !this.client) {
+      return Array.from(this.mockRooms.values())
+        .filter((room) => room.status === 'active')
+        .sort((left, right) => right.startedAt.localeCompare(left.startedAt))
+        .slice(offset, offset + limit)
+        .map(({ roomCode, user1Pseudonym, user2Pseudonym, status, startedAt, updatedAt }) => ({ roomCode, user1Pseudonym, user2Pseudonym, status, startedAt, updatedAt }));
+    }
+    const { data, error } = await this.client
+      .from('rooms')
+      .select('room_code,user1_pseudonym,user2_pseudonym,status,started_at,updated_at')
+      .eq('status', 'active')
+      .order('started_at', { ascending: true })
+      .range(offset, offset + limit - 1);
+    if (error) throw new Error(`Failed to load active conversation summaries: ${error.message}`);
+    return (data || []).map((row) => ({
+      roomCode: row.room_code,
+      user1Pseudonym: row.user1_pseudonym,
+      user2Pseudonym: row.user2_pseudonym,
+      status: row.status,
+      startedAt: row.started_at,
+      updatedAt: row.updated_at,
+    }));
+  }
+
+  async getActiveRoomCount(): Promise<number> {
+    if (this.isMockMode || !this.client) {
+      return Array.from(this.mockRooms.values()).filter((room) => room.status === 'active').length;
+    }
+    const { count, error } = await this.client
+      .from('rooms')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'active');
+    if (error) throw new Error(`Failed to count active rooms: ${error.message}`);
+    return count || 0;
   }
 
   /**
@@ -995,6 +1064,34 @@ export class DatabaseService {
     };
   }
 
+  async getReportQueue(options: { status?: 'pending' | 'resolved'; limit?: number; offset?: number } = {}): Promise<Pick<ReportItem, 'id' | 'category' | 'status' | 'actionTaken' | 'createdAt' | 'updatedAt'>[]> {
+    const status = options.status || 'pending';
+    const limit = Math.min(Math.max(Math.trunc(options.limit ?? 25), 1), 100);
+    const offset = Math.min(Math.max(Math.trunc(options.offset ?? 0), 0), 10_000);
+    if (this.isMockMode || !this.client) {
+      return Array.from(this.mockReports.values())
+        .filter((report) => report.status === status)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(offset, offset + limit)
+        .map(({ id, category, status: reportStatus, actionTaken, createdAt, updatedAt }) => ({ id, category, status: reportStatus, actionTaken, createdAt, updatedAt }));
+    }
+    const { data, error } = await this.client
+      .from('reports')
+      .select('id,category,status,action_taken,created_at,updated_at')
+      .eq('status', status)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (error) throw new Error(`Failed to load report queue: ${error.message}`);
+    return (data || []).map((row) => ({
+      id: row.id,
+      category: row.category,
+      status: row.status,
+      actionTaken: row.action_taken,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  }
+
   async resolveReport(id: string, action: string, notes?: string, adminId?: string): Promise<boolean> {
     if (!['none', 'warned', 'temp_ban', 'perma_ban'].includes(action)) return false;
 
@@ -1074,6 +1171,140 @@ export class DatabaseService {
     if (error) throw new Error(`Failed to persist admin audit log: ${error.message}`);
   }
 
+  async getAdminAuditLogs(options: { targetId?: string; limit?: number; offset?: number } = {}): Promise<AdminAuditLog[]> {
+    const limit = Math.min(Math.max(Math.trunc(options.limit ?? 50), 1), 100);
+    const offset = Math.min(Math.max(Math.trunc(options.offset ?? 0), 0), 10_000);
+    if (this.isMockMode || !this.client) {
+      return this.mockAuditLogs
+        .filter((log) => !options.targetId || log.targetId === options.targetId)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(offset, offset + limit)
+        .map(({ ipAddress: _ipAddress, ...log }) => ({ ...log, changes: { ...log.changes } }));
+    }
+    let query = this.client
+      .from('admin_audit_logs')
+      .select('id,admin_id,action,target_type,target_id,changes,created_at')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (options.targetId) query = query.eq('target_id', options.targetId).in('target_type', ['guild', 'GUILD']);
+    const { data, error } = await query;
+    if (error) throw new Error(`Failed to load admin audit history: ${error.message}`);
+    return (data || []).map((row) => ({
+      id: row.id,
+      adminId: row.admin_id,
+      action: row.action,
+      targetType: row.target_type,
+      targetId: row.target_id,
+      changes: row.changes || {},
+      createdAt: row.created_at,
+    }));
+  }
+
+  async getGuildAdminAuditLogById(guildId: string, auditId: string): Promise<AdminAuditLog | null> {
+    if (!/^[0-9]{17,20}$/.test(guildId) || !/^[0-9a-f-]{36}$/i.test(auditId)) return null;
+    if (this.isMockMode || !this.client) {
+      const log = this.mockAuditLogs.find((entry) => entry.id === auditId && entry.targetId === guildId && ['guild', 'GUILD'].includes(entry.targetType));
+      if (!log) return null;
+      const { ipAddress: _ipAddress, ...safeLog } = log;
+      return { ...safeLog, changes: { ...log.changes } };
+    }
+    const { data, error } = await this.client
+      .from('admin_audit_logs')
+      .select('id,admin_id,action,target_type,target_id,changes,created_at')
+      .eq('id', auditId)
+      .eq('target_id', guildId)
+      .in('target_type', ['guild', 'GUILD'])
+      .maybeSingle();
+    if (error) throw new Error(`Failed to load guild audit event: ${error.message}`);
+    if (!data) return null;
+    return {
+      id: data.id,
+      adminId: data.admin_id,
+      action: data.action,
+      targetType: data.target_type,
+      targetId: data.target_id,
+      changes: data.changes || {},
+      createdAt: data.created_at,
+    };
+  }
+
+  async getPlatformOperatorCapabilities(discordUserId: string): Promise<PlatformOperatorCapability[]> {
+    if (!/^[0-9]{17,20}$/.test(discordUserId)) return [];
+    if (this.isMockMode || !this.client) return Array.from(this.mockPlatformOperatorGrants.get(discordUserId)?.keys() || []);
+    const { data, error } = await this.client
+      .from('platform_operator_grants')
+      .select('capability')
+      .eq('discord_user_id', discordUserId);
+    if (error) throw new Error(`Failed to load platform operator capabilities: ${error.message}`);
+    return (data || []).map((row) => row.capability as PlatformOperatorCapability);
+  }
+
+  async getPlatformOperatorGrants(): Promise<PlatformOperatorGrant[]> {
+    if (this.isMockMode || !this.client) {
+      const grants: PlatformOperatorGrant[] = [];
+      for (const [discordUserId, capabilities] of this.mockPlatformOperatorGrants) {
+        for (const [capability, details] of capabilities) grants.push({ discordUserId, capability, grantedBy: details.grantedBy, grantedAt: details.grantedAt });
+      }
+      return grants.sort((a, b) => b.grantedAt.localeCompare(a.grantedAt));
+    }
+    const { data, error } = await this.client
+      .from('platform_operator_grants')
+      .select('discord_user_id,capability,granted_by,granted_at')
+      .order('granted_at', { ascending: false })
+      .limit(500);
+    if (error) throw new Error(`Failed to list platform operator grants: ${error.message}`);
+    return (data || []).map((row) => ({
+      discordUserId: row.discord_user_id,
+      capability: row.capability as PlatformOperatorCapability,
+      grantedBy: row.granted_by,
+      grantedAt: row.granted_at,
+    }));
+  }
+
+  async setPlatformOperatorCapability(
+    targetDiscordId: string,
+    capability: PlatformOperatorCapability,
+    grantedBy: string,
+    enabled: boolean,
+  ): Promise<boolean> {
+    if (!/^[0-9]{17,20}$/.test(targetDiscordId) || !/^[0-9]{17,20}$/.test(grantedBy) || !PLATFORM_OPERATOR_CAPABILITIES.includes(capability) || typeof enabled !== 'boolean') {
+      throw new Error('Invalid platform operator grant.');
+    }
+    if (this.isMockMode || !this.client) {
+      let grants = this.mockPlatformOperatorGrants.get(targetDiscordId);
+      const currentlyEnabled = grants?.has(capability) || false;
+      if (currentlyEnabled === enabled) return false;
+      if (enabled) {
+        if (!grants) {
+          grants = new Map();
+          this.mockPlatformOperatorGrants.set(targetDiscordId, grants);
+        }
+        grants.set(capability, { grantedBy, grantedAt: new Date().toISOString() });
+      } else {
+        grants?.delete(capability);
+        if (!grants?.size) this.mockPlatformOperatorGrants.delete(targetDiscordId);
+      }
+      this.mockAuditLogs.push({
+        id: uuidv4(),
+        adminId: grantedBy,
+        action: enabled ? 'PLATFORM_OPERATOR_CAPABILITY_GRANTED' : 'PLATFORM_OPERATOR_CAPABILITY_REVOKED',
+        targetType: 'platform_operator',
+        targetId: targetDiscordId,
+        changes: { capability, enabled },
+        createdAt: new Date().toISOString(),
+      });
+      return true;
+    }
+    const { data, error } = await this.client.rpc('set_platform_operator_capability', {
+      p_target_discord_id: targetDiscordId,
+      p_capability: capability,
+      p_granted_by: grantedBy,
+      p_enabled: enabled,
+    });
+    if (error) throw new Error(`Failed to update platform operator capability: ${error.message}`);
+    return data === true;
+  }
+
   async getUserCount(): Promise<number> {
     if (this.isMockMode || !this.client) {
       return this.mockUsers.size;
@@ -1129,6 +1360,58 @@ export class DatabaseService {
 
     this.guildSettingsCache.set(guildId, { settings, expires: Date.now() + 5_000 });
     return settings;
+  }
+
+  async saveGuildDashboardSetting(
+    guildId: string,
+    key: 'matchChannelId' | 'modLogChannelId' | 'crossServerEnabled',
+    value: string | null | boolean,
+    expectedUpdatedAt: string | null,
+    guildName?: string,
+  ): Promise<{ status: 'saved'; updatedAt: string } | { status: 'conflict' }> {
+    if (!/^[0-9]{17,20}$/.test(guildId)) throw new Error('Invalid Discord server ID.');
+    if (key === 'crossServerEnabled' ? typeof value !== 'boolean' : value !== null && (typeof value !== 'string' || !/^[0-9]{17,20}$/.test(value))) {
+      throw new Error('Invalid guild setting value.');
+    }
+    const updatedAt = new Date().toISOString();
+    const fields = {
+      matchChannelId: 'match_channel_id',
+      modLogChannelId: 'mod_log_channel_id',
+      crossServerEnabled: 'cross_server_enabled',
+    } as const;
+    const column = fields[key];
+    if (this.isMockMode || !this.client) {
+      const current = this.mockGuildSettings.get(guildId);
+      if ((current?.updatedAt ?? null) !== expectedUpdatedAt) return { status: 'conflict' };
+      const next: GuildSettings = current || { guildId, crossServerEnabled: true };
+      if (key === 'matchChannelId') next.matchChannelId = value as string | null;
+      else if (key === 'modLogChannelId') next.modLogChannelId = value as string | null;
+      else next.crossServerEnabled = value as boolean;
+      if (guildName) next.guildName = guildName;
+      next.updatedAt = updatedAt;
+      this.mockGuildSettings.set(guildId, next);
+      this.guildSettingsCache.set(guildId, { settings: next, expires: Date.now() + 5_000 });
+      return { status: 'saved', updatedAt };
+    }
+
+    const patch = { [column]: value, ...(guildName ? { guild_name: guildName } : {}), updated_at: updatedAt };
+    if (expectedUpdatedAt === null) {
+      const { error } = await this.client.from('guild_settings').insert({ guild_id: guildId, ...patch });
+      if (error?.code === '23505') return { status: 'conflict' };
+      if (error) throw new Error(`Failed to save guild setting: ${error.message}`);
+    } else {
+      const { data, error } = await this.client
+        .from('guild_settings')
+        .update(patch)
+        .eq('guild_id', guildId)
+        .eq('updated_at', expectedUpdatedAt)
+        .select('guild_id')
+        .maybeSingle();
+      if (error) throw new Error(`Failed to save guild setting: ${error.message}`);
+      if (!data) return { status: 'conflict' };
+    }
+    this.guildSettingsCache.delete(guildId);
+    return { status: 'saved', updatedAt };
   }
 
   async setGuildCrossServerEnabled(guildId: string, enabled: boolean, guildName?: string): Promise<boolean> {

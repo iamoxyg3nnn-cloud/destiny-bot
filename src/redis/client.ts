@@ -15,6 +15,16 @@ export class RedisService {
   }
 
   private initClient() {
+    if (
+      config.NODE_ENV === 'production' &&
+      config.REDIS_DISABLED_FOR_DASHBOARD &&
+      config.DASHBOARD_PROCESS
+    ) {
+      this.isConnected = false;
+      console.warn('⚠️ Redis disabled for this dashboard process; auth state and sessions are process-local, and BullMQ diagnostics are unavailable.');
+      return;
+    }
+
     try {
       const options = resolveRedisConnection();
 
@@ -72,7 +82,8 @@ export class RedisService {
   }
 
   private assertFallbackAllowed(operation: string): void {
-    if (config.NODE_ENV === 'production') {
+    const dashboardMemoryFallback = config.REDIS_DISABLED_FOR_DASHBOARD && config.DASHBOARD_PROCESS;
+    if (config.NODE_ENV === 'production' && !dashboardMemoryFallback) {
       throw new Error(`Redis is unavailable during ${operation}; refusing unsafe in-memory fallback in production.`);
     }
   }

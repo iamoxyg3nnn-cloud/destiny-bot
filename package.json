@@ -8,6 +8,8 @@
     "build": "tsc",
     "bot": "tsx src/bot/index.ts",
     "shards": "tsx src/bot/sharding.ts",
+    "dashboard:server": "tsx src/dashboard/server.ts",
+    "dashboard:owner": "tsx src/dashboard/owner.ts",
     "worker": "tsx src/workers/index.ts",
     "start": "tsx src/index.ts",
     "redis:check": "tsx scripts/check-redis.ts",
