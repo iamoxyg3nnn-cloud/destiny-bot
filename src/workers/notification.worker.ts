@@ -2,6 +2,7 @@ import { REST, Routes } from 'discord.js';
 import { db } from '../database/supabase.js';
 import { stateStore } from '../storage/state-store.js';
 import { config } from '../config/index.js';
+import { formatCustomEmojiText } from '../bot/custom-emojis.js';
 import { randomUUID } from 'node:crypto';
 
 function parseClock(value?: string): number | null {
@@ -150,7 +151,7 @@ export class NotificationWorker {
       body: { recipient_id: discordUserId },
     }) as { id: string };
     await this.rest.post(Routes.channelMessages(channel.id), {
-      body: { content: '🌌 Your Destiny connection is waiting. Open the bot to continue your conversation or meet someone new!' },
+      body: { content: formatCustomEmojiText('🌌 Your Destiny connection is waiting. Open the bot to continue your conversation or meet someone new!') },
     });
   }
 

@@ -3,6 +3,18 @@ import { handleDashboardRequest } from '../src/dashboard/server.js';
 import html from '../apps/server-dashboard/public/index.html?raw';
 import css from '../apps/shared/dashboard.css?raw';
 import js from '../apps/shared/dashboard.js?raw';
+import hero from '../apps/shared/assets/destiny-hero.svg?raw';
+import portal from '../apps/shared/assets/feature-portal.svg?raw';
+import match from '../apps/shared/assets/feature-match.svg?raw';
+import safety from '../apps/shared/assets/feature-safety.svg?raw';
+import community from '../apps/shared/assets/feature-community.svg?raw';
+import anonymous from '../apps/shared/assets/feature-anonymous.svg?raw';
+import profile from '../apps/shared/assets/feature-profile.svg?raw';
+import reveal from '../apps/shared/assets/feature-reveal.svg?raw';
+import matchEmojiBase64 from '../apps/shared/assets/destiny_match.png?base64';
+import profileEmojiBase64 from '../apps/shared/assets/destiny_profile.png?base64';
+import shieldEmojiBase64 from '../apps/shared/assets/destiny_shield.png?base64';
+import sparkEmojiBase64 from '../apps/shared/assets/destiny_spark.png?base64';
 
 type WorkerEnv = Record<string, string>;
 type NodeRequestLike = {
@@ -20,11 +32,30 @@ type NodeResponseLike = {
   destroy(): void;
 };
 
-const staticFiles: Record<string, { body: string; type: string }> = {
+function decodeBase64(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+const staticFiles: Record<string, { body: string | Uint8Array; type: string }> = {
   '/': { body: html, type: 'text/html; charset=utf-8' },
   '/index.html': { body: html, type: 'text/html; charset=utf-8' },
   '/dashboard.css': { body: css, type: 'text/css; charset=utf-8' },
   '/dashboard.js': { body: js, type: 'text/javascript; charset=utf-8' },
+  '/assets/destiny-hero.svg': { body: hero, type: 'image/svg+xml' },
+  '/assets/feature-portal.svg': { body: portal, type: 'image/svg+xml' },
+  '/assets/feature-match.svg': { body: match, type: 'image/svg+xml' },
+  '/assets/feature-safety.svg': { body: safety, type: 'image/svg+xml' },
+  '/assets/feature-community.svg': { body: community, type: 'image/svg+xml' },
+  '/assets/feature-anonymous.svg': { body: anonymous, type: 'image/svg+xml' },
+  '/assets/feature-profile.svg': { body: profile, type: 'image/svg+xml' },
+  '/assets/feature-reveal.svg': { body: reveal, type: 'image/svg+xml' },
+  '/assets/destiny_match.png': { body: decodeBase64(matchEmojiBase64), type: 'image/png' },
+  '/assets/destiny_profile.png': { body: decodeBase64(profileEmojiBase64), type: 'image/png' },
+  '/assets/destiny_shield.png': { body: decodeBase64(shieldEmojiBase64), type: 'image/png' },
+  '/assets/destiny_spark.png': { body: decodeBase64(sparkEmojiBase64), type: 'image/png' },
 };
 
 function responseFromNodeAdapter(request: Request, url: URL): Promise<Response> {
@@ -94,7 +125,9 @@ export default {
     return new Response(request.method === 'HEAD' ? null : file.body, {
       headers: {
         'Content-Type': file.type,
-        'Cache-Control': file.type.startsWith('text/html') ? 'no-store' : 'public, max-age=300',
+        'Cache-Control': file.type.startsWith('text/html') || file.type.startsWith('text/css') || file.type.startsWith('text/javascript')
+          ? 'no-store'
+          : 'public, max-age=86400',
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer',
         'X-Frame-Options': 'DENY',

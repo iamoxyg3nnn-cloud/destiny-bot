@@ -3,6 +3,7 @@ import { matchmakingEngine } from './engine.js';
 import { db } from '../../database/supabase.js';
 import { stateStore } from '../../storage/state-store.js';
 import { config } from '../../config/index.js';
+import { formatCustomEmojiText } from '../../bot/custom-emojis.js';
 import { lockManager } from '../../storage/locks.js';
 import { anonymizer } from '../anonymizer.js';
 import { MessageFlags, ContainerBuilder, TextDisplayBuilder } from 'discord.js';
@@ -827,7 +828,7 @@ export class MatchmakingManager {
           .setAccentColor(COLORS.GOLD)
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              '# ⚠️ Partner Unreachable\n\nYour match partner could not be reached through Discord DMs. We have returned you to the top of the queue.'
+              formatCustomEmojiText('# ⚠️ Partner Unreachable\n\nYour match partner could not be reached through Discord DMs. We have returned you to the top of the queue.')
             )
           );
         await sendCleanDmPanel(reachableUser, { components: [notice], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});

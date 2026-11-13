@@ -7,6 +7,7 @@ import {
 import { db } from '../database/supabase.js';
 import { profileCardGenerator, LiveProfileStats } from '../core/profile/card-generator.js';
 import { UserProfile } from '../core/types.js';
+import { resolveBotEmoji } from './custom-emojis.js';
 
 export interface ProfileViewer {
   id: string;
@@ -81,12 +82,12 @@ export function createProfileActionRow(): ActionRowBuilder<ButtonBuilder> {
     new ButtonBuilder()
       .setCustomId('destiny_btn_profile')
       .setLabel('Edit Profile')
-      .setEmoji('✏️')
+      .setEmoji(resolveBotEmoji('👤'))
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId('destiny_btn_start')
       .setLabel('Find Match')
-      .setEmoji('✨')
+      .setEmoji(resolveBotEmoji('✨'))
       .setStyle(ButtonStyle.Success),
   );
 }

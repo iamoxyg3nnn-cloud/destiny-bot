@@ -2,6 +2,14 @@
 
 Updated: 2026-11-13 (Asia/Kolkata)
 
+## Latest continuation: Website-matched custom bot emojis
+
+- Replaced the first magenta concept set with four transparent 128×128 icons based on the website's actual art direction: ink outlines, warm ivory, seafoam/mint, soft lavender, and amber accents. Final assets are `destiny_match`, `destiny_profile`, `destiny_shield`, and `destiny_spark` in `assets/emojis/`; each is under 15 KB.
+- Added `src/bot/custom-emojis.ts`, which resolves those names from the connected Discord client cache. All source-authored emoji in bot-facing copy, embeds, action buttons, and the chat reaction now route through the custom set, with the original Unicode as a safe fallback. Internally logged messages and presence-only statuses are excluded; presence statuses are now text-only because Discord activity names do not render server custom emoji reliably. Source-authored pseudonym avatar markers are converted at display time, while user-authored chat/profile text keeps its own emoji.
+- `pnpm build` completed successfully after the source-wide pass.
+- Upload remains pending: the bot account cannot manage expressions in the configured emoji guild (`1555968929023664208`, “New Server”), and the connected Discord browser is signed out. The server had 46 emojis in the earlier read-only inventory, so this four-emoji set fits the previously reported standard 50-slot limit if that inventory is still current. Next step: log in and grant the bot **Manage Expressions**, or upload the four assets from an account that already has that permission. Restart/redeploy after upload; the name resolver will pick up the new emoji automatically.
+- No secrets were written to the progress file. User-provided `destiny stickers/` and unrelated working-tree changes were left untouched.
+
 ## Latest continuation: Wabbit-inspired dashboard refresh
 
 - REA is already installed and connected in this Codex session (`mcp__rea` tools and `reverse-engineer-anything` skill); no MCP configuration changes were needed. The project already has `frontend-design`, `ui-ux-engineer`, and `unslop` skills; accessibility guidance was applied as well.
@@ -125,4 +133,30 @@ Updated: 2026-11-13 (Asia/Kolkata)
 ## Next actionable task
 
 The dashboard redesign is deployed to Cloudflare at `destiny.chuglii.in` (Worker deployment `13479a3980a942dc8e7a710d80354baf`). Root and `/health` return HTTP 200; the full test suite passes. The server and owner dashboard continue to use the existing API routes and permission checks. Authenticated visual review remains pending a Destiny Discord login because a clean browser shows the sign-in screen. The private GitHub repository still contains commits `d115bb1` and `58ed10e`, but the latest local dashboard edits cannot be pushed while GitHub returns HTTP 403 `account suspended`. `.env` and `text1.txt` are not tracked. The six-hour bot runner and continuation workflow are enabled; manual run `43398697084` status is likewise unverified while GitHub access is suspended. Migrations 021–022 are applied and the dashboard uses Supabase-backed sessions, rate limits, diagnostics, and runtime state. Guild-role membership remains gated on `guilds.members.read` consent and role-removal coverage.
+
+## Latest continuation: complete public Destiny experience
+
+Updated: 2026-11-13 (Asia/Kolkata)
+
+- Replaced the signed-out server-dashboard hero with a complete Destiny public site: product navigation, landing hero, six product capability cards, three-step onboarding, CTA section, and footer. Sign-in links continue to use the existing `/auth/login` Discord OAuth route; authenticated server and owner workspaces keep their existing API and authorization behavior.
+- Added original Destiny SVG artwork in `apps/shared/assets/` for the dashboard hero, community portal, matching, safety, anonymous conversations, member profiles, mutual-consent reveals, and the getting-started section. The visuals use Wabbit's broad page hierarchy and playful mint/paper/ink/orange direction while keeping Destiny's name, language, product features, and art original.
+- Connected static assets through the local dashboard server, Vercel build output, and Cloudflare Worker. Added asset routes for each illustration; versioned CSS/JS URLs and set styles/scripts to `no-store` after the first live comparison exposed a browser-cached older dashboard script.
+- Deployed the final Cloudflare Worker code-only update at `destiny.chuglii.in`; latest deployment `1690ac0b-d7e4-4849-8c01-323cbf613204` (2026-11-13 10:22:23 UTC). Worker settings, compatibility date, observability, and all existing secret/plain-text binding names were verified as preserved.
+- Live checks: homepage, versioned dashboard script, all eight SVG assets, and `/health` returned HTTP 200; the script response is `no-store` and contains all six feature cards. A clean browser confirmed the full landing page and the feature gallery; the theme switch was exercised in local preview. Desktop layout was compared visually with Wabbit's public landing page and retains the same broad hierarchy with Destiny-specific content and original artwork.
+- Validation: `pnpm run build:cloudflare`, TypeScript build, `node --check apps/shared/dashboard.js`, `git diff --check`, and the full suite passed (146 tests across 27 files). The Vercel build script copies the full SVG asset folder into its public output.
+- Scope limit: Wabbit's private server settings remain behind Discord sign-in, so comparison is limited to the public landing page. The work adapts the public hierarchy rather than claiming pixel-perfect or feature parity with Wabbit's private product. A separate mobile screenshot pair and authenticated Destiny dashboard screenshot are still unavailable.
+- Workspace note: an unrelated existing modification in `src/bot/interactions/handler.ts` and untracked `destiny stickers/` content were left untouched.
+
+## Latest continuation: shared custom emoji artwork
+
+Updated: 2026-11-13 (Asia/Kolkata)
+
+- Created four original flat illustrated emoji assets using Destiny's warm ivory, ink, seafoam, lavender, and amber palette: `destiny_match`, `destiny_profile`, `destiny_shield`, and `destiny_spark`. Shared source PNGs live in `assets/emojis/`; dashboard copies live under `apps/shared/assets/` and `public/assets/`.
+- Updated authored bot UI copy, embeds, buttons, and reactions to use a centralized Discord custom-emoji resolver, with Unicode fallback until the matching emoji are uploaded to the bot's server. User-authored chat/profile emoji remain unchanged. Presence labels are plain text because Discord activity text does not reliably render server emoji.
+- Removed decorative emoji from bot console logging; the remaining Unicode emoji sequences in bot source are the resolver's fallback mapping and source-authored markers that it converts before rendering.
+- Updated public and authenticated dashboard brand marks, the landing CTA, and feature-card markers to render the same image assets with accessible decorative image markup. The local dashboard server and Vercel output serve the static PNGs; the Cloudflare Worker bundle embeds and serves the PNGs at `/assets/destiny_*.png`.
+- `pnpm run build:cloudflare` passed and produced `cloudflare/dist/worker.js` (579,177 bytes). The updated Worker was deployed through the Cloudflare plugin at `destiny.chuglii.in`; deployment `0e645bf2-5864-48ff-902b-2c693fd3deb6` (2026-11-13 11:04:01 UTC). The existing compatibility flags, observability settings, and plain-text bindings were carried forward; secret values were not read or changed.
+- Production checks returned HTTP 200 for `/` and each of `/assets/destiny_match.png`, `/assets/destiny_profile.png`, `/assets/destiny_shield.png`, and `/assets/destiny_spark.png` (all `image/png`).
+- Validation after the final bot source edits: `pnpm build` passed; `git diff --check` reported no whitespace errors. Production `/dashboard.js` and all four PNG assets return HTTP 200 and the script includes the custom emoji rendering hooks.
+- Discord custom emoji upload and a bot redeploy are pending because the bot account lacks Manage Expressions in guild `1555968929023664208`; the dashboard artwork is live independently of that guild permission.
 

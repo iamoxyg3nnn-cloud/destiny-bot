@@ -1,3 +1,4 @@
+import { formatCustomEmojiText, resolveBotReactionEmoji } from '../custom-emojis.js';
 import { Client, Message, AttachmentBuilder, EmbedBuilder } from 'discord.js';
 import { sendCleanDmPanel } from '../dm-cleanup.js';
 import { db } from '../../database/supabase.js';
@@ -66,7 +67,7 @@ export class MessageRelayService {
   ): Promise<boolean> {
     const rateLimit = await stateStore.checkRateLimit(`relay:${authorUser.id}`, 5, 3);
     if (!rateLimit.allowed) {
-      await message.reply('⚠️ Slow down! You are sending messages too quickly.');
+      await message.reply(formatCustomEmojiText('⚠️ Slow down! You are sending messages too quickly.'));
       return true;
     }
 
@@ -81,7 +82,7 @@ export class MessageRelayService {
     }
 
     if (!recipientDiscordId) {
-      await message.reply('⚠️ Could not locate recipient for this chat room.').catch(() => {});
+      await message.reply(formatCustomEmojiText('⚠️ Could not locate recipient for this chat room.')).catch(() => {});
       return false;
     }
 
@@ -115,8 +116,8 @@ export class MessageRelayService {
     if (!sanitized.sanitizedText && relayAttachments.length === 0) {
       await message.reply(
         message.stickers.size > 0
-          ? '⚠️ This sticker format cannot be relayed yet. Please send a GIF, image, or supported sticker.'
-          : '⚠️ Message cannot be empty or only contain disallowed content.'
+          ? formatCustomEmojiText('⚠️ This sticker format cannot be relayed yet. Please send a GIF, image, or supported sticker.')
+          : formatCustomEmojiText('⚠️ Message cannot be empty or only contain disallowed content.')
       );
       return true;
     }
@@ -135,7 +136,7 @@ export class MessageRelayService {
       // attachments remain real files so images, GIFs, audio and documents still work.
       const relayEmbed = new EmbedBuilder()
         .setColor(COLORS.DESTINY_PURPLE)
-        .setAuthor({ name: `${senderAvatar} ${senderPseudonym}` })
+        .setAuthor({ name: `${formatCustomEmojiText(senderAvatar)} ${senderPseudonym}` })
         .setDescription((sanitized.sanitizedText || '*Sent media*').slice(0, 4096))
         .setFooter({ text: 'Destiny • Anonymous chat' })
         .setTimestamp(message.createdAt);
@@ -159,7 +160,7 @@ export class MessageRelayService {
         });
       } catch (error) {
         console.error('[Relay] Message was delivered but could not be persisted:', error);
-        await message.reply('⚠️ Your message was delivered, but chat history could not be saved. Please try again later.').catch(() => {});
+        await message.reply(formatCustomEmojiText('⚠️ Your message was delivered, but chat history could not be saved. Please try again later.')).catch(() => {});
         return true;
       }
 
@@ -171,12 +172,12 @@ export class MessageRelayService {
       }
 
 
-      await message.react('✨').catch(() => {});
+      await message.react(resolveBotReactionEmoji('✨')).catch(() => {});
       return true;
     } catch (err: any) {
       console.warn(`[Relay] DM delivery failed to user ${recipientDiscordId}:`, err?.message);
       await message.reply(
-        '⚠️ Delivery failed: Your chat partner’s direct messages are closed or restricted. They may need to enable DMs to continue chatting.'
+        formatCustomEmojiText('⚠️ Delivery failed: Your chat partner’s direct messages are closed or restricted. They may need to enable DMs to continue chatting.')
       ).catch(() => {});
       return false;
     }

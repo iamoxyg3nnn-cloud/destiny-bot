@@ -55,8 +55,16 @@ const result = await build({
         path: path.resolve(args.resolveDir, args.path.slice(0, -4)),
         namespace: 'raw-dashboard-asset',
       }));
+      buildApi.onResolve({ filter: /\?base64$/ }, (args) => ({
+        path: path.resolve(args.resolveDir, args.path.slice(0, -7)),
+        namespace: 'base64-dashboard-asset',
+      }));
       buildApi.onLoad({ filter: /.*/, namespace: 'raw-dashboard-asset' }, async (args) => ({
         contents: `export default ${JSON.stringify(await readFile(args.path, 'utf8'))};`,
+        loader: 'js',
+      }));
+      buildApi.onLoad({ filter: /.*/, namespace: 'base64-dashboard-asset' }, async (args) => ({
+        contents: `export default ${JSON.stringify((await readFile(args.path)).toString('base64'))};`,
         loader: 'js',
       }));
     },

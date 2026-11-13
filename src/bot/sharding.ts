@@ -14,7 +14,7 @@ export class ShardCoordinator {
   async start() {
     if (!config.DISCORD_TOKEN || config.DISCORD_TOKEN.startsWith('mock_')) {
       if (config.NODE_ENV === 'production') throw new Error('A real DISCORD_TOKEN is required in production.');
-      console.log('ℹ️ Sharding Coordinator running in mock development mode.');
+      console.log('Sharding Coordinator running in mock development mode.');
       return;
     }
     if (!config.DISCORD_CLIENT_ID) {
@@ -36,18 +36,18 @@ export class ShardCoordinator {
     });
 
     this.manager.on('shardCreate', (shard) => {
-      console.log(`🚀 [Cluster] Shard #${shard.id} launched successfully.`);
+      console.log(`[Cluster] Shard #${shard.id} launched successfully.`);
 
       shard.on('disconnect', () => {
-        console.warn(`⚠️ [Cluster] Shard #${shard.id} disconnected. Reconnection in progress...`);
+        console.warn(`[Cluster] Shard #${shard.id} disconnected. Reconnection in progress...`);
       });
 
       shard.on('reconnecting', () => {
-        console.log(`🔄 [Cluster] Shard #${shard.id} reconnecting...`);
+        console.log(`[Cluster] Shard #${shard.id} reconnecting...`);
       });
 
       shard.on('death', (proc: any) => {
-        console.error(`💥 [Cluster] Shard #${shard.id} crashed (PID: ${proc?.pid || 'unknown'}). Auto-respawning shard...`);
+        console.error(`[Cluster] Shard #${shard.id} crashed (PID: ${proc?.pid || 'unknown'}). Auto-respawning shard...`);
       });
     });
 
@@ -86,7 +86,7 @@ export const shardCoordinator = new ShardCoordinator();
 
 if (process.env.RUN_SHARDS === 'true') {
   shardCoordinator.start().catch((err) => {
-    console.error('❌ Shard coordinator startup failed:', err);
+    console.error('Shard coordinator startup failed:', err);
     process.exit(1);
   });
 }

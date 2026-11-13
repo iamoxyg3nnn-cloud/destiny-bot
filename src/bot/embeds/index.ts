@@ -1,3 +1,4 @@
+import { formatCustomEmojiText, resolveBotEmoji } from '../custom-emojis.js';
 import { 
   EmbedBuilder, 
   ActionRowBuilder, 
@@ -73,10 +74,10 @@ export class EmbedService {
       .setAccentColor(COLORS.DARK)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🪐 Destiny — Anonymous Matchmaking Portal\n\n` +
+          formatCustomEmojiText(`# 🪐 Destiny — Anonymous Matchmaking Portal\n\n`) +
           `Welcome to the **Destiny Anonymous Social Network**! Meet verified people across servers completely anonymously.\n\n` +
-          `• 🔒 **100% Privacy-Preserving**: Your Discord tag, username, and avatar are completely hidden.\n` +
-          `• ⚡ **Real-Time Matchmaking**: Smart affinity pairing based on shared interests and preferences.\n` +
+          formatCustomEmojiText(`• 🔒 **100% Privacy-Preserving**: Your Discord tag, username, and avatar are completely hidden.\n`) +
+          formatCustomEmojiText(`• ⚡ **Real-Time Matchmaking**: Smart affinity pairing based on shared interests and preferences.\n`) +
           `*Click **Find Anonymous Match** below or configure your profile to jump in!*`
         )
       )
@@ -93,11 +94,11 @@ export class EmbedService {
     if (!user || !isProfileComplete) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🪐 Destiny — Anonymous Matchmaking\n\n` +
+          formatCustomEmojiText(`# 🪐 Destiny — Anonymous Matchmaking\n\n`) +
           `Welcome to **Destiny**, **${authorName}**! Meet new people across Discord completely anonymously.\n\n` +
-          `⚠️ **Profile Setup Required**\n` +
+          formatCustomEmojiText(`⚠️ **Profile Setup Required**\n`) +
           `You haven't set up your anonymous profile yet. Click **Setup Profile** below to choose your age, gender, and interests before starting.\n\n` +
-          `🔒 *Privacy Notice: Your Discord username, tag, and avatar are never shared.*`
+          formatCustomEmojiText(`🔒 *Privacy Notice: Your Discord username, tag, and avatar are never shared.*`)
         )
       );
     } else {
@@ -107,11 +108,11 @@ export class EmbedService {
 
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🪐 Destiny — Anonymous Matchmaking\n\n` +
+          formatCustomEmojiText(`# 🪐 Destiny — Anonymous Matchmaking\n\n`) +
           `Welcome back, **${authorName}**!\n\n` +
-          `• 🆔 **Destiny ID:** \`${user.destinyId}\`\n` +
-          `• 🎂 **Age:** \`${user.age}\`  •  ⚧ **Gender:** \`${user.gender}\`${user.genderVerified ? '  🛡️ **[Verified]**' : ''}\n` +
-          `• 🎯 **Interests:** ${interestsStr}\n\n` +
+          `• ${formatCustomEmojiText("🆔")} **Destiny ID:** \`${user.destinyId}\`\n` +
+          `• ${formatCustomEmojiText("🎂")} **Age:** \`${user.age}\`  •  ${formatCustomEmojiText("⚧")} **Gender:** \`${user.gender}\`${user.genderVerified ? formatCustomEmojiText('  🛡️ **[Verified]**') : ''}\n` +
+          `• ${formatCustomEmojiText("🎯")} **Interests:** ${interestsStr}\n\n` +
           `*Click **Start Match** or type \`start\` to connect with an anonymous partner!*`
         )
       );
@@ -123,17 +124,17 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(resolveBotEmoji('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_profile')
         .setLabel(isProfileComplete ? 'Edit Profile' : 'Setup Profile')
-        .setEmoji('👤')
+        .setEmoji(resolveBotEmoji('👤'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_verify')
         .setLabel(user?.genderVerified ? 'Verified' : 'Get Verified')
-        .setEmoji('🛡️')
+        .setEmoji(resolveBotEmoji('🛡️'))
         .setStyle(user?.genderVerified ? ButtonStyle.Success : ButtonStyle.Secondary),
     );
 
@@ -144,7 +145,7 @@ export class EmbedService {
         new ButtonBuilder()
           .setCustomId('destiny_btn_leave')
           .setLabel('Leave Active Chat')
-          .setEmoji('🚪')
+          .setEmoji(resolveBotEmoji('🚪'))
           .setStyle(ButtonStyle.Danger)
       );
       container.addActionRowComponents(roomRow);
@@ -161,7 +162,7 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_profile')
         .setLabel('Setup Profile')
-        .setEmoji('👤')
+        .setEmoji(resolveBotEmoji('👤'))
         .setStyle(ButtonStyle.Primary)
     );
 
@@ -169,7 +170,7 @@ export class EmbedService {
       .setAccentColor(COLORS.GOLD)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ⚠️ Profile Setup Required\n\n` +
+          formatCustomEmojiText(`# ⚠️ Profile Setup Required\n\n`) +
           `You cannot start chatting until you create your anonymous profile!\n\n` +
           `• Click **Setup Profile** below to fill in your age, gender, and preferences.\n` +
           `• It takes only 10 seconds and keeps your Discord identity 100% private.`
@@ -191,7 +192,7 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match Now')
-        .setEmoji('✨')
+        .setEmoji(resolveBotEmoji('✨'))
         .setStyle(ButtonStyle.Success),
     );
 
@@ -199,12 +200,12 @@ export class EmbedService {
       .setAccentColor(COLORS.SUCCESS)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ✅ Anonymous Profile Saved!\n\n` +
+          formatCustomEmojiText(`# ✅ Anonymous Profile Saved!\n\n`) +
           `Your anonymous Destiny identity is active in our global database!\n\n` +
-          `• 🆔 **Destiny ID:** \`${savedUser.destinyId}\`\n` +
-          `• 🎂 **Age:** \`${savedUser.age}\`  •  ⚧ **Gender:** \`${savedUser.gender}\`\n` +
-          `• 🎯 **Interests:** ${interestsStr}\n` +
-          `🔒 *Your Discord username, avatar, and server identity remain 100% anonymous.*`
+          `• ${formatCustomEmojiText("🆔")} **Destiny ID:** \`${savedUser.destinyId}\`\n` +
+          `• ${formatCustomEmojiText("🎂")} **Age:** \`${savedUser.age}\`  •  ${formatCustomEmojiText("⚧")} **Gender:** \`${savedUser.gender}\`\n` +
+          `• ${formatCustomEmojiText("🎯")} **Interests:** ${interestsStr}\n` +
+          formatCustomEmojiText(`🔒 *Your Discord username, avatar, and server identity remain 100% anonymous.*`)
         )
       )
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -216,7 +217,7 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_queue')
         .setLabel('Cancel Search')
-        .setEmoji('❌')
+        .setEmoji(resolveBotEmoji('❌'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -224,11 +225,11 @@ export class EmbedService {
       .setAccentColor(COLORS.SUCCESS)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🔍 Searching for an Anonymous Match...\n\n` +
+          formatCustomEmojiText(`# 🔍 Searching for an Anonymous Match...\n\n`) +
           `You have entered the anonymous matchmaking queue!\n\n` +
-          `• 🆔 **Destiny ID:** \`${user.destinyId}\`\n` +
+          `• ${formatCustomEmojiText("🆔")} **Destiny ID:** \`${user.destinyId}\`\n` +
           `• **Match Pool:** Everyone\n` +
-          `• 🎯 **Interests:** ${user.interests.length > 0 ? user.interests.join(', ') : 'Open'}\n\n` +
+          `• ${formatCustomEmojiText("🎯")} **Interests:** ${user.interests.length > 0 ? user.interests.join(', ') : 'Open'}\n\n` +
           `*Please keep your DMs open. The moment an anonymous partner is paired, you will receive your connection card here!*`
         )
       )
@@ -244,7 +245,7 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_queue')
         .setLabel('Cancel Search')
-        .setEmoji('❌')
+        .setEmoji(resolveBotEmoji('❌'))
         .setStyle(ButtonStyle.Danger)
     );
 
@@ -252,7 +253,7 @@ export class EmbedService {
       .setAccentColor(COLORS.PRIMARY)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🔍 Already in Queue\n\n` +
+          formatCustomEmojiText(`# 🔍 Already in Queue\n\n`) +
           `You are already searching in the matchmaking queue!\n` +
           `We will notify you right here in DM the moment a partner is matched.`
         )
@@ -269,7 +270,7 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_leave')
         .setLabel('Leave Current Room')
-        .setEmoji('🚪')
+        .setEmoji(resolveBotEmoji('🚪'))
         .setStyle(ButtonStyle.Danger)
     );
 
@@ -277,7 +278,7 @@ export class EmbedService {
       .setAccentColor(COLORS.PRIMARY)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 💬 Already in an Active Room\n\n` +
+          formatCustomEmojiText(`# 💬 Already in an Active Room\n\n`) +
           `You are already in an ongoing anonymous chat room (**${roomCode}**).\n` +
           `Please exit your current session before queuing for a new match.`
         )
@@ -304,28 +305,28 @@ export class EmbedService {
         .setCustomId('btn_reveal_consent')
         .setLabel('Request Mutual Reveal')
         .setStyle(ButtonStyle.Primary)
-        .setEmoji('📜'),
+        .setEmoji(resolveBotEmoji('📜')),
       new ButtonBuilder()
         .setCustomId('destiny_btn_leave')
         .setLabel('End Chat')
         .setStyle(ButtonStyle.Danger)
-        .setEmoji('🚪'),
+        .setEmoji(resolveBotEmoji('🚪')),
       new ButtonBuilder()
         .setCustomId(`btn_report_room_${room.id}`)
         .setLabel('Report')
         .setStyle(ButtonStyle.Secondary)
-        .setEmoji('🚨')
+        .setEmoji(resolveBotEmoji('🚨'))
     );
 
     return new ContainerBuilder()
       .setAccentColor(COLORS.DESTINY_PURPLE)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ✨ Destiny Connection Established! [${room.roomCode}]\n\n` +
-          `You have been matched anonymously with **${partnerAvatar} ${partnerPersona}**!\n\n` +
-          `• **Your Persona:** ${myAvatar} **${myPersona}**\n` +
-          `• **🔒 Privacy Notice:** Discord usernames, IDs, and avatars are hidden.\n` +
-          `• **🎯 Shared Interests:** ${interestsStr}\n\n` +
+          `# ${formatCustomEmojiText("✨")} Destiny Connection Established! [${room.roomCode}]\n\n` +
+          `You have been matched anonymously with **${formatCustomEmojiText(partnerAvatar)} ${partnerPersona}**!\n\n` +
+          `• **Your Persona:** ${formatCustomEmojiText(myAvatar)} **${myPersona}**\n` +
+          formatCustomEmojiText(`• **🔒 Privacy Notice:** Discord usernames, IDs, and avatars are hidden.\n`) +
+          `• **${formatCustomEmojiText("🎯")} Shared Interests:** ${interestsStr}\n\n` +
 
           `*All messages typed right here in DM will be sanitized and forwarded in real-time.*`
         )
@@ -342,17 +343,17 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId(`act_report_${roomId}_harassment`)
         .setLabel('Harassment / Abuse')
-        .setEmoji('🚫')
+        .setEmoji(resolveBotEmoji('🚫'))
         .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
         .setCustomId(`act_report_${roomId}_inappropriate_content`)
         .setLabel('Inappropriate / NSFW')
-        .setEmoji('🔞')
+        .setEmoji(resolveBotEmoji('🔞'))
         .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
         .setCustomId(`act_report_${roomId}_identity_leak`)
         .setLabel('Doxxing / Leak')
-        .setEmoji('🔒')
+        .setEmoji(resolveBotEmoji('🔒'))
         .setStyle(ButtonStyle.Danger)
     );
 
@@ -360,17 +361,17 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId(`act_report_${roomId}_spam`)
         .setLabel('Spam / Scams')
-        .setEmoji('📢')
+        .setEmoji(resolveBotEmoji('📢'))
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`act_report_${roomId}_underage`)
         .setLabel('Underage Account')
-        .setEmoji('👶')
+        .setEmoji(resolveBotEmoji('👶'))
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('act_report_cancel')
         .setLabel('Cancel')
-        .setEmoji('❌')
+        .setEmoji(resolveBotEmoji('❌'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -378,12 +379,12 @@ export class EmbedService {
       .setAccentColor(COLORS.DANGER)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🚨 Report User${partnerPseudonym ? ` (${partnerPseudonym})` : ''}\n\n` +
+          `# ${formatCustomEmojiText("🚨")} Report User${partnerPseudonym ? ` (${partnerPseudonym})` : ''}\n\n` +
           `Your safety is our top priority. Please select a reason for reporting your chat partner.\n\n` +
-          `• 📸 **Evidence:** The last 15 messages will be securely submitted to moderation.\n` +
-          `• 🚫 **Auto-Block:** This user will be permanently blocked from ever matching with you again.\n` +
-          `• 📉 **Reputation Impact:** Offenses deduct points from their trust score.\n` +
-          `• 🚪 **Room Closure:** If the room is currently active, it will be terminated immediately.\n\n` +
+          formatCustomEmojiText(`• 📸 **Evidence:** The last 15 messages will be securely submitted to moderation.\n`) +
+          formatCustomEmojiText(`• 🚫 **Auto-Block:** This user will be permanently blocked from ever matching with you again.\n`) +
+          formatCustomEmojiText(`• 📉 **Reputation Impact:** Offenses deduct points from their trust score.\n`) +
+          formatCustomEmojiText(`• 🚪 **Room Closure:** If the room is currently active, it will be terminated immediately.\n\n`) +
           `*Select a violation category below:*`
         )
       )
@@ -399,12 +400,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Find New Match')
-        .setEmoji('✨')
+        .setEmoji(resolveBotEmoji('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(resolveBotEmoji('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -412,12 +413,12 @@ export class EmbedService {
       .setAccentColor(delivered ? COLORS.SUCCESS : COLORS.GOLD)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ${delivered ? '✅ Report Submitted' : '⚠️ Report Saved — Staff Alert Pending'}\n\n` +
+          `# ${delivered ? formatCustomEmojiText('✅ Report Submitted') : formatCustomEmojiText('⚠️ Report Saved — Staff Alert Pending')}\n\n` +
           (delivered
             ? `Thank you for keeping Destiny safe. Your report was saved and a privacy-safe alert was sent to Destiny's trusted moderation team.\n\n`
             : `Thank you for keeping Destiny safe. Your report was saved, but the moderation alert could not be delivered.\n\n`) +
-          `• 🔒 **Safety action:** ${safetyMessage || 'The report was accepted for moderation.'}\n` +
-          `• 🛡️ **Your Identity:** Your Discord tag, ID, profile, and chat excerpts are not included in the channel alert.\n\n` +
+          `• ${formatCustomEmojiText("🔒")} **Safety action:** ${safetyMessage || 'The report was accepted for moderation.'}\n` +
+          formatCustomEmojiText(`• 🛡️ **Your Identity:** Your Discord tag, ID, profile, and chat excerpts are not included in the channel alert.\n\n`) +
           `*Whenever you're ready, click below to find a new anonymous partner!*`
         )
       )
@@ -433,17 +434,17 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_verify_voicenote_info')
         .setLabel('Send Voice Note')
-        .setEmoji('🎙️')
+        .setEmoji(resolveBotEmoji('🎙️'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_verify_sync_role')
         .setLabel('Sync Server Role (Instant)')
-        .setEmoji('🔄')
+        .setEmoji(resolveBotEmoji('🔄'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(resolveBotEmoji('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -455,18 +456,18 @@ export class EmbedService {
       .setAccentColor(COLORS.DESTINY_PURPLE)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🎙️ Destiny Gender Verification\n\n` +
-          `Get the official **Verified Shield Badge** 🛡️ on your anonymous Destiny profile!\n` +
+          formatCustomEmojiText(`# 🎙️ Destiny Gender Verification\n\n`) +
+          formatCustomEmojiText(`Get the official **Verified Shield Badge** 🛡️ on your anonymous Destiny profile!\n`) +
           `Verified users receive higher matchmaking priority and 100% authenticity trust.\n\n` +
-          `### 🌟 Option 1: Send Voice Note in this DM (Instant & Private)\n` +
-          `• Press & hold the **Discord Mic icon 🎙️** (or send an audio file / voice message) right here in this DM.\n` +
+          formatCustomEmojiText(`### 🌟 Option 1: Send Voice Note in this DM (Instant & Private)\n`) +
+          formatCustomEmojiText(`• Press & hold the **Discord Mic icon 🎙️** (or send an audio file / voice message) right here in this DM.\n`) +
           `• Say this verification phrase:\n` +
           `> *${verificationPhrase}*\n` +
           `• The bot will automatically capture your audio note and deliver it directly to our moderation team!\n\n` +
-          `### ⚡ Option 2: 1-Click Server Role Sync (Instant Approval)\n` +
+          formatCustomEmojiText(`### ⚡ Option 2: 1-Click Server Role Sync (Instant Approval)\n`) +
           `Already verified as Male or Female in **discord.gg/eclairs**?\n` +
           `Click **Sync Server Role** and Destiny will automatically detect your server role and grant your badge without waiting!\n\n` +
-          `*Current Profile Status: ${user?.genderVerified ? '✅ **Verified**' : user?.genderVerificationStatus === 'pending' ? '⏳ **Pending Review**' : '⚪ **Unverified**'}*`
+          `*Current Profile Status: ${user?.genderVerified ? formatCustomEmojiText('✅ **Verified**') : user?.genderVerificationStatus === 'pending' ? formatCustomEmojiText('⏳ **Pending Review**') : formatCustomEmojiText('⚪ **Unverified**')}*`
         )
       )
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -481,12 +482,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_verify_sync_role')
         .setLabel('Sync Server Role Instead')
-        .setEmoji('🔄')
+        .setEmoji(resolveBotEmoji('🔄'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Cancel')
-        .setEmoji('❌')
+        .setEmoji(resolveBotEmoji('❌'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -494,10 +495,10 @@ export class EmbedService {
       .setAccentColor(COLORS.PRIMARY)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🎙️ How to Record Your Verification Voice Note\n\n` +
+          formatCustomEmojiText(`# 🎙️ How to Record Your Verification Voice Note\n\n`) +
           `**No text forms needed! Just record directly in this DM:**\n\n` +
-          `1. **On Mobile:** Tap and hold the **Microphone icon 🎙️** in your message bar below.\n` +
-          `2. **On Desktop:** Click the **Microphone icon 🎙️** or use the **+** button to attach an audio file (\`.ogg\`, \`.mp3\`, \`.wav\`, \`.m4a\`).\n` +
+          formatCustomEmojiText(`1. **On Mobile:** Tap and hold the **Microphone icon 🎙️** in your message bar below.\n`) +
+          formatCustomEmojiText(`2. **On Desktop:** Click the **Microphone icon 🎙️** or use the **+** button to attach an audio file (\`.ogg\`, \`.mp3\`, \`.wav\`, \`.m4a\`).\n`) +
           `3. **Speak clearly into your mic:**\n` +
           `> *"I am ${user.destinyId}, verifying my gender as ${user.gender} on Destiny bot."*\n\n` +
           `As soon as you send your audio note, Destiny will automatically detect it and submit it for staff review!`
@@ -515,12 +516,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(resolveBotEmoji('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(resolveBotEmoji('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -528,12 +529,12 @@ export class EmbedService {
       .setAccentColor(COLORS.SUCCESS)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🎙️ Voice Verification Received!\n\n` +
+          formatCustomEmojiText(`# 🎙️ Voice Verification Received!\n\n`) +
           `We have successfully captured your voice note!\n\n` +
-          `• 🆔 **Destiny ID:** \`${user.destinyId}\`\n` +
-          `• ⚧ **Claimed Gender:** \`${user.gender}\`\n` +
-          `• 🎧 **Audio Note:** Attached below ⬇️ *(Native Player)*\n` +
-          `• ⏳ **Status:** Pending Staff Review\n\n` +
+          `• ${formatCustomEmojiText("🆔")} **Destiny ID:** \`${user.destinyId}\`\n` +
+          `• ${formatCustomEmojiText("⚧")} **Claimed Gender:** \`${user.gender}\`\n` +
+          formatCustomEmojiText(`• 🎧 **Audio Note:** Attached below ⬇️ *(Native Player)*\n`) +
+          formatCustomEmojiText(`• ⏳ **Status:** Pending Staff Review\n\n`) +
           `Our moderation team has been alerted with your recording. You will receive a direct notification right here in DM the moment your badge is approved!`
         )
       )
@@ -549,24 +550,24 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(resolveBotEmoji('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(resolveBotEmoji('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
     const embed = new EmbedBuilder()
       .setColor(COLORS.SUCCESS)
-      .setTitle('🎙️ Voice Verification Received!')
+      .setTitle(formatCustomEmojiText('🎙️ Voice Verification Received!'))
       .setDescription(
         `We have successfully received your verification voice note!\n\n` +
-        `• 🆔 **Destiny ID:** \`${user.destinyId}\`\n` +
-        `• ⚧ **Claimed Gender:** \`${user.gender}\`\n` +
-        `• 🎧 **Voice Recording:** Attached below ⬇️ *(Press ▶️ to listen)*\n` +
-        `• ⏳ **Status:** Pending Staff Review\n\n` +
+        `• ${formatCustomEmojiText("🆔")} **Destiny ID:** \`${user.destinyId}\`\n` +
+        `• ${formatCustomEmojiText("⚧")} **Claimed Gender:** \`${user.gender}\`\n` +
+        formatCustomEmojiText(`• 🎧 **Voice Recording:** Attached below ⬇️ *(Press ▶️ to listen)*\n`) +
+        formatCustomEmojiText(`• ⏳ **Status:** Pending Staff Review\n\n`) +
         `Our moderation team has been notified. You will receive a direct DM notification the moment your badge is approved!`
       )
       .setTimestamp();
@@ -582,12 +583,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId(`btn_admin_verify_approve_${user.id}`)
         .setLabel(`Approve (${user.gender})`)
-        .setEmoji('✅')
+        .setEmoji(resolveBotEmoji('✅'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`btn_admin_verify_reject_${user.id}`)
         .setLabel('Reject')
-        .setEmoji('❌')
+        .setEmoji(resolveBotEmoji('❌'))
         .setStyle(ButtonStyle.Danger)
     );
 
@@ -595,13 +596,13 @@ export class EmbedService {
       .setAccentColor(COLORS.GOLD)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🎙️ New Voice Verification Request\n\n` +
+          formatCustomEmojiText(`# 🎙️ New Voice Verification Request\n\n`) +
           `A user has submitted a voice verification recording for staff review.\n\n` +
-          `• 👤 **User:** <@${user.discordUserId}> (\`${user.discordUserId}\`)\n` +
-          `• 🆔 **Destiny ID:** \`${user.destinyId}\`\n` +
-          `• ⚧ **Claimed Gender:** **${user.gender.toUpperCase()}**\n` +
-          `• 🎂 **Age:** ${user.age}\n` +
-          `• 🎧 **Voice Recording:** Attached below ⬇️ *(Press ▶️ to Play directly in Discord)*\n\n` +
+          `• ${formatCustomEmojiText("👤")} **User:** <@${user.discordUserId}> (\`${user.discordUserId}\`)\n` +
+          `• ${formatCustomEmojiText("🆔")} **Destiny ID:** \`${user.destinyId}\`\n` +
+          `• ${formatCustomEmojiText("⚧")} **Claimed Gender:** **${user.gender.toUpperCase()}**\n` +
+          `• ${formatCustomEmojiText("🎂")} **Age:** ${user.age}\n` +
+          formatCustomEmojiText(`• 🎧 **Voice Recording:** Attached below ⬇️ *(Press ▶️ to Play directly in Discord)*\n\n`) +
           `*Listen to the attached voice recording to verify the voice matches the claimed gender, then click Approve or Reject.*`
         )
       )
@@ -617,25 +618,25 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId(`btn_admin_verify_approve_${user.id}`)
         .setLabel(`Approve (${user.gender})`)
-        .setEmoji('✅')
+        .setEmoji(resolveBotEmoji('✅'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`btn_admin_verify_reject_${user.id}`)
         .setLabel('Reject')
-        .setEmoji('❌')
+        .setEmoji(resolveBotEmoji('❌'))
         .setStyle(ButtonStyle.Danger)
     );
 
     const embed = new EmbedBuilder()
       .setColor(COLORS.GOLD)
-      .setTitle('🎙️ New Voice Verification Request')
+      .setTitle(formatCustomEmojiText('🎙️ New Voice Verification Request'))
       .setDescription(
         `A user has submitted a voice verification recording for staff review.\n\n` +
-        `• 👤 **User:** <@${user.discordUserId}> (\`${user.discordUserId}\`)\n` +
-        `• 🆔 **Destiny ID:** \`${user.destinyId}\`\n` +
-        `• ⚧ **Claimed Gender:** **${user.gender.toUpperCase()}**\n` +
-        `• 🎂 **Age:** ${user.age}\n` +
-        `• 🎧 **Voice Recording:** Attached below ⬇️ *(Click ▶️ to Play directly in Discord)*\n\n` +
+        `• ${formatCustomEmojiText("👤")} **User:** <@${user.discordUserId}> (\`${user.discordUserId}\`)\n` +
+        `• ${formatCustomEmojiText("🆔")} **Destiny ID:** \`${user.destinyId}\`\n` +
+        `• ${formatCustomEmojiText("⚧")} **Claimed Gender:** **${user.gender.toUpperCase()}**\n` +
+        `• ${formatCustomEmojiText("🎂")} **Age:** ${user.age}\n` +
+        formatCustomEmojiText(`• 🎧 **Voice Recording:** Attached below ⬇️ *(Click ▶️ to Play directly in Discord)*\n\n`) +
         `*Listen to the attached voice recording to verify their voice matches their claimed gender, then click Approve or Reject.*`
       )
       .setTimestamp();
@@ -649,12 +650,12 @@ export class EmbedService {
   createStaffVerificationDecisionEmbed(targetUser: UserProfile | null, decisionText: string, approved: boolean): EmbedBuilder {
     return new EmbedBuilder()
       .setColor(approved ? COLORS.SUCCESS : COLORS.DANGER)
-      .setTitle('🎙️ Verification Review Processed')
+      .setTitle(formatCustomEmojiText('🎙️ Verification Review Processed'))
       .setDescription(
-        `• 👤 **User:** <@${targetUser?.discordUserId || 'User'}>\n` +
-        `• 🆔 **Destiny ID:** \`${targetUser?.destinyId || 'N/A'}\`\n` +
-        `• ⚧ **Gender:** \`${targetUser?.gender || 'N/A'}\`\n` +
-        `• 📋 **Decision:** ${decisionText}`
+        `• ${formatCustomEmojiText("👤")} **User:** <@${targetUser?.discordUserId || 'User'}>\n` +
+        `• ${formatCustomEmojiText("🆔")} **Destiny ID:** \`${targetUser?.destinyId || 'N/A'}\`\n` +
+        `• ${formatCustomEmojiText("⚧")} **Gender:** \`${targetUser?.gender || 'N/A'}\`\n` +
+        `• ${formatCustomEmojiText("📋")} **Decision:** ${decisionText}`
       )
       .setTimestamp();
   }
@@ -667,12 +668,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(resolveBotEmoji('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(resolveBotEmoji('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -680,11 +681,11 @@ export class EmbedService {
       .setAccentColor(COLORS.SUCCESS)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ✨ Instant Verification Approved!\n\n` +
+          formatCustomEmojiText(`# ✨ Instant Verification Approved!\n\n`) +
           `We detected your verified role **${roleName}** in **${guildName}**!\n\n` +
-          `• 🆔 **Destiny ID:** \`${user.destinyId}\`\n` +
-          `• ⚧ **Verified Gender:** \`${user.gender}\`  🛡️\n` +
-          `• 🌟 **Verified Badge:** Active on your profile\n\n` +
+          `• ${formatCustomEmojiText("🆔")} **Destiny ID:** \`${user.destinyId}\`\n` +
+          `• ${formatCustomEmojiText("⚧")} **Verified Gender:** \`${user.gender}\`  ${formatCustomEmojiText("🛡️")}\n` +
+          formatCustomEmojiText(`• 🌟 **Verified Badge:** Active on your profile\n\n`) +
           `*You are officially verified! Your profile now has higher matching priority and the verified shield badge.*`
         )
       )
@@ -700,20 +701,20 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_verify_voicenote_info')
         .setLabel('Send Voice Note Instead')
-        .setEmoji('🎙️')
+        .setEmoji(resolveBotEmoji('🎙️'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(resolveBotEmoji('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
     const text = inServer
-      ? `# ℹ️ No Verified Gender Role Found\n\n` +
+      ? formatCustomEmojiText(`# ℹ️ No Verified Gender Role Found\n\n`) +
         `We checked your account in **${guildName}**, but did not detect a recognized verified gender role (e.g. Female, Male, Verified).\n\n` +
         `• **What to do:** You can get verified by server staff in the server, or simply record a quick **Voice Note** right here in this DM!`
-      : `# ⚠️ Not a Server Member\n\n` +
+      : formatCustomEmojiText(`# ⚠️ Not a Server Member\n\n`) +
         `We could not find your account in our official Discord server!\n\n` +
         `• **Server Link:** [discord.gg/eclairs](https://discord.gg/eclairs)\n` +
         `• **Quick Alternative:** You do not need to join if you prefer to stay in DMs — simply press the mic button below and send a **Voice Note**!`;
@@ -736,24 +737,24 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_set_current')
         .setLabel(isCurrentSet ? 'Portal Set Here' : 'Set This Channel as Matchmaking Portal')
-        .setEmoji(isCurrentSet ? '✅' : '📌')
+        .setEmoji(isCurrentSet ? resolveBotEmoji('✅') : resolveBotEmoji('📌'))
         .setStyle(isCurrentSet ? ButtonStyle.Success : ButtonStyle.Primary)
         .setDisabled(Boolean(isCurrentSet)),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_lobby_card')
         .setLabel('Post Public Lobby')
-        .setEmoji('🪐')
+        .setEmoji(resolveBotEmoji('🪐'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_verify_hub')
         .setLabel('Post Verification Hub')
-        .setEmoji('🎙️')
+        .setEmoji(resolveBotEmoji('🎙️'))
         .setStyle(ButtonStyle.Secondary)
     );
 
     const channelSelect = new ChannelSelectMenuBuilder()
       .setCustomId('destiny_select_admin_channel')
-      .setPlaceholder('📂 Select the matchmaking portal channel...')
+      .setPlaceholder(formatCustomEmojiText('📂 Select the matchmaking portal channel...'))
       .setChannelTypes(ChannelType.GuildText)
       .setMinValues(1)
       .setMaxValues(1);
@@ -764,12 +765,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_refresh')
         .setLabel('Refresh Status')
-        .setEmoji('🔄')
+        .setEmoji(resolveBotEmoji('🔄'))
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_reset')
         .setLabel('Clear Portal Channel')
-        .setEmoji('🗑️')
+        .setEmoji(resolveBotEmoji('🗑️'))
         .setStyle(ButtonStyle.Danger)
         .setDisabled(!activeChannel)
     );
@@ -778,15 +779,15 @@ export class EmbedService {
       .setAccentColor(COLORS.DESTINY_PURPLE)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ⚙️ Destiny — Server Setup & Admin Console\n\n` +
+          formatCustomEmojiText(`# ⚙️ Destiny — Server Setup & Admin Console\n\n`) +
           `Welcome to the **Destiny** admin control panel for **${guild.name}**!\n` +
           `Choose where members can access the public matchmaking portal. Configure the private moderation log separately with /setup modlog.\n\n` +
-          `### 📊 Current Server Configuration\n` +
-          `• 📌 **Matchmaking Portal:** ${activeChannel ? `<#${activeChannel}>` : '`❌ Not configured`'}\n` +
-          `• 🛡️ **Private Moderation Log:** ${settings?.modLogChannelId ? `<#${settings.modLogChannelId}>` : '`❌ Not configured — use /setup modlog`'}\n` +
-          `• 🌐 **Cross-Server Matching:** ${settings?.crossServerEnabled === false ? '**Disabled (this server only)**' : '**Enabled**'}\n` +
-          `• 🔒 **Privacy Mode:** **100% Anonymous DM Relay** ✨\n\n` +
-          `### 🛠️ Quick Actions:\n` +
+          formatCustomEmojiText(`### 📊 Current Server Configuration\n`) +
+          `• ${formatCustomEmojiText("📌")} **Matchmaking Portal:** ${activeChannel ? `<#${activeChannel}>` : formatCustomEmojiText('`❌ Not configured`')}\n` +
+          `• ${formatCustomEmojiText("🛡️")} **Private Moderation Log:** ${settings?.modLogChannelId ? `<#${settings.modLogChannelId}>` : formatCustomEmojiText('`❌ Not configured — use /setup modlog`')}\n` +
+          `• ${formatCustomEmojiText("🌐")} **Cross-Server Matching:** ${settings?.crossServerEnabled === false ? '**Disabled (this server only)**' : '**Enabled**'}\n` +
+          formatCustomEmojiText(`• 🔒 **Privacy Mode:** **100% Anonymous DM Relay** ✨\n\n`) +
+          formatCustomEmojiText(`### 🛠️ Quick Actions:\n`) +
           `1. Set a matchmaking portal channel (or pick one from the dropdown).\n` +
           `2. Click **Post Public Lobby** to send the interactive matchmaking card for members.\n` +
           `3. Click **Post Verification Hub** to post the instant role sync & voice verification card!`
@@ -804,17 +805,17 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(resolveBotEmoji('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_profile')
         .setLabel('My Profile')
-        .setEmoji('👤')
+        .setEmoji(resolveBotEmoji('👤'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_verify_prompt')
         .setLabel('Get Verified')
-        .setEmoji('🎙️')
+        .setEmoji(resolveBotEmoji('🎙️'))
         .setStyle(ButtonStyle.Secondary),
     );
 
@@ -822,11 +823,11 @@ export class EmbedService {
       .setAccentColor(COLORS.DESTINY_PURPLE)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🪐 Welcome to Destiny — ${guildName}\n\n` +
+          `# ${formatCustomEmojiText("🪐")} Welcome to Destiny — ${guildName}\n\n` +
           `Connect with members and users across Discord in safe, anonymous 1-on-1 conversations!\n\n` +
-          `• 🎭 **100% Anonymous:** Random pseudonyms and avatars generated for every match.\n` +
-          `• 🛡️ **Identity Protected:** Real Discord usernames are never revealed unless both users agree.\n` +
-          `• ⚡ **Mood & Criteria Based:** Find partners who match your vibe.\n` +
+          formatCustomEmojiText(`• 🎭 **100% Anonymous:** Random pseudonyms and avatars generated for every match.\n`) +
+          formatCustomEmojiText(`• 🛡️ **Identity Protected:** Real Discord usernames are never revealed unless both users agree.\n`) +
+          formatCustomEmojiText(`• ⚡ **Mood & Criteria Based:** Find partners who match your vibe.\n`) +
           `*Click **Start Match** below to pair with someone new right now!*`
         )
       )
@@ -842,17 +843,17 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_lobby_card')
         .setLabel('Post Public Lobby')
-        .setEmoji('🪐')
+        .setEmoji(resolveBotEmoji('🪐'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_verify_hub')
         .setLabel('Post Verification Hub')
-        .setEmoji('🎙️')
+        .setEmoji(resolveBotEmoji('🎙️'))
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_refresh')
         .setLabel('Setup Menu')
-        .setEmoji('⚙️')
+        .setEmoji(resolveBotEmoji('⚙️'))
         .setStyle(ButtonStyle.Primary)
     );
 
@@ -860,10 +861,10 @@ export class EmbedService {
       .setAccentColor(COLORS.SUCCESS)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ✅ Destiny Channel Configured!\n\n` +
+          formatCustomEmojiText(`# ✅ Destiny Channel Configured!\n\n`) +
           `Destiny is now officially locked to <#${channelId}> in **${guildName}**!\n\n` +
-          `• 📌 **Public matchmaking portal:** <#${channelId}>\n` +
-          `• 🛡️ **Private moderation alerts:** Configure separately with /setup modlog\n\n` +
+          `• ${formatCustomEmojiText("📌")} **Public matchmaking portal:** <#${channelId}>\n` +
+          formatCustomEmojiText(`• 🛡️ **Private moderation alerts:** Configure separately with /setup modlog\n\n`) +
           `*Admins can return to this setup anytime by typing \`setup\` or clicking **Setup Menu** below.*`
         )
       )
@@ -879,12 +880,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_set_current')
         .setLabel('Set Current Channel')
-        .setEmoji('📌')
+        .setEmoji(resolveBotEmoji('📌'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('destiny_btn_setup_refresh')
         .setLabel('Setup Menu')
-        .setEmoji('⚙️')
+        .setEmoji(resolveBotEmoji('⚙️'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -892,7 +893,7 @@ export class EmbedService {
       .setAccentColor(COLORS.PRIMARY)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🔄 Matchmaking Portal Channel Cleared\n\n` +
+          formatCustomEmojiText(`# 🔄 Matchmaking Portal Channel Cleared\n\n`) +
           `The matchmaking portal channel for **${guildName}** has been cleared. The private moderation log setting was not changed.\n` +
           `Admins can configure a new portal channel anytime using /setup portal or the button below.`
         )
@@ -909,9 +910,9 @@ export class EmbedService {
       .setAccentColor(COLORS.DESTINY_PURPLE)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 📍 Destiny is Configured in <#${designatedChannelId}>\n\n` +
+          `# ${formatCustomEmojiText("📍")} Destiny is Configured in <#${designatedChannelId}>\n\n` +
           `Hey **${authorName}**! To keep this server clean and organized, Destiny commands run exclusively in <#${designatedChannelId}>.\n\n` +
-          `👉 Head over to <#${designatedChannelId}> or DM Destiny directly to match privately!`
+          `${formatCustomEmojiText("👉")} Head over to <#${designatedChannelId}> or DM Destiny directly to match privately!`
         )
       );
   }
@@ -924,12 +925,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(resolveBotEmoji('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(resolveBotEmoji('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -937,11 +938,11 @@ export class EmbedService {
       .setAccentColor(COLORS.SUCCESS)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🛡️ Profile Officially Verified!\n\n` +
+          formatCustomEmojiText(`# 🛡️ Profile Officially Verified!\n\n`) +
           `Your Destiny anonymous profile is already verified and in good standing!\n\n` +
-          `• 🆔 **Destiny ID:** \`${user.destinyId}\`\n` +
-          `• ⚧ **Verified Gender:** \`${user.gender}\`  🛡️\n` +
-          `• 🌟 **Badge:** Displayed automatically to your chat partners\n\n` +
+          `• ${formatCustomEmojiText("🆔")} **Destiny ID:** \`${user.destinyId}\`\n` +
+          `• ${formatCustomEmojiText("⚧")} **Verified Gender:** \`${user.gender}\`  ${formatCustomEmojiText("🛡️")}\n` +
+          formatCustomEmojiText(`• 🌟 **Badge:** Displayed automatically to your chat partners\n\n`) +
           `*You are all set! Click below to find an anonymous match.*`
         )
       )
@@ -957,12 +958,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(resolveBotEmoji('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(resolveBotEmoji('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -970,11 +971,11 @@ export class EmbedService {
       .setAccentColor(COLORS.GOLD)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ⏳ Verification Request Pending Review\n\n` +
+          formatCustomEmojiText(`# ⏳ Verification Request Pending Review\n\n`) +
           `You have an active verification request currently under review by our administration team.\n\n` +
-          `• ⏱️ **Review Window:** Submissions are usually reviewed within 24 hours.\n` +
-          `• 🔔 **Notification:** You will be alerted right here in DM once our staff reviews your proof.\n` +
-          `• 💬 **Meanwhile:** You can continue matching and chatting normally!`
+          formatCustomEmojiText(`• ⏱️ **Review Window:** Submissions are usually reviewed within 24 hours.\n`) +
+          formatCustomEmojiText(`• 🔔 **Notification:** You will be alerted right here in DM once our staff reviews your proof.\n`) +
+          formatCustomEmojiText(`• 💬 **Meanwhile:** You can continue matching and chatting normally!`)
         )
       )
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -989,12 +990,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(resolveBotEmoji('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(resolveBotEmoji('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -1002,10 +1003,10 @@ export class EmbedService {
       .setAccentColor(COLORS.SUCCESS)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 📩 Verification Request Submitted!\n\n` +
+          formatCustomEmojiText(`# 📩 Verification Request Submitted!\n\n`) +
           `Your verification request has been securely delivered to the Destiny Admin Desk.\n\n` +
-          `• 🛡️ **What's Next:** A moderator will review your submission.\n` +
-          `• 🔔 **Status Updates:** We will notify you here in DM the moment your verified badge is granted.\n\n` +
+          formatCustomEmojiText(`• 🛡️ **What's Next:** A moderator will review your submission.\n`) +
+          formatCustomEmojiText(`• 🔔 **Status Updates:** We will notify you here in DM the moment your verified badge is granted.\n\n`) +
           `*Thank you for helping keep Destiny authentic and trustworthy!*`
         )
       )
@@ -1022,23 +1023,23 @@ export class EmbedService {
         .setLabel('Join discord.gg/eclairs')
         .setStyle(ButtonStyle.Link)
         .setURL('https://discord.gg/eclairs')
-        .setEmoji('🪐'),
+        .setEmoji(resolveBotEmoji('🪐')),
       new ButtonBuilder()
         .setCustomId('destiny_btn_check_reputation')
         .setLabel('I Have Joined (Restore Reputation)')
         .setStyle(ButtonStyle.Success)
-        .setEmoji('🔄')
+        .setEmoji(resolveBotEmoji('🔄'))
     );
 
     return new ContainerBuilder()
       .setAccentColor(COLORS.DANGER)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ⛔ Destiny Access Restricted — Low Reputation\n\n` +
+          formatCustomEmojiText(`# ⛔ Destiny Access Restricted — Low Reputation\n\n`) +
           `Your reputation has dropped below **10%**. You are restricted from using Destiny.\n\n` +
-          `✨ **Regain your reputation by joining for forever:**\n` +
-          `👉 **https://discord.gg/eclairs**\n\n` +
-          `⚠️ *Notice: If you leave the server, your reputation will immediately go back to below 10.*`
+          formatCustomEmojiText(`✨ **Regain your reputation by joining for forever:**\n`) +
+          formatCustomEmojiText(`👉 **https://discord.gg/eclairs**\n\n`) +
+          formatCustomEmojiText(`⚠️ *Notice: If you leave the server, your reputation will immediately go back to below 10.*`)
         )
       )
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -1053,12 +1054,12 @@ export class EmbedService {
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Start Match')
-        .setEmoji('✨')
+        .setEmoji(resolveBotEmoji('✨'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_mood')
         .setLabel('Main Menu')
-        .setEmoji('🪐')
+        .setEmoji(resolveBotEmoji('🪐'))
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -1066,11 +1067,11 @@ export class EmbedService {
       .setAccentColor(COLORS.SUCCESS)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ✨ Reputation Restored!\n\n` +
+          formatCustomEmojiText(`# ✨ Reputation Restored!\n\n`) +
           `Welcome to **Eclairs**! Your server membership has been verified, and your reputation score has been restored to **100%**.\n\n` +
-          `• 🔓 **Status:** Active & Unrestricted\n` +
-          `• ⭐ **Reputation Score:** 100%\n\n` +
-          `⚠️ *Remember: If you leave discord.gg/eclairs, your reputation will automatically drop below 10 and your account will be restricted again.*`
+          formatCustomEmojiText(`• 🔓 **Status:** Active & Unrestricted\n`) +
+          formatCustomEmojiText(`• ⭐ **Reputation Score:** 100%\n\n`) +
+          formatCustomEmojiText(`⚠️ *Remember: If you leave discord.gg/eclairs, your reputation will automatically drop below 10 and your account will be restricted again.*`)
         )
       )
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -1085,7 +1086,7 @@ export class EmbedService {
       .setAccentColor(COLORS.DANGER)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ⛔ Account Restricted\n\n` +
+          formatCustomEmojiText(`# ⛔ Account Restricted\n\n`) +
           `Your Destiny account is currently suspended.\n` +
           `**Reason:** ${reason || 'Policy violation'}`
         )
@@ -1101,14 +1102,14 @@ export class EmbedService {
         .setLabel('Open Direct Message')
         .setStyle(ButtonStyle.Link)
         .setURL(`https://discord.com/users/${botId || '1568212916304617557'}`)
-        .setEmoji('💬')
+        .setEmoji(resolveBotEmoji('💬'))
     );
 
     return new ContainerBuilder()
       .setAccentColor(COLORS.DESTINY_PURPLE)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🪐 Destiny — 100% Private in Direct Messages\n\n` +
+          formatCustomEmojiText(`# 🪐 Destiny — 100% Private in Direct Messages\n\n`) +
           `Hey **${authorName}**! Destiny operates with zero server footprint directly in your **Direct Messages**.\n\n` +
           `• I have sent you a private message to get started.\n` +
           `• Or click **Open Direct Message** below to chat anonymously without anyone in this server knowing!`
@@ -1127,20 +1128,20 @@ export class EmbedService {
         .setCustomId('btn_reveal_accept')
         .setLabel('Accept & Reveal')
         .setStyle(ButtonStyle.Success)
-        .setEmoji('✨'),
+        .setEmoji(resolveBotEmoji('✨')),
       new ButtonBuilder()
         .setCustomId('btn_reveal_decline')
         .setLabel('Keep Anonymous')
         .setStyle(ButtonStyle.Secondary)
-        .setEmoji('🔒')
+        .setEmoji(resolveBotEmoji('🔒'))
     );
 
     return new ContainerBuilder()
       .setAccentColor(COLORS.GOLD)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 📜 Mutual Reveal Requested!\n\n` +
-          `Your chat partner **${senderAvatar} ${senderPseudonym}** has requested a mutual identity reveal!\n\n` +
+          formatCustomEmojiText(`# 📜 Mutual Reveal Requested!\n\n`) +
+          `Your chat partner **${formatCustomEmojiText(senderAvatar)} ${senderPseudonym}** has requested a mutual identity reveal!\n\n` +
           `• Real Discord profiles are **only revealed if you both accept**.\n` +
           `• If you prefer to stay anonymous, your identity remains 100% hidden.\n\n` +
           `*Would you like to reveal each other's profiles, or continue chatting anonymously?*`
@@ -1158,7 +1159,7 @@ export class EmbedService {
       .setAccentColor(COLORS.GOLD)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ⏳ Reveal Request Sent\n\n` +
+          formatCustomEmojiText(`# ⏳ Reveal Request Sent\n\n`) +
           `You have requested a mutual identity reveal.\n` +
           `A private prompt has been delivered to your chat partner.\n\n` +
           `*If they accept, your profiles will be revealed here. If they prefer to stay anonymous, the chat continues safely without revealing.*`
@@ -1192,7 +1193,7 @@ export class EmbedService {
     if (partnerProfile.gender) details.push(`• **Gender:** ${formatGenderLabel(partnerProfile.gender)}`);
     if (interests) details.push(`• **Interests:** ${interestsStr}`);
     if (typeof partnerProfile.reputationScore === 'number') {
-      details.push(`• **Reputation:** ⭐ ${partnerProfile.reputationScore}%`);
+      details.push(`• **Reputation:** ${formatCustomEmojiText("⭐")} ${partnerProfile.reputationScore}%`);
     }
 
     const detailsStr = details.length > 0
@@ -1204,14 +1205,14 @@ export class EmbedService {
         .setCustomId('destiny_btn_leave')
         .setLabel('End Chat')
         .setStyle(ButtonStyle.Danger)
-        .setEmoji('🚪')
+        .setEmoji(resolveBotEmoji('🚪'))
     );
 
     return new ContainerBuilder()
       .setAccentColor(COLORS.SUCCESS)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🎉 Mutual Identity Revealed!\n\n` +
+          formatCustomEmojiText(`# 🎉 Mutual Identity Revealed!\n\n`) +
           `You and your partner both agreed to reveal your real profiles!\n\n` +
           `${detailsStr}\n\n` +
           `You can continue chatting right here in DM or add each other directly on Discord.`
@@ -1226,15 +1227,15 @@ export class EmbedService {
    */
   createRevealDeclinedContainer(isRequester: boolean): ContainerBuilder {
     const text = isRequester
-      ? `# 🔒 Partner Preferred Anonymity\n\nYour chat partner chose to keep chatting anonymously for now.\nYour real identity remains completely protected! Keep enjoying the conversation.`
-      : `# 🔒 Anonymity Preserved\n\nYou chose to keep chatting anonymously. Your real identity remains completely protected!`;
+      ? formatCustomEmojiText(`# 🔒 Partner Preferred Anonymity\n\nYour chat partner chose to keep chatting anonymously for now.\nYour real identity remains completely protected! Keep enjoying the conversation.`)
+      : formatCustomEmojiText(`# 🔒 Anonymity Preserved\n\nYou chose to keep chatting anonymously. Your real identity remains completely protected!`);
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId('destiny_btn_leave')
         .setLabel('End Chat')
         .setStyle(ButtonStyle.Danger)
-        .setEmoji('🚪')
+        .setEmoji(resolveBotEmoji('🚪'))
     );
 
     return new ContainerBuilder()
@@ -1255,10 +1256,10 @@ export class EmbedService {
 
     return new EmbedBuilder()
       .setColor(COLORS.DESTINY_PURPLE)
-      .setTitle(`✨ Destiny Connection Established! [${room.roomCode}]`)
+      .setTitle(`${formatCustomEmojiText("✨")} Destiny Connection Established! [${room.roomCode}]`)
       .setDescription(
-        `You have been matched anonymously with **${partnerAvatar} ${partnerPersona}**!\n\n` +
-        `Your anonymous persona is **${isUser1 ? room.user1Avatar : room.user2Avatar} ${myPersona}**.`
+        `You have been matched anonymously with **${formatCustomEmojiText(partnerAvatar)} ${partnerPersona}**!\n\n` +
+        `Your anonymous persona is **${formatCustomEmojiText(isUser1 ? room.user1Avatar : room.user2Avatar)} ${myPersona}**.`
       )
       .setFooter({ text: 'Destiny • Privacy First Matchmaking' });
   }
@@ -1266,7 +1267,7 @@ export class EmbedService {
   createProfileEmbed(user: UserProfile): EmbedBuilder {
     return new EmbedBuilder()
       .setColor(COLORS.PRIMARY)
-      .setTitle(`🪐 Destiny Anonymous Profile — ${user.destinyId}`)
+      .setTitle(`${formatCustomEmojiText("🪐")} Destiny Anonymous Profile — ${user.destinyId}`)
       .setDescription(`Your global anonymous identity.`);
   }
 
@@ -1281,7 +1282,7 @@ export class EmbedService {
       .setAccentColor(isPinned ? COLORS.GOLD : COLORS.DESTINY_PURPLE)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**${senderAvatar} ${senderPseudonym}**${isPinned ? ' 📌 [PINNED]' : ''}\n\n${text}`
+          `**${formatCustomEmojiText(senderAvatar)} ${senderPseudonym}**${isPinned ? formatCustomEmojiText(' 📌 [PINNED]') : ''}\n\n${text}`
         )
       );
   }
@@ -1290,7 +1291,7 @@ export class EmbedService {
     const embed = new EmbedBuilder()
       .setColor(isPinned ? COLORS.GOLD : COLORS.DARK)
       .setAuthor({
-        name: `${senderAvatar} ${senderPseudonym}${isPinned ? ' 📌 [PINNED]' : ''}`,
+        name: `${formatCustomEmojiText(senderAvatar)} ${senderPseudonym}${isPinned ? formatCustomEmojiText(' 📌 [PINNED]') : ''}`,
       })
       .setTimestamp();
 
@@ -1308,13 +1309,13 @@ export class EmbedService {
       .setCustomId('btn_reveal_consent')
       .setLabel('Request Mutual Reveal')
       .setStyle(ButtonStyle.Primary)
-      .setEmoji('📜');
+      .setEmoji(resolveBotEmoji('📜'));
 
     const leaveBtn = new ButtonBuilder()
       .setCustomId('destiny_btn_leave')
       .setLabel('End Chat')
       .setStyle(ButtonStyle.Danger)
-      .setEmoji('🚪');
+      .setEmoji(resolveBotEmoji('🚪'));
 
     return new ActionRowBuilder<ButtonBuilder>().addComponents(consentBtn, leaveBtn);
   }

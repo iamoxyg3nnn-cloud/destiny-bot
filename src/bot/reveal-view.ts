@@ -1,3 +1,4 @@
+import { formatCustomEmojiText } from './custom-emojis.js';
 import { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder } from 'discord.js';
 import { embedService, COLORS } from './embeds/index.js';
 import { ProfileField, RoomSession, UserProfile } from '../core/types.js';
@@ -63,11 +64,11 @@ export function createRevealEmptyContainer(agreedFields: ProfileField[] = []): C
     .setAccentColor(COLORS.SUCCESS)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# 🎉 Mutual Profile Reveal Complete!\n\n` +
+        formatCustomEmojiText(`# 🎉 Mutual Profile Reveal Complete!\n\n`) +
         `Both partners have consented to exchange information!\n\n` +
         `${agreedStr}` +
         `*No common fields were consented to, so no profile details were shared.*\n\n` +
-        `🔒 *Any unagreed fields and Discord usernames remain strictly protected.*`
+        formatCustomEmojiText(`🔒 *Any unagreed fields and Discord usernames remain strictly protected.*`)
       )
     )
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true));

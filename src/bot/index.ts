@@ -15,6 +15,7 @@ import { stateStore } from '../storage/state-store.js';
 import { ECLAIRS_GUILD_IDS, checkOtherEclairsMembership, isReputationRestriction } from '../core/moderation/reputation.js';
 import { matchmakingManager } from '../core/matchmaking/manager.js';
 import { embedService } from './embeds/index.js';
+import { configureDestinyEmojis, formatCustomEmojiText } from './custom-emojis.js';
 import { setDiscordClient } from './client-registry.js';
 import { initPresence, refreshPresence, stopPresence } from './presence-manager.js';
 import { handleInteraction } from './interactions/handler.js';
@@ -120,8 +121,9 @@ export class DestinyBot {
   private registerEvents() {
     this.client.once(Events.ClientReady, async (readyClient) => {
       try {
-        console.log(`🤖 Destiny Bot is online as ${readyClient.user.tag}`);
-        console.log(`📊 Serving ${readyClient.guilds.cache.size} servers`);
+        console.log(`Destiny Bot is online as ${readyClient.user.tag}`);
+        console.log(`Serving ${readyClient.guilds.cache.size} servers`);
+        configureDestinyEmojis(readyClient);
         await publishGuildSnapshot(readyClient).catch((error) => console.warn('[Bot] Guild snapshot publish failed:', error?.message || error));
         if (!guildSnapshotTimer) {
           guildSnapshotTimer = setInterval(() => {
@@ -155,9 +157,9 @@ export class DestinyBot {
         if (interaction.isRepliable()) {
           try {
             if (interaction.deferred) {
-              await interaction.editReply({ content: '⚠️ An unexpected error occurred while processing this interaction.' });
+              await interaction.editReply({ content: formatCustomEmojiText('⚠️ An unexpected error occurred while processing this interaction.') });
             } else if (!interaction.replied) {
-              await interaction.reply({ content: '⚠️ An unexpected error occurred while processing this interaction.', flags: MessageFlags.Ephemeral });
+              await interaction.reply({ content: formatCustomEmojiText('⚠️ An unexpected error occurred while processing this interaction.'), flags: MessageFlags.Ephemeral });
             }
           } catch {}
         }
@@ -180,7 +182,7 @@ export class DestinyBot {
 
     // When Destiny joins a new server, automatically send the Setup Console to the admins!
     this.client.on(Events.GuildCreate, async (guild) => {
-      console.log(`🤖 Destiny joined new server: ${guild.name} (${guild.id}) with ${guild.memberCount} members`);
+      console.log(`Destiny joined new server: ${guild.name} (${guild.id}) with ${guild.memberCount} members`);
       await publishGuildSnapshot(this.client).catch((error) => console.warn('[Bot] Guild snapshot update failed:', error?.message || error));
       try {
         await sendGuildSetupWelcome(guild);
@@ -276,28 +278,28 @@ export class DestinyBot {
    */
   async syncSlashCommands() {
     if (!config.DISCORD_TOKEN || config.DISCORD_TOKEN.startsWith('mock_')) {
-      console.log('ℹ️ Running in mock Discord token mode. Skipping REST command registration.');
+      console.log('Running in mock Discord token mode. Skipping REST command registration.');
       return;
     }
 
     try {
       const rest = new REST({ version: '10' }).setToken(config.DISCORD_TOKEN);
-      console.log(`🔄 Syncing ${slashCommands.length} slash commands to Discord API...`);
+      console.log(`Syncing ${slashCommands.length} slash commands to Discord API...`);
 
       const body = slashCommands.map((cmd) => cmd.toJSON());
       await rest.put(
         Routes.applicationCommands(config.DISCORD_CLIENT_ID),
         { body }
       );
-      console.log(`✅ Successfully registered ${slashCommands.length} global slash commands!`);
+      console.log(`Successfully registered ${slashCommands.length} global slash commands.`);
     } catch (err: any) {
-      console.error('❌ Failed to register slash commands:', err?.message || err);
+      console.error('Failed to register slash commands:', err?.message || err);
     }
   }
 
   async start(): Promise<void> {
     if (!config.DISCORD_TOKEN || config.DISCORD_TOKEN.startsWith('mock_')) {
-      console.log('ℹ️ Mock Discord mode active. Bot client initialized in standalone test configuration.');
+      console.log('Mock Discord mode active. Bot client initialized in standalone test configuration.');
       return;
     }
     await this.client.login(config.DISCORD_TOKEN);

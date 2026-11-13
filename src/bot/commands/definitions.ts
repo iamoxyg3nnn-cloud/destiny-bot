@@ -1,3 +1,4 @@
+import { formatCustomEmojiText } from '../custom-emojis.js';
 import { 
   SlashCommandBuilder, 
   ChatInputCommandInteraction, 
@@ -272,7 +273,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     }
     if (!config.BOT_OWNER_IDS.includes(interaction.user.id)) {
-      await interaction.editReply({ content: '⛔ This command is reserved for configured Destiny bot owners.' });
+      await interaction.editReply({ content: formatCustomEmojiText('⛔ This command is reserved for configured Destiny bot owners.') });
       return;
     }
     let runtimeStateOnline = stateStore.isHealthy();
@@ -367,7 +368,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
   if (commandName === 'match') {
     if (!isProfileComplete(user)) {
       await respond({
-        content: '⚠️ Please complete your profile first with `/profile` before joining matchmaking.',
+        content: formatCustomEmojiText('⚠️ Please complete your profile first with `/profile` before joining matchmaking.'),
       });
       return;
     }
@@ -384,18 +385,18 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     const result = await matchmakingManager.joinQueue(user, interaction.guildId || undefined);
 
     if (!result.success) {
-      await respond({ content: `❌ ${result.message}` });
+      await respond({ content: `${formatCustomEmojiText("❌")} ${result.message}` });
       return;
     }
 
     const embed = new EmbedBuilder()
       .setColor(COLORS.DESTINY_PURPLE)
-      .setTitle('🔍 Searching for your anonymous match...')
+      .setTitle(formatCustomEmojiText('🔍 Searching for your anonymous match...'))
       .setDescription(
         `You are now in the Destiny matchmaking queue!\n` +
         `• **Age Criteria**: 18+\n` +
         `• **Interests**: ${user.interests.length > 0 ? user.interests.map((i) => `\`${i}\``).join(' ') : '*Any*'}\n\n` +
-        `⏳ We will deliver a private DM the moment a compatible partner arrives!`
+        formatCustomEmojiText(`⏳ We will deliver a private DM the moment a compatible partner arrives!`)
       )
       .setFooter({ text: 'Use /leave anytime to exit the queue.' });
 
@@ -426,7 +427,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
               embeds: [
                 new EmbedBuilder()
                   .setColor(COLORS.DARK)
-                  .setTitle('🚪 Chat Session Ended')
+                  .setTitle(formatCustomEmojiText('🚪 Chat Session Ended'))
                   .setDescription('Your anonymous partner has left the chat session. Your real identity remained hidden.'),
               ],
             }))
@@ -434,25 +435,25 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         }
       }
 
-      await respond({ content: '🚪 You have cleanly ended the anonymous chat session. Your real identity remained hidden.' });
+      await respond({ content: formatCustomEmojiText('🚪 You have cleanly ended the anonymous chat session. Your real identity remained hidden.') });
       return;
     }
 
     const wasQueued = await matchmakingManager.isQueued(user.id);
     if (wasQueued) {
       await matchmakingManager.leaveQueue(user.id);
-      await respond({ content: '✅ You have been removed from the matchmaking queue.' });
+      await respond({ content: formatCustomEmojiText('✅ You have been removed from the matchmaking queue.') });
       return;
     }
 
-    await respond({ content: 'ℹ️ You are not currently in a room or queue.' });
+    await respond({ content: formatCustomEmojiText('ℹ️ You are not currently in a room or queue.') });
     return;
   }
 
   // 3. REVEAL
   if (commandName === 'reveal') {
     if (!user.activeRoomId) {
-      await respond({ content: '❌ You must be in an active chat room to request a profile reveal.', ephemeral: true });
+      await respond({ content: formatCustomEmojiText('❌ You must be in an active chat room to request a profile reveal.'), ephemeral: true });
       return;
     }
 
@@ -472,7 +473,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
 
     await respond({
-      content: '🔒 **Mutual Profile Reveal**: Select the fields you are willing to exchange. A field is **only** revealed if BOTH of you select it!',
+      content: formatCustomEmojiText('🔒 **Mutual Profile Reveal**: Select the fields you are willing to exchange. A field is **only** revealed if BOTH of you select it!'),
       components: [row],
       ephemeral: true,
     });
@@ -505,7 +506,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     }
 
     if (!targetUserId) {
-      await respond({ content: '❌ Could not find a user to block. Provide a Destiny ID or use during a room session.', ephemeral: true });
+      await respond({ content: formatCustomEmojiText('❌ Could not find a user to block. Provide a Destiny ID or use during a room session.'), ephemeral: true });
       return;
     }
 
@@ -522,11 +523,11 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
     const embed = new EmbedBuilder()
       .setColor(COLORS.PRIMARY)
-      .setTitle('⚙️ Destiny Notification & Privacy Settings')
+      .setTitle(formatCustomEmojiText('⚙️ Destiny Notification & Privacy Settings'))
       .setDescription(
-        `• **7:30 PM IST Daily Reminder**: ${reminder !== null ? (reminder ? '✅ Enabled' : '❌ Disabled') : '✅ Enabled'}\n` +
+        `• **7:30 PM IST Daily Reminder**: ${reminder !== null ? (reminder ? formatCustomEmojiText('✅ Enabled') : formatCustomEmojiText('❌ Disabled')) : formatCustomEmojiText('✅ Enabled')}\n` +
         `• **Configured Timezone**: \`${tz || 'Asia/Kolkata'}\`\n` +
-        `• **System Opt-Out**: ${optOut ? '🚫 Active' : '🟢 Inactive'}\n\n` +
+        `• **System Opt-Out**: ${optOut ? formatCustomEmojiText('🚫 Active') : formatCustomEmojiText('🟢 Inactive')}\n\n` +
         `Settings updated successfully.`
       );
 
@@ -537,14 +538,14 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
   // 14. SETUP (Administrator)
   if (commandName === 'setup') {
     if (!interaction.guild) {
-      await respond({ content: '⚠️ The `/setup` command can only be executed inside a Discord server.', ephemeral: true });
+      await respond({ content: formatCustomEmojiText('⚠️ The `/setup` command can only be executed inside a Discord server.'), ephemeral: true });
       return;
     }
     // Enforce server-scoped management permission at execution time as well.
     // Manage Server does not grant platform-owner or global moderation access.
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) &&
         !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-      await respond({ content: '⛔ You need Discord Manage Server or Administrator permission to change this server’s Destiny settings.', ephemeral: true });
+      await respond({ content: formatCustomEmojiText('⛔ You need Discord Manage Server or Administrator permission to change this server’s Destiny settings.'), ephemeral: true });
       return;
     }
 
@@ -553,20 +554,20 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     if (sub === 'portal') {
       const channel = interaction.options.getChannel('channel', true) as any;
       if (![0, 5].includes(Number(channel.type))) {
-        await respond({ content: '⚠️ The designated portal channel must be a text or announcement channel.', ephemeral: true });
+        await respond({ content: formatCustomEmojiText('⚠️ The designated portal channel must be a text or announcement channel.'), ephemeral: true });
         return;
       }
       const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
       const botPermissions = botMember ? channel.permissionsFor(botMember) : null;
       if (!botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
-        await respond({ content: '⚠️ Destiny needs View Channel and Send Messages permissions in the portal channel.', ephemeral: true });
+        await respond({ content: formatCustomEmojiText('⚠️ Destiny needs View Channel and Send Messages permissions in the portal channel.'), ephemeral: true });
         return;
       }
 
       const previousSettings = await db.getGuildSettings(interaction.guild.id);
       const saved = await db.setGuildMatchChannel(interaction.guild.id, channel.id, interaction.guild.name);
       if (!saved) {
-        await respond({ content: '⚠️ Could not save the matchmaking portal channel. Please try again.', ephemeral: true });
+        await respond({ content: formatCustomEmojiText('⚠️ Could not save the matchmaking portal channel. Please try again.'), ephemeral: true });
         return;
       }
 
@@ -580,8 +581,8 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         const rolledBack = await db.setGuildMatchChannel(interaction.guild.id, previousSettings?.matchChannelId ?? null, interaction.guild.name);
         await respond({
           content: rolledBack
-            ? `⚠️ Could not post the portal in <#${channel.id}>. The previous portal setting was restored.`
-            : `⚠️ Portal posting failed and the previous setting could not be restored. Please contact the bot owner.`,
+            ? `${formatCustomEmojiText("⚠️")} Could not post the portal in <#${channel.id}>. The previous portal setting was restored.`
+            : formatCustomEmojiText(`⚠️ Portal posting failed and the previous setting could not be restored. Please contact the bot owner.`),
           ephemeral: true,
         });
         console.error('[Guild Setup] Portal post failed:', error?.message || error);
@@ -590,7 +591,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_MATCH_CHANNEL', interaction.guild.id, { channelId: channel.id });
 
       await respond({
-        content: `✅ **Destiny Matchmaking Portal** deployed successfully in <#${channel.id}>! Members can now click "Find Match" to start chatting.${auditLogged ? '' : ' ⚠️ Audit logging failed; notify a platform owner.'}`,
+        content: `${formatCustomEmojiText("✅")} **Destiny Matchmaking Portal** deployed successfully in <#${channel.id}>! Members can now click "Find Match" to start chatting.${auditLogged ? '' : formatCustomEmojiText(' ⚠️ Audit logging failed; notify a platform owner.')}`,
         ephemeral: true
       });
       return;
@@ -598,34 +599,34 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
 
     if (sub === 'modlog') {
       if (!ECLAIRS_GUILD_IDS.includes(interaction.guild.id)) {
-        await respond({ content: '⛔ The moderation alert channel can only be configured in a trusted Destiny staff server. Server-specific setup remains available through /setup portal and /setup cross_server.', ephemeral: true });
+        await respond({ content: formatCustomEmojiText('⛔ The moderation alert channel can only be configured in a trusted Destiny staff server. Server-specific setup remains available through /setup portal and /setup cross_server.'), ephemeral: true });
         return;
       }
       const channel = interaction.options.getChannel('channel', true) as any;
       if (![0, 5].includes(Number(channel.type))) {
-        await respond({ content: '⚠️ The moderation log must be a text or announcement channel.', ephemeral: true });
+        await respond({ content: formatCustomEmojiText('⚠️ The moderation log must be a text or announcement channel.'), ephemeral: true });
         return;
       }
       const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
       const botPermissions = botMember ? channel.permissionsFor(botMember) : null;
       const everyoneCanView = channel.permissionsFor(interaction.guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel);
       if (!botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
-        await respond({ content: '⚠️ Destiny needs View Channel and Send Messages permissions in the moderation channel.', ephemeral: true });
+        await respond({ content: formatCustomEmojiText('⚠️ Destiny needs View Channel and Send Messages permissions in the moderation channel.'), ephemeral: true });
         return;
       }
       if (everyoneCanView !== false) {
-        await respond({ content: '🔒 The moderation channel must be private: @everyone must not have View Channel permission.', ephemeral: true });
+        await respond({ content: formatCustomEmojiText('🔒 The moderation channel must be private: @everyone must not have View Channel permission.'), ephemeral: true });
         return;
       }
       const saved = await db.setGuildModLogChannel(interaction.guild.id, channel.id, interaction.guild.name);
       if (!saved) {
-        await respond({ content: '⚠️ Could not save the moderation channel. Please try again.', ephemeral: true });
+        await respond({ content: formatCustomEmojiText('⚠️ Could not save the moderation channel. Please try again.'), ephemeral: true });
         return;
       }
       const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_MODLOG_CHANNEL', interaction.guild.id, { channelId: channel.id });
 
       await respond({
-        content: `✅ Moderation and verification alerts channel configured to <#${channel.id}>.${auditLogged ? '' : ' ⚠️ Audit logging failed; notify a platform owner.'}`,
+        content: `${formatCustomEmojiText("✅")} Moderation and verification alerts channel configured to <#${channel.id}>.${auditLogged ? '' : formatCustomEmojiText(' ⚠️ Audit logging failed; notify a platform owner.')}`,
         ephemeral: true
       });
       return;
@@ -635,12 +636,12 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       const enabled = interaction.options.getBoolean('enabled', true);
       const saved = await db.setGuildCrossServerEnabled(interaction.guild.id, enabled, interaction.guild.name);
       if (!saved) {
-        await respond({ content: '⚠️ Could not save this server setting. Please try again; no success was reported.', ephemeral: true });
+        await respond({ content: formatCustomEmojiText('⚠️ Could not save this server setting. Please try again; no success was reported.'), ephemeral: true });
         return;
       }
       const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_CROSS_SERVER', interaction.guild.id, { enabled });
       await respond({
-        content: `✅ Cross-server matchmaking has been **${enabled ? 'ENABLED' : 'DISABLED'}** for ${interaction.guild.name}. This setting is saved.${auditLogged ? '' : ' ⚠️ Audit logging failed; notify a platform owner.'}`,
+        content: `${formatCustomEmojiText("✅")} Cross-server matchmaking has been **${enabled ? 'ENABLED' : 'DISABLED'}** for ${interaction.guild.name}. This setting is saved.${auditLogged ? '' : formatCustomEmojiText(' ⚠️ Audit logging failed; notify a platform owner.')}`,
         ephemeral: true
       });
       return;
@@ -650,11 +651,11 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       const settings = await db.getGuildSettings(interaction.guild.id);
       const embed = new EmbedBuilder()
         .setColor(COLORS.DARK)
-        .setTitle(`🛡️ ${interaction.guild.name} — Destiny Configuration`)
+        .setTitle(`${formatCustomEmojiText("🛡️")} ${interaction.guild.name} — Destiny Configuration`)
         .addFields(
           { name: 'Matchmaking Portal Channel', value: settings?.matchChannelId ? `<#${settings.matchChannelId}>` : '`Not configured` (use `/setup portal`)', inline: false },
           { name: 'Staff Mod-Log Channel', value: settings?.modLogChannelId ? `<#${settings.modLogChannelId}>` : '`Not configured` (use `/setup modlog`)', inline: false },
-          { name: 'Cross-Server Matchmaking', value: settings?.crossServerEnabled !== false ? '✅ Enabled' : '❌ Disabled', inline: true },
+          { name: 'Cross-Server Matchmaking', value: settings?.crossServerEnabled !== false ? formatCustomEmojiText('✅ Enabled') : formatCustomEmojiText('❌ Disabled'), inline: true },
           { name: 'Minimum Age Requirement', value: `${settings?.minAgeLimit || 18}+`, inline: true }
         )
         .setFooter({ text: 'Destiny Administration Wizard' });
@@ -692,7 +693,7 @@ async function handleProfileCommand(interaction: ChatInputCommandInteraction): P
       console.error('[Bot] Failed to open profile modal:', err?.message || err);
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
-          content: '⚠️ Could not open the profile editor. Please try `/profile` again in a moment.',
+          content: formatCustomEmojiText('⚠️ Could not open the profile editor. Please try `/profile` again in a moment.'),
           flags: MessageFlags.Ephemeral,
         }).catch(() => {});
       }
@@ -733,7 +734,7 @@ async function handleProfileCommand(interaction: ChatInputCommandInteraction): P
     if (!isProfileComplete(user)) {
       await interaction.editReply({
         content:
-          '⚠️ Your profile is still incomplete. Age (18+) and gender are required before you can match.\n' +
+          formatCustomEmojiText('⚠️ Your profile is still incomplete. Age (18+) and gender are required before you can match.\n') +
           'Use `/profile` again to finish setup — it only takes a few seconds.',
       }).catch(() => {});
       return;
@@ -742,14 +743,14 @@ async function handleProfileCommand(interaction: ChatInputCommandInteraction): P
     const { attachment } = await buildProfileCard(user, discordUser, interaction.member);
 
     await interaction.editReply({
-      content: '🪐 **Your Destiny Profile** — update anything anytime with `/profile`.',
+      content: formatCustomEmojiText('🪐 **Your Destiny Profile** — update anything anytime with `/profile`.'),
       files: [attachment],
       components: [createProfileActionRow()],
     });
   } catch (err: any) {
     console.error('[Bot] handleProfileCommand error:', err?.message || err);
     await interaction.editReply({
-      content: '⚠️ Something went wrong while loading your profile. Please try again.',
+      content: formatCustomEmojiText('⚠️ Something went wrong while loading your profile. Please try again.'),
     }).catch(() => {});
   }
 }

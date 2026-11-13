@@ -1,3 +1,4 @@
+import { formatCustomEmojiText, resolveBotEmoji } from '../custom-emojis.js';
 import { 
   Client, 
   Message, 
@@ -97,7 +98,7 @@ export class MessageCommandHandler {
               .setAccentColor(COLORS.DARK)
               .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                  '# ⛔ Account Restricted\\n\\nYour account is currently restricted by Destiny moderation. Please contact the moderators if you believe this is a mistake.'
+                  formatCustomEmojiText('# ⛔ Account Restricted\\n\\nYour account is currently restricted by Destiny moderation. Please contact the moderators if you believe this is a mistake.')
                 )
               )
           : embedService.createLowReputationRestrictedContainer();
@@ -138,7 +139,7 @@ export class MessageCommandHandler {
                 .setAccentColor(COLORS.DARK)
                 .addTextDisplayComponents(
                   new TextDisplayBuilder().setContent(
-                    '# 🚪 Chat Session Ended\n\nYour anonymous partner has left the chat session.\nClick below to find a new match or report if inappropriate behavior occurred.'
+                    formatCustomEmojiText('# 🚪 Chat Session Ended\n\nYour anonymous partner has left the chat session.\nClick below to find a new match or report if inappropriate behavior occurred.')
                   )
                 )
                 .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -147,12 +148,12 @@ export class MessageCommandHandler {
                     new ButtonBuilder()
                       .setCustomId('destiny_btn_start')
                       .setLabel('Find New Match')
-                      .setEmoji('✨')
+                      .setEmoji(resolveBotEmoji('✨'))
                       .setStyle(ButtonStyle.Success),
                     new ButtonBuilder()
                       .setCustomId(`btn_report_room_${activeRoom.id}`)
                       .setLabel('Report User')
-                      .setEmoji('🚨')
+                      .setEmoji(resolveBotEmoji('🚨'))
                       .setStyle(ButtonStyle.Danger)
                   )
                 );
@@ -164,7 +165,7 @@ export class MessageCommandHandler {
             .setAccentColor(COLORS.DARK)
             .addTextDisplayComponents(
               new TextDisplayBuilder().setContent(
-                '# 🚪 Session Left\n\nYou have safely left the anonymous chat session.'
+                formatCustomEmojiText('# 🚪 Session Left\n\nYou have safely left the anonymous chat session.')
               )
             )
             .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -173,12 +174,12 @@ export class MessageCommandHandler {
                 new ButtonBuilder()
                   .setCustomId('destiny_btn_start')
                   .setLabel('Find New Match')
-                  .setEmoji('✨')
+                  .setEmoji(resolveBotEmoji('✨'))
                   .setStyle(ButtonStyle.Success),
                 new ButtonBuilder()
                   .setCustomId(`btn_report_room_${activeRoom.id}`)
                   .setLabel('Report User')
-                  .setEmoji('🚨')
+                  .setEmoji(resolveBotEmoji('🚨'))
                   .setStyle(ButtonStyle.Danger)
               )
             );
@@ -332,7 +333,7 @@ export class MessageCommandHandler {
       const { verificationService } = await import('../../core/moderation/verification.js');
       const submission = await verificationService.submitVerification(user.id, audioAttachment.url);
       if (!submission.success) {
-        await message.reply({ content: `⚠️ ${submission.message}` }).catch(() => {});
+        await message.reply({ content: `${formatCustomEmojiText("⚠️")} ${submission.message}` }).catch(() => {});
         return true;
       }
 
@@ -390,7 +391,7 @@ export class MessageCommandHandler {
         .setAccentColor(COLORS.DARK)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            '# ℹ️ No Chat Session to Report\n\nYou do not have an active or recent chat session to report. Reports can only be made after chatting with an anonymous partner.'
+            formatCustomEmojiText('# ℹ️ No Chat Session to Report\n\nYou do not have an active or recent chat session to report. Reports can only be made after chatting with an anonymous partner.')
           )
         )
         .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -399,7 +400,7 @@ export class MessageCommandHandler {
             new ButtonBuilder()
               .setCustomId('destiny_btn_start')
               .setLabel('Start Match')
-              .setEmoji('✨')
+              .setEmoji(resolveBotEmoji('✨'))
               .setStyle(ButtonStyle.Success)
           )
         );
@@ -455,7 +456,7 @@ export class MessageCommandHandler {
         const warningContainer = new ContainerBuilder()
           .setAccentColor(COLORS.DANGER)
           .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent('⚠️ Only server administrators with **Manage Server** or **Administrator** permissions can configure Destiny.')
+            new TextDisplayBuilder().setContent(formatCustomEmojiText('⚠️ Only server administrators with **Manage Server** or **Administrator** permissions can configure Destiny.'))
           );
         const reply = await message.reply({
           components: [warningContainer],
@@ -515,8 +516,8 @@ export class MessageCommandHandler {
         .setAccentColor(COLORS.DESTINY_PURPLE)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `🔒 **Destiny operates 100% privately in Direct Messages.**\n\n` +
-            `Hey <@${message.author.id}>, I've sent your Destiny console to your **Direct Messages**! 👉 **Check your DMs** to get started privately.`
+            formatCustomEmojiText(`🔒 **Destiny operates 100% privately in Direct Messages.**\n\n`) +
+            `Hey <@${message.author.id}>, I've sent your Destiny console to your **Direct Messages**! ${formatCustomEmojiText("👉")} **Check your DMs** to get started privately.`
           )
         );
 
@@ -534,7 +535,7 @@ export class MessageCommandHandler {
         .setAccentColor(COLORS.DANGER)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `⚠️ **<@${message.author.id}>, Destiny works exclusively in DMs for complete anonymity!**\n\n` +
+            `${formatCustomEmojiText("⚠️")} **<@${message.author.id}>, Destiny works exclusively in DMs for complete anonymity!**\n\n` +
             `I was unable to send you a direct message. Please enable **"Allow direct messages from server members"** in your Discord Privacy Settings and try typing \`destiny\` again.`
           )
         );
@@ -617,7 +618,7 @@ export class MessageCommandHandler {
 
     const queueRes = await matchmakingManager.joinQueue(user, message.guildId || undefined);
     if (!queueRes.success) {
-      await message.reply({ content: `⚠️ ${queueRes.message}` }).catch(() => {});
+      await message.reply({ content: `${formatCustomEmojiText("⚠️")} ${queueRes.message}` }).catch(() => {});
       return true;
     }
 
@@ -642,7 +643,7 @@ export class MessageCommandHandler {
     const { attachment } = await buildProfileCard(user, message.author, message.member);
 
     await message.reply({
-      content: '🪐 **Your Destiny Profile** — update anything anytime with `/profile`.',
+      content: formatCustomEmojiText('🪐 **Your Destiny Profile** — update anything anytime with `/profile`.'),
       files: [attachment],
       components: [createProfileActionRow()],
     });

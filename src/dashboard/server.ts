@@ -353,15 +353,17 @@ async function hasOwnerCapability(userId: string, capability: PlatformOperatorCa
 async function serveStatic(url: URL, res: ServerResponse): Promise<void> {
   const relative = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
   if (!/^[a-zA-Z0-9._/-]+$/.test(relative) || relative.includes('..')) return json(res, 404, { error: 'Not found.' });
-  const sharedAssets = new Set(['dashboard.css', 'dashboard.js']);
-  const assetRoot = sharedAssets.has(relative) ? path.resolve(STATIC_ROOT, '../../shared') : STATIC_ROOT;
+  const sharedAsset = relative === 'dashboard.css' || relative === 'dashboard.js' || relative.startsWith('assets/');
+  const assetRoot = sharedAsset ? path.resolve(STATIC_ROOT, '../../shared') : STATIC_ROOT;
   const filePath = path.resolve(assetRoot, relative);
   if (!filePath.startsWith(assetRoot + path.sep)) return json(res, 404, { error: 'Not found.' });
   try {
     const content = await readFile(filePath);
     res.writeHead(200, {
       'Content-Type': MIME_TYPES[path.extname(filePath)] || 'application/octet-stream',
-      'Cache-Control': relative === 'index.html' ? 'no-store' : 'public, max-age=300',
+      'Cache-Control': relative === 'index.html' || relative === 'dashboard.js' || relative === 'dashboard.css'
+        ? 'no-store'
+        : 'public, max-age=86400',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
     });

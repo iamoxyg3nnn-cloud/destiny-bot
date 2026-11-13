@@ -97,6 +97,7 @@ export class VerificationService {
         const discordUser = await bot.client.users.fetch(outcome.user.discordUserId).catch(() => null);
         if (discordUser) {
           const { embedService, COLORS } = await import('../../bot/embeds/index.js');
+          const { formatCustomEmojiText } = await import('../../bot/custom-emojis.js');
           const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = await import('discord.js');
           const notice = approved
             ? embedService.createAlreadyVerifiedContainer(outcome.user)
@@ -104,7 +105,7 @@ export class VerificationService {
                 .setAccentColor(COLORS.DANGER)
                 .addTextDisplayComponents(
                   new TextDisplayBuilder().setContent(
-                    `# ❌ Verification Update\n\n` +
+                    formatCustomEmojiText(`# ❌ Verification Update\n\n`) +
                     `Your verification request could not be approved at this time.\n\n` +
                     `• **Reason/Notes:** ${(notes || 'Evidence was unclear or incomplete.').slice(0, 1000)}\n` +
                     `• **Next Steps:** You may re-apply anytime by clicking **Get Verified** in your profile menu with clearer proof.`

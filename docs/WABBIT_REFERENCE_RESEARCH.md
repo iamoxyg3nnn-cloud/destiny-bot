@@ -32,7 +32,7 @@ Research date: 2026-11-12. Research is limited to publicly observable pages and 
 ## Research limitations
 
 - Public access provided the landing page and a session-authenticated server-selection screen. The dashboard's server configuration pages require a legitimately authorized account and were not explored.
-- No cross-viewport comparison set or interaction screenshot archive has been created yet. This is a known research follow-up, not a completed visual fidelity claim.
+- A browser comparison of the public Wabbit and Destiny landing-page desktop views was completed during the 2026-11-13 implementation. Matching mobile screenshots and a durable screenshot archive were not created; the private authenticated settings interface remains unobserved.
 - REA is connected in this Codex environment, but its browser inspection tools require a local Chrome DevTools Protocol endpoint. No such endpoint was configured for the in-app browser, so public observations were gathered through visible browser accessibility state and public docs instead.
 - Wabbit's documented economy features are intentionally out of Destiny's product scope.
 
