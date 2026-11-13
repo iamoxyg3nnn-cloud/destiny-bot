@@ -54,3 +54,18 @@ For developer startup, set the Discord OAuth client secret, root-owner ID, dashb
 
 Not deployed. One proxied DNS record was created for `destiny-bot.apps.chuglii.in`; no bot HTTP route or dashboard service is attached yet. The fresh `destiny project` Supabase database has migrations 001–020 and empty application tables. The older `destiny bot` project and isolated validation project remain separate.
 
+## GitHub and Vercel handoff (2026-11-13)
+
+- Created private repository [`someonebest007/destiny-bot`](https://github.com/someonebest007/destiny-bot) and pushed commit `36cebd6` to `main`. The local `.env` and deleted `text1.txt` are not tracked or pushed.
+- The connected GitHub plugin account is suspended, so its API returns HTTP 403. The `GITHUB_PAT` stored in ignored `.env` authenticated successfully as `someonebest007`; it was used only for repository creation and push, and was not printed or committed.
+- GitHub Actions has dashboard build/test workflow configuration for pull requests, manual dispatch, and pushes to `main`. No production bot deployment workflow has been added because there is no durable host, SSH deployment credential, Coolify API credential, or hosted Redis URL in `.env`. A GitHub-hosted Actions runner is temporary and cannot keep the Discord Gateway bot online as a production service.
+- Vercel connector accounts are `Personal` (team `Apunabhibhilegendhai`, with existing projects) and `Primary` (team `lawdachuss-projects`, with no projects). Neither account lists a domain. No Vercel project has been created yet. The current dashboard is a persistent Node HTTP server and uses process-local OAuth/session/rate-limit fallback when Redis is disabled; deploying its static shell alone would leave every API route broken, and Vercel serverless instances do not share that in-memory state.
+- Before releasing, rotate the Discord bot token and OAuth client secret that were present in plaintext in the deleted handoff file. Update the ignored `.env`; do not send the secret values in chat. Bot production also requires a persistent runtime host and Redis endpoint. After rotation and target configuration, add only the runtime secrets needed to GitHub Actions/Vercel using their encrypted secret stores.
+
+### Remaining inputs for production deployment
+
+1. A durable container host and deployment method for the bot (VPS hostname/IP, SSH user/key, and deploy directory, or a Coolify API URL/token). Store sensitive values in ignored `.env`.
+2. A production Redis endpoint for the bot (`REDIS_URL` or host/port/user/password values). Redis is disabled only for the dashboard fallback; the bot's queues and coordination require shared Redis.
+3. Freshly rotated Discord bot token and OAuth client secret in `.env`, plus confirmation that both OAuth callback URLs are registered.
+4. Which Vercel account/team should own `admin.chuglii.in` and `owner.chuglii.in`. The Personal account has existing projects; Primary currently has none. The dashboard needs a Vercel-compatible backend/session design before adding domains.
+

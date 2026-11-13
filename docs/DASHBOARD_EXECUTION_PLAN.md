@@ -70,7 +70,7 @@ Updated: 2026-11-13 (Asia/Kolkata)
 - [x] Add focused authorization tests and run current build/test checks.
 - [x] Capture local sign-in screen evidence and document inaccessible reference areas; authenticated viewports still require OAuth setup.
 - [ ] Finish deployment and recovery documentation based on actual host configuration; production setup/deploy remains a separate safeguarded operation.
-- [x] Added pull request/manual dashboard validation workflow without production credentials or migrations.
+- [x] Added GitHub Actions dashboard build/test workflow for pull requests, manual runs, and pushes to `main`; production deployment remains blocked on runtime host and rotated credentials.
 
 ## Decisions and constraints
 
@@ -102,5 +102,5 @@ Updated: 2026-11-13 (Asia/Kolkata)
 
 ## Next actionable task
 
-Production deployment now awaits rotated Discord OAuth/bot credentials, callback registration, and a reachable container/service deployment target. Supabase credentials are in ignored `.env`, and the fresh runtime project is initialized with migrations 001–020. The dashboard-only Compose project reads required settings from `.env`; with Redis disabled, keep one process per dashboard and expect sessions to reset on restart and queue diagnostics to be unavailable. `destiny-bot.apps.chuglii.in` is only a reserved tunnel-backed hostname; it needs an HTTP service route before it serves an app. Consider stale Redis index cleanup and queue-counter semantics when Redis is restored; see `docs/DASHBOARD_DATABASE_RUNTIME_INVENTORY.md`. Guild-role membership remains unimplemented and requires `guilds.members.read` consent and role-removal coverage.
+Private repository `someonebest007/destiny-bot` now contains commit `36cebd6`; `.env` and `text1.txt` were excluded. The Actions dashboard build/test workflow now also runs on pushes to `main`. Production deployment awaits rotated Discord OAuth/bot credentials, callback registration, a reachable persistent container/service host, and hosted Redis configuration for the bot. Supabase credentials are in ignored `.env`, and the fresh runtime project is initialized with migrations 001–020. The dashboard-only Compose project reads required settings from `.env`; with Redis disabled, keep one process per dashboard and expect sessions to reset on restart and queue diagnostics to be unavailable. `destiny-bot.apps.chuglii.in` is only a reserved tunnel-backed hostname; it needs an HTTP service route before it serves an app. Vercel deployment also needs a serverless-compatible session/backend path and an account choice. Consider stale Redis index cleanup and queue-counter semantics when Redis is restored; see `docs/DASHBOARD_DATABASE_RUNTIME_INVENTORY.md`. Guild-role membership remains unimplemented and requires `guilds.members.read` consent and role-removal coverage.
 
