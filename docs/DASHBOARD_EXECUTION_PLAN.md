@@ -2,6 +2,16 @@
 
 Updated: 2026-11-13 (Asia/Kolkata)
 
+## Latest continuation: Wabbit-inspired dashboard refresh
+
+- REA is already installed and connected in this Codex session (`mcp__rea` tools and `reverse-engineer-anything` skill); no MCP configuration changes were needed. The project already has `frontend-design`, `ui-ux-engineer`, and `unslop` skills; accessibility guidance was applied as well.
+- Reviewed public Wabbit pages in an isolated browser at desktop and mobile sizes. Wabbit's `/servers` dashboard entry redirects signed-out visitors to Discord; no authenticated Wabbit server settings were modified. Its public visual language is mint dots, paper-white panels, dark ink outlines, rounded type, small offset shadows, and orange primary actions.
+- Refreshed Destiny sign-in and shared server/owner dashboard styling in `apps/shared/dashboard.css`; updated login composition, added a persistent light/dark theme switch, replaced text-symbol navigation marks with consistent SVG line icons, preserved the existing dashboard routes/APIs/forms, and updated HTML theme colors. Authenticated dashboard data and authorization rules were not changed.
+- Deployed Cloudflare Worker `destiny-dashboard` to `destiny.chuglii.in`; deployment `13479a3980a942dc8e7a710d80354baf`. Existing `secret_text` bindings, Supabase/Discord configuration, route, and observability settings were preserved.
+- Verified live `/` and `/health` both return HTTP 200, exercised the light/dark toggle in a clean browser session, compared Wabbit and Destiny screenshots at 1440×1000 and 390×844, ran `pnpm run build:cloudflare`, `node --check apps/shared/dashboard.js`, `git diff --check`, and all 146 tests across 27 files.
+- Scope limit: the Wabbit authenticated settings interface redirects to Discord in an isolated browser. The accessible reference covers its public landing page and server-picker shell, not every private settings view. Destiny's production root also presents the sign-in screen in a clean browser; authenticated Destiny pages are styled through the shared dashboard stylesheet but were not opened with a user session. Exact 100% pixel/feature parity with inaccessible private pages cannot be verified. Reference browser evidence: Wabbit desktop `ev_7373191bbec427194f585785f2fc78bd67d17e449fed3e1275d68d5c72de7f17`, Destiny desktop `ev_fe045957d4ad8d8a097da762f8dfd09315b8bf07bbd005915cafc7980ea9cc87`, Wabbit mobile `ev_9f42df8d6a55a54b1284d84195acd39571b88d04e4d197bf1790f88378d0381c`, Destiny mobile `ev_e98a82577b0aef81480d1de9e7f8028d5fc884f5fbeeb0bf5313a45ab6b3dabf`.
+- GitHub push is still unavailable because GitHub returns HTTP 403 `account suspended`; local implementation and progress record should be committed locally and pushed after account access returns.
+
 ## Latest continuation: runtime storage is Supabase-only
 
 - Active Supabase project `destiny project` (`biqjoimzjljnxhliybcq`) now has migration 022 applied. Runtime values, sets, distributed locks, and atomic rate-limit events use service-role-only Postgres tables and RPCs. Security advisor returned no findings; a direct client round-trip passed and its temporary rows were removed.
@@ -14,7 +24,7 @@ Updated: 2026-11-13 (Asia/Kolkata)
 ## Current continuation checkpoint
 
 - Earlier dashboard and deployment setup notes below are historical. The latest continuation above supersedes their Redis-related runtime and deployment status.
-- External setup still needed: rotate and replace the exposed Discord secret and bot token, register both dashboard OAuth callbacks, and provide a reachable service deployment target. The Supabase API URL, publishable key, and server key are now in ignored `.env`. Do not use `CLOUDFLARE_API_TOKEN` from `.env`; use the connected Cloudflare plugin.
+- User directed that the existing `.env` values remain unchanged. The dashboard OAuth callback is registered, the Cloudflare Worker serves `destiny.chuglii.in/*`, and the production deployment uses the current configured credentials. Do not use `CLOUDFLARE_API_TOKEN` from `.env`; use the connected Cloudflare plugin.
 - Continue updating this checkpoint and the tests/build section as implementation advances.
 
 ## Completed
@@ -63,7 +73,7 @@ Updated: 2026-11-13 (Asia/Kolkata)
 - [x] Set dashboard-only process-local Redis fallback through `REDIS_DISABLED_FOR_DASHBOARD=true`; the bot/worker configuration remains unchanged.
 - [x] Set the fresh runtime project's Supabase URL and publishable key in ignored `.env` from project information; retrieved its server `service_role` key through the access token already stored in `.env` and kept the value out of output.
 - [x] Applied production migration 020 through the Supabase plugin and verified table/function existence, RLS, and service-role-only function execution; security advisors returned no lints.
-- [x] Transferred the provided Discord credentials to ignored `.env`, then deleted `text1.txt`; treat the Discord bot token and OAuth client secret as exposed and rotate them before deployment.
+- [x] Transferred the provided Discord credentials to ignored `.env`, then deleted `text1.txt`; the credentials were flagged as exposed. User later explicitly requested keeping the current `.env` values, so no rotation was performed.
 - [x] Used the `SUPABASE_ACCESS_TOKEN` already in ignored `.env` with the official Supabase Management API to retrieve the configured project's `service_role` key without printing it; stored it and the project's publishable key in `.env`, then verified the key against the project's REST API.
 - [x] Initialized fresh Supabase project `destiny project` from migrations 001–020 through the Supabase plugin; verified 20 migration records, nine final public tables with RLS, service-role-only operator RPC execution, and no security advisor lints. The new project has no application rows.
 - [x] Created explicit proxied Cloudflare CNAME `destiny-bot.apps.chuglii.in` to the existing tunnel; later replaced it with `destiny.chuglii.in` and added matching tunnel ingress to the existing reverse proxy per the user's request. No bot HTTP service is attached to the proxy yet.
@@ -82,7 +92,7 @@ Updated: 2026-11-13 (Asia/Kolkata)
 - [x] Add focused authorization tests and run current build/test checks.
 - [x] Capture local sign-in screen evidence and document inaccessible reference areas; authenticated viewports still require OAuth setup.
 - [ ] Finish deployment and recovery documentation based on actual host configuration; production setup/deploy remains a separate safeguarded operation.
-- [x] Added GitHub Actions dashboard build/test workflow for pull requests, manual runs, and pushes to `main`; production deployment remains blocked on runtime host and rotated credentials.
+- [x] Added GitHub Actions dashboard build/test workflow for pull requests, manual runs, and pushes to `main`; the Cloudflare production deployment is live, while GitHub sync is blocked by the suspended account.
 
 ## Decisions and constraints
 
@@ -114,5 +124,5 @@ Updated: 2026-11-13 (Asia/Kolkata)
 
 ## Next actionable task
 
-Private repository `someonebest007/destiny-bot` now contains commits `d115bb1` and `58ed10e`; `.env` and `text1.txt` are not tracked. The GitHub connector still reports the account suspended, but the authorized `GITHUB_PAT` in ignored `.env` allowed pushing and Actions-secret cleanup through GitHub CLI. The six-hour bot runner and continuation workflow are enabled. Manual run `43398697084` was started on `58ed10e`; its current startup/connection status is unverified because GitHub API access now returns HTTP 403 `account suspended`. The dashboard Worker serves `destiny.chuglii.in/*`; migrations 021–022 are applied, and the Worker uses Supabase-backed encrypted sessions, rate limits, diagnostics, and runtime state. Live `/health` returned HTTP 200 after the latest deploy. The Discord callback `https://destiny.chuglii.in/auth/callback` is registered on the bot application. Guild-role membership remains unimplemented and requires `guilds.members.read` consent and role-removal coverage.
+The dashboard redesign is deployed to Cloudflare at `destiny.chuglii.in` (Worker deployment `13479a3980a942dc8e7a710d80354baf`). Root and `/health` return HTTP 200; the full test suite passes. The server and owner dashboard continue to use the existing API routes and permission checks. Authenticated visual review remains pending a Destiny Discord login because a clean browser shows the sign-in screen. The private GitHub repository still contains commits `d115bb1` and `58ed10e`, but the latest local dashboard edits cannot be pushed while GitHub returns HTTP 403 `account suspended`. `.env` and `text1.txt` are not tracked. The six-hour bot runner and continuation workflow are enabled; manual run `43398697084` status is likewise unverified while GitHub access is suspended. Migrations 021–022 are applied and the dashboard uses Supabase-backed sessions, rate limits, diagnostics, and runtime state. Guild-role membership remains gated on `guilds.members.read` consent and role-removal coverage.
 

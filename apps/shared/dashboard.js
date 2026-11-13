@@ -1,7 +1,22 @@
 const root = document.getElementById('app');
 const app = document.body.dataset.app;
 const state = { session: null, csrf: '', guilds: [], guild: null, settings: null, channels: [], page: 'overview', overview: null, ownerServers: null, ownerServersLoading: false, ownerServerSearch: '', ownerServerOffset: 0, selectedServer: null, serverDetailsLoading: false, audit: null, auditLoading: false, auditOffset: 0, reports: null, reportsLoading: false, reportOffset: 0, selectedReport: null, reportLoading: false, verifications: null, verificationsLoading: false, verificationOffset: 0, selectedVerification: null, verificationLoading: false, userLookup: null, userLookupLoading: false, rooms: null, roomsLoading: false, roomOffset: 0, operators: null, operatorsLoading: false, busy: false };
-const icon = { overview: '⌂', start: '✓', portal: '▣', match: '↗', safety: '◇', servers: '▦', monitoring: '◷', audit: '≡', reports: '◇', verification: '✓', users: '◎', rooms: '◌', operators: '♙' };
+const icon = {
+  overview: '<svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg>',
+  start: '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/><circle cx="12" cy="12" r="9"/></svg>',
+  portal: '<svg viewBox="0 0 24 24"><path d="M4 5h16v12H8l-4 3z"/><path d="M8 9h8M8 13h5"/></svg>',
+  match: '<svg viewBox="0 0 24 24"><path d="m4 7 5 5-5 5M20 7l-5 5 5 5M9 12h6"/></svg>',
+  safety: '<svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z"/><path d="m9 12 2 2 4-4"/></svg>',
+  servers: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="8" rx="2"/><rect x="3" y="13" width="18" height="8" rx="2"/><path d="M7 7h.01M7 17h.01M11 7h6M11 17h6"/></svg>',
+  monitoring: '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 1 18 0"/><path d="m12 12 5-4M5 18h14"/><circle cx="12" cy="12" r="1"/></svg>',
+  audit: '<svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+  reports: '<svg viewBox="0 0 24 24"><path d="M5 21V4a1 1 0 0 1 1-1h12l-2 5 2 5H6"/></svg>',
+  verification: '<svg viewBox="0 0 24 24"><path d="m12 3 2.2 1.5 2.7-.1 1.2 2.4 2.4 1.2-.1 2.7L22 13l-1.5 2.2.1 2.7-2.4 1.2-1.2 2.4-2.7-.1L12 23l-2.2-1.5-2.7.1-1.2-2.4-2.4-1.2.1-2.7L2 13l1.5-2.2-.1-2.7 2.4-1.2L7 4.5l2.7.1z"/><path d="m8.5 12.5 2.2 2.2 4.8-5"/></svg>',
+  users: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21v-2a7 7 0 0 1 14 0v2M17 4a4 4 0 0 1 0 8M18 14a5 5 0 0 1 4 5v2"/></svg>',
+  rooms: '<svg viewBox="0 0 24 24"><path d="M4 5h16v12H8l-4 3z"/><path d="M8 9h8M8 13h5"/></svg>',
+  operators: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21v-2a7 7 0 0 1 14 0v2M19 8v6M16 11h6"/></svg>',
+};
+const themeKey = 'destiny-dashboard-theme';
 const operatorCapabilityLabels = {
   'platform.health.read': 'Platform health',
   'platform.servers.read': 'Connected servers',
@@ -15,6 +30,32 @@ const operatorCapabilityLabels = {
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 }
+
+function getTheme() {
+  try { return localStorage.getItem(themeKey) === 'dark' ? 'dark' : 'light'; } catch { return 'light'; }
+}
+
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#e9f7f3' : '#181b1a');
+  try { localStorage.setItem(themeKey, theme); } catch { /* The selected theme still applies for this page. */ }
+  const button = document.getElementById('theme-toggle');
+  if (button) {
+    const next = theme === 'light' ? 'dark' : 'light';
+    button.setAttribute('aria-label', `Switch to ${next} theme`);
+    button.title = `Switch to ${next} theme`;
+    button.innerHTML = theme === 'light'
+      ? '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5 8.5 8.5 0 1 0 20.5 15.5Z"/></svg>'
+      : '<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>';
+  }
+}
+
+function themeButton() {
+  const next = getTheme() === 'light' ? 'dark' : 'light';
+  return `<button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to ${next} theme" title="Switch to ${next} theme"></button>`;
+}
+
+document.documentElement.dataset.theme = getTheme();
 
 async function request(url, options = {}) {
   const headers = { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) };
@@ -37,7 +78,9 @@ function showToast(message, error = false) {
 
 function loginPage(message = '') {
   const owner = app === 'owner';
-  root.innerHTML = `<main class="login-wrap"><section class="login-card"><span class="brand-mark" aria-hidden="true">D</span><h1>${owner ? 'Platform operations' : 'Your server, in balance'}</h1><p>${owner ? 'A private control surface for Destiny platform owners.' : 'Configure Destiny’s matchmaking portal and server participation.'}</p><a class="primary" href="/auth/login">Continue with Discord</a>${message ? `<p class="login-note" role="status">${escapeHtml(message)}</p>` : ''}</section></main>`;
+  root.innerHTML = `<main class="login-wrap"><header class="public-nav"><a class="brand" href="/" aria-label="Destiny dashboard"><span class="brand-mark" aria-hidden="true">D</span><span>Destiny<small>${owner ? 'Platform' : 'Server settings'}</small></span></a><div class="public-nav-meta"><span>Discord dashboard</span>${themeButton()}</div></header><section class="login-stage"><div class="login-copy"><div class="eyebrow">${owner ? 'Platform workspace' : 'Community workspace'}</div><h1>${owner ? 'Keep the whole platform in balance' : 'A better place to meet'}</h1><p>${owner ? 'Review platform health, safety reports, and access from one private workspace.' : 'Set up Destiny’s matchmaking portal and choose how your community connects.'}</p><a class="primary" href="/auth/login">Continue with Discord <span aria-hidden="true">→</span></a>${message ? `<p class="login-note" role="status">${escapeHtml(message)}</p>` : ''}<div class="login-points"><span><i></i>Server controls</span><span><i></i>Matchmaking settings</span><span><i></i>Permission checks</span></div></div><aside class="login-preview" aria-label="Destiny dashboard features"><div class="preview-header"><span class="preview-mark" aria-hidden="true">D</span><span>Destiny workspace</span><span class="preview-window-dots" aria-hidden="true"><i></i><i></i><i></i></span></div><div class="preview-body"><div class="preview-intro"><span class="preview-kicker">SERVER SETUP</span><strong>Make your community ready</strong><span>Everything you need to start matchmaking</span></div><div class="preview-row"><span class="preview-icon" aria-hidden="true">${icon.portal}</span><span><strong>Choose a portal</strong><small>Pick the channel where members begin</small></span><span class="preview-arrow" aria-hidden="true">→</span></div><div class="preview-row"><span class="preview-icon" aria-hidden="true">${icon.match}</span><span><strong>Set participation</strong><small>Manage cross-server matching</small></span><span class="preview-arrow" aria-hidden="true">→</span></div><div class="preview-row"><span class="preview-icon" aria-hidden="true">${icon.safety}</span><span><strong>Check permissions</strong><small>Confirm Destiny can post in channels</small></span><span class="preview-arrow" aria-hidden="true">→</span></div></div></aside></section><footer class="login-footer"><span>Destiny · Discord community tools</span><span>Sign in securely with Discord</span></footer></main>`;
+  setTheme(getTheme());
+  document.getElementById('theme-toggle')?.addEventListener('click', () => setTheme(getTheme() === 'light' ? 'dark' : 'light'));
 }
 
 function userName() { return state.session?.user?.global_name || state.session?.user?.username || 'Discord user'; }
@@ -54,8 +97,10 @@ function renderLayout(content, title, description = '') {
   const selected = state.guild?.id || '';
   const guildPicker = owner ? '' : `<div class="server-picker"><label for="guild-picker">Current server</label><select id="guild-picker" aria-label="Select a Discord server">${state.guilds.map((guild) => `<option value="${escapeHtml(guild.id)}" ${guild.id === selected ? 'selected' : ''}>${escapeHtml(guild.name)}${guild.configurable ? '' : ' · Destiny not connected'}</option>`).join('')}</select></div>`;
   const avatar = avatarUrl();
-  root.innerHTML = `<div class="layout"><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">D</span><span>Destiny<small>${owner ? 'Platform' : 'Server settings'}</small></span></a>${guildPicker}<nav aria-label="${owner ? 'Platform navigation' : 'Server navigation'}"><div class="nav-label">${owner ? 'Operations' : 'Manage'}</div><ul class="nav-list">${items.map(([id, label]) => `<li><button class="nav-link" data-page="${id}" ${state.page === id ? 'aria-current="page"' : ''}><span class="nav-icon" aria-hidden="true">${icon[id]}</span><span>${label}</span></button></li>`).join('')}</ul></nav><div class="sidebar-bottom"><div class="identity"><div class="avatar">${avatar ? `<img alt="" src="${escapeHtml(avatar)}">` : escapeHtml(userName().slice(0, 1).toUpperCase())}</div><div class="identity-copy"><strong>${escapeHtml(userName())}</strong><span>${owner ? 'Platform owner' : 'Discord account'}</span></div><button id="signout" class="quiet signout" type="button">Sign out</button></div></div></aside><main class="main"><header class="topbar"><div class="breadcrumb">Destiny <span aria-hidden="true">/</span> ${escapeHtml(title)}</div><div class="topbar-right"><span class="online-dot" aria-hidden="true"></span>${owner ? 'Owner workspace' : 'Server workspace'}</div></header><section class="content"><div class="page-heading"><div><div class="eyebrow">${owner ? 'Platform operations' : escapeHtml(state.guild?.name || 'Server')}</div><h1>${escapeHtml(title)}</h1>${description ? `<p>${escapeHtml(description)}</p>` : ''}</div>${state.guild && !owner ? `<span class="status-pill ok"><span class="status-dot"></span>Destiny connected</span>` : ''}</div>${content}</section></main></div><div id="toast" class="toast" role="status" aria-live="polite" hidden></div>`;
+  root.innerHTML = `<div class="layout"><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">D</span><span>Destiny<small>${owner ? 'Platform' : 'Server settings'}</small></span></a>${guildPicker}<nav aria-label="${owner ? 'Platform navigation' : 'Server navigation'}"><div class="nav-label">${owner ? 'Operations' : 'Manage'}</div><ul class="nav-list">${items.map(([id, label]) => `<li><button class="nav-link" data-page="${id}" ${state.page === id ? 'aria-current="page"' : ''}><span class="nav-icon" aria-hidden="true">${icon[id]}</span><span>${label}</span></button></li>`).join('')}</ul></nav><div class="sidebar-bottom"><div class="identity"><div class="avatar">${avatar ? `<img alt="" src="${escapeHtml(avatar)}">` : escapeHtml(userName().slice(0, 1).toUpperCase())}</div><div class="identity-copy"><strong>${escapeHtml(userName())}</strong><span>${owner ? 'Platform owner' : 'Discord account'}</span></div><button id="signout" class="quiet signout" type="button">Sign out</button></div></div></aside><main class="main"><header class="topbar"><div class="breadcrumb"><span>Destiny</span><span class="breadcrumb-separator" aria-hidden="true">/</span>${escapeHtml(title)}</div><div class="topbar-right"><span class="workspace-label">${owner ? 'Platform workspace' : 'Server workspace'}</span>${themeButton()}</div></header><section class="content"><div class="page-heading"><div><div class="eyebrow">${owner ? 'Platform operations' : escapeHtml(state.guild?.name || 'Server')}</div><h1>${escapeHtml(title)}</h1>${description ? `<p>${escapeHtml(description)}</p>` : ''}</div>${state.guild && !owner ? `<span class="status-pill ok"><span class="status-dot"></span>Destiny connected</span>` : ''}</div>${content}</section></main></div><div id="toast" class="toast" role="status" aria-live="polite" hidden></div>`;
+  setTheme(getTheme());
   root.querySelectorAll('[data-page]').forEach((button) => button.addEventListener('click', () => { state.page = button.dataset.page; renderCurrent(); }));
+  document.getElementById('theme-toggle')?.addEventListener('click', () => setTheme(getTheme() === 'light' ? 'dark' : 'light'));
   document.getElementById('signout')?.addEventListener('click', signOut);
   document.getElementById('guild-picker')?.addEventListener('change', async (event) => {
     state.guild = null;
