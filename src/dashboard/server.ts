@@ -10,6 +10,14 @@ import { queueManager } from '../redis/queues.js';
 import { verificationService } from '../core/moderation/verification.js';
 import { PLATFORM_OPERATOR_CAPABILITIES, type PlatformOperatorCapability } from '../core/types.js';
 import { computeChannelPermissions, isServerManager } from './security.js';
+import {
+  consumeDashboardState,
+  deleteDashboardState,
+  incrementDashboardRateLimit,
+  isVercelDashboardRuntime,
+  readDashboardState,
+  writeDashboardState,
+} from './persistence.js';
 
 const APP = config.DASHBOARD_APP;
 const ORIGIN = new URL(APP === 'owner' ? config.OWNER_DASHBOARD_ORIGIN : config.SERVER_DASHBOARD_ORIGIN).origin;
@@ -130,6 +138,22 @@ function safeAuditChanges(value: unknown, depth = 0): Record<string, unknown> {
 }
 
 async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  const parsedBody = (req as IncomingMessage & { body?: unknown }).body;
+  if (parsedBody !== undefined && parsedBody !== null) {
+    if (typeof parsedBody === 'string') {
+      try {
+        const parsed = JSON.parse(parsedBody);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Expected an object.');
+        return parsed as Record<string, unknown>;
+      } catch {
+        throw Object.assign(new Error('Invalid JSON body.'), { status: 400 });
+      }
+    }
+    if (typeof parsedBody === 'object' && !Array.isArray(parsedBody) && !Buffer.isBuffer(parsedBody)) {
+      return parsedBody as Record<string, unknown>;
+    }
+    throw Object.assign(new Error('Invalid JSON body.'), { status: 400 });
+  }
   let size = 0;
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
@@ -149,7 +173,17 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
 }
 
 async function apiRateLimit(req: IncomingMessage, bucket: string, max: number): Promise<boolean> {
-  const ip = req.socket.remoteAddress || 'unknown';
+  const cloudflareIp = req.headers['cf-connecting-ip'];
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const ip = (typeof cloudflareIp === 'string'
+    ? cloudflareIp
+    : typeof forwardedFor === 'string'
+      ? forwardedFor.split(',')[0]
+      : '').trim() || req.socket.remoteAddress || 'unknown';
+  if (isVercelDashboardRuntime()) {
+    try { return await incrementDashboardRateLimit(APP, bucket, ip, SESSION_SECRET) <= max; }
+    catch { return false; }
+  }
   const key = `dashboard:rate:${APP}:${bucket}:${ip}`;
   const raw = redis.getRawClient();
   if (redis.isHealthy() && raw) {
@@ -172,11 +206,39 @@ async function apiRateLimit(req: IncomingMessage, bucket: string, max: number): 
 
 const fallbackRateLimits = new Map<string, { count: number; expiresAt: number }>();
 
+async function readState(key: string): Promise<string | null> {
+  if (isVercelDashboardRuntime()) return readDashboardState(APP, key, SESSION_SECRET);
+  return redis.get(key);
+}
+
+async function writeState(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+  if (isVercelDashboardRuntime()) {
+    await writeDashboardState(APP, key, value, ttlSeconds, SESSION_SECRET);
+    return true;
+  }
+  return redis.set(key, value, ttlSeconds);
+}
+
+async function deleteState(key: string): Promise<boolean> {
+  if (isVercelDashboardRuntime()) {
+    await deleteDashboardState(APP, key);
+    return true;
+  }
+  return redis.del(key);
+}
+
+async function consumeState(key: string): Promise<string | null> {
+  if (isVercelDashboardRuntime()) return consumeDashboardState(APP, key, SESSION_SECRET);
+  const value = await redis.get(key);
+  if (value) await redis.del(key);
+  return value;
+}
+
 async function loadSession(req: IncomingMessage): Promise<{ id: string; session: DashboardSession } | null> {
   const id = parseCookies(req.headers.cookie)[SESSION_COOKIE];
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return null;
   try {
-    const value = await redis.get(sessionKey(id));
+    const value = await readState(sessionKey(id));
     if (!value) return null;
     const session = JSON.parse(value) as DashboardSession;
     if (!session.user?.id || !session.accessToken || !session.refreshToken || !session.csrfToken) return null;
@@ -185,7 +247,7 @@ async function loadSession(req: IncomingMessage): Promise<{ id: string; session:
 }
 
 async function saveSession(id: string, session: DashboardSession): Promise<void> {
-  const ok = await redis.set(sessionKey(id), JSON.stringify(session), SESSION_TTL_SECONDS);
+  const ok = await writeState(sessionKey(id), JSON.stringify(session), SESSION_TTL_SECONDS);
   if (!ok) throw new Error('Session store is unavailable.');
 }
 
@@ -327,7 +389,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const state = randomBytes(32).toString('base64url');
     const codeVerifier = randomBytes(48).toString('base64url');
     const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
-    const ok = await redis.set(OAUTH_STATE_PREFIX + state, JSON.stringify({ codeVerifier }), OAUTH_STATE_TTL_SECONDS);
+    const ok = await writeState(OAUTH_STATE_PREFIX + state, JSON.stringify({ codeVerifier }), OAUTH_STATE_TTL_SECONDS);
     if (!ok) return json(res, 503, { error: 'Sign-in is temporarily unavailable.' });
     const callback = `${ORIGIN}/auth/callback`;
     const oauth = new URL('https://discord.com/oauth2/authorize');
@@ -346,12 +408,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const code = url.searchParams.get('code') || '';
     if (!/^[A-Za-z0-9_-]{32,64}$/.test(state) || !code || code.length > 2048) return redirect(res, `${ORIGIN}/?auth=failed`);
     const stateKey = OAUTH_STATE_PREFIX + state;
-    const stateValue = await redis.get(stateKey).catch(() => null);
+    const stateValue = await consumeState(stateKey).catch(() => null);
     if (!stateValue) return redirect(res, `${ORIGIN}/?auth=failed`);
     let oauthState: { codeVerifier: string };
     try { oauthState = JSON.parse(stateValue); } catch { return redirect(res, `${ORIGIN}/?auth=failed`); }
     if (!oauthState.codeVerifier) return redirect(res, `${ORIGIN}/?auth=failed`);
-    await redis.del(stateKey);
     const body = new URLSearchParams({
       client_id: config.DISCORD_CLIENT_ID,
       client_secret: config.DISCORD_CLIENT_SECRET,
@@ -392,7 +453,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     if (APP === 'owner') {
       try { await db.logAdminAction(user.id, 'OWNER_DASHBOARD_LOGIN', 'platform', 'owner-dashboard'); }
       catch {
-        await redis.del(sessionKey(id)).catch(() => false);
+        await deleteState(sessionKey(id)).catch(() => false);
         return redirect(res, `${ORIGIN}/?auth=audit-unavailable`);
       }
     }
@@ -403,7 +464,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const loaded = await loadSession(req);
     if (!loaded) return json(res, 401, { error: 'Sign in required.' });
     if (!await requireCsrf(req, loaded.session)) return json(res, 403, { error: 'Request verification failed.' });
-    await redis.del(sessionKey(loaded.id)).catch(() => false);
+    await deleteState(sessionKey(loaded.id)).catch(() => false);
     const revoke = new URLSearchParams({
       client_id: config.DISCORD_CLIENT_ID,
       client_secret: config.DISCORD_CLIENT_SECRET,
@@ -992,17 +1053,21 @@ if (config.NODE_ENV === 'production' && (!config.DISCORD_CLIENT_SECRET || SESSIO
 
 const port = Number(process.env.PORT || (APP === 'owner' ? 4174 : 4173));
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be a valid TCP port.');
-export function createDashboardServer() {
-  return createServer((req, res) => {
-  void handle(req, res).catch((error: any) => {
+export async function handleDashboardRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    await handle(req, res);
+  } catch (error: any) {
     const status = Number.isInteger(error?.status) ? error.status : 500;
     if (!res.headersSent) json(res, status, { error: status === 500 ? 'The request could not be completed.' : error.message });
     else res.destroy();
-  });
-  });
+  }
 }
 
-if (config.NODE_ENV !== 'test') {
+export function createDashboardServer() {
+  return createServer((req, res) => { void handleDashboardRequest(req, res); });
+}
+
+if (config.NODE_ENV !== 'test' && process.env.VERCEL !== '1') {
   const server = createDashboardServer();
   server.listen(port, () => console.log(`[Dashboard:${APP}] Listening on ${port} for ${ORIGIN}`));
 }

@@ -6,6 +6,7 @@
   "main": "dist/src/bot/index.js",
   "scripts": {
     "build": "tsc",
+    "build:vercel": "pnpm run build && node scripts/build-vercel-dashboard.mjs",
     "bot": "tsx src/bot/index.ts",
     "shards": "tsx src/bot/sharding.ts",
     "dashboard:server": "tsx src/dashboard/server.ts",
@@ -27,6 +28,9 @@
   ],
   "author": "Destiny Team",
   "license": "MIT",
+  "engines": {
+    "node": "22.x"
+  },
   "dependencies": {
     "@napi-rs/canvas": "^1.1.0",
     "@supabase/supabase-js": "^2.48.1",

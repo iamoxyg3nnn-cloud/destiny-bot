@@ -4,6 +4,7 @@ node_modules/
 
 # Production builds & artifacts
 dist/
+/public/
 
 # Environment configurations & secrets (CRITICAL: NEVER COMMIT)
 .env

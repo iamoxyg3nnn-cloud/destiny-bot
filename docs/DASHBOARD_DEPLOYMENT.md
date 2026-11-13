@@ -66,6 +66,14 @@ Not deployed. `destiny.chuglii.in` now points to the existing tunnel, but no bot
 - Vercel connector accounts are `Personal` (team `Apunabhibhilegendhai`, with existing projects) and `Primary` (team `lawdachuss-projects`, with no projects). Neither account lists a domain. No Vercel project has been created yet. The current dashboard is a persistent Node HTTP server and uses process-local OAuth/session/rate-limit fallback when Redis is disabled; deploying its static shell alone would leave every API route broken, and Vercel serverless instances do not share that in-memory state.
 - Plugin check: Supabase shows only the active `destiny project`; its project list does not reveal the PostgreSQL password or a hosted Redis endpoint. Vercel shows eight projects under `Personal` and none under `Primary`; neither account lists `chuglii.in` as a managed domain.
 - Live check (2026-11-13): `https://destiny.chuglii.in/` and `/health` return HTTP 502 from Cloudflare. DNS is still a proxied CNAME to the existing tunnel; ingress sends the hostname to `http://localhost:80`, where no Destiny backend is attached. Vercel has no Destiny project/deployment; the latest listed deployments are for the unrelated `opendrive` project. Therefore, the dashboard is not deployed to Vercel and the 502 is expected from the current routing.
+
+## Vercel serverless adapter in progress
+
+- Added a Vercel Node function adapter and routing config for the server dashboard. `pnpm run build:vercel` compiles the TypeScript and stages the server dashboard shell/static assets.
+- Added Supabase migration 021 for shared dashboard runtime state and rate limits. Discord OAuth session data is encrypted with the per-dashboard session secret before storage. The migration was applied to the `destiny project`; both new tables have RLS enabled and the Supabase security advisor reported no lints.
+- Updated ignored `.env` so `SERVER_DASHBOARD_ORIGIN` is `https://destiny.chuglii.in`.
+- The app code has not been pushed or deployed yet. Next steps: push and confirm GitHub validation, link the private repository under Vercel Personal, set production environment values from `.env`, deploy, attach `destiny.chuglii.in`, and switch Cloudflare DNS from Tunnel to Vercel after the production URL responds successfully.
+- Register `https://destiny.chuglii.in/auth/callback` in the Discord application before OAuth sign-in can complete.
 - Before releasing, rotate the Discord bot token and OAuth client secret that were present in plaintext in the deleted handoff file. Update the ignored `.env`; do not send the secret values in chat. Bot production also requires a persistent runtime host and Redis endpoint. After rotation and target configuration, add only the runtime secrets needed to GitHub Actions/Vercel using their encrypted secret stores.
 
 ### Remaining inputs for production deployment
