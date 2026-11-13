@@ -160,3 +160,12 @@ Updated: 2026-11-13 (Asia/Kolkata)
 - Validation after the final bot source edits: `pnpm build` passed; `git diff --check` reported no whitespace errors. Production `/dashboard.js` and all four PNG assets return HTTP 200 and the script includes the custom emoji rendering hooks.
 - Discord custom emoji upload and a bot redeploy are pending because the bot account lacks Manage Expressions in guild `1555968929023664208`; the dashboard artwork is live independently of that guild permission.
 
+## GitHub repository and bot deployment handoff
+
+Updated: 2026-11-13 (Asia/Kolkata)
+
+- Created private repository `imcaffeineeee/destiny-bot` using the `GITHUB_PAT` from ignored `.env`. Pushed the local `main` history and the current bot/dashboard implementation; commit `540011e` contains the latest custom emoji and dashboard assets. Local remotes now point only at the new repository.
+- Configured Actions secrets `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `BOT_OWNER_IDS`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` from `.env`; secret values were never printed. `.env` and the unrelated untracked `destiny stickers/` folder were not pushed.
+- The workflows are visible and active, but the first push created no run. A manual `destiny.yml` dispatch was rejected by GitHub with HTTP 422: `Actions has been disabled for this user`, despite repository Actions permissions being enabled. Bot deployment remains blocked until GitHub restores Actions for the token-owning account `imcaffeineeee`.
+- GitHub then rejected a push of the follow-up handoff note with HTTP 403: `Your account is suspended.` Remote `main` remains at `540011e`; the handoff note is saved in the local workspace. No Actions run was created, so the bot is not deployed from this repository yet.
+
