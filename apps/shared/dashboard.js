@@ -15,8 +15,9 @@ const destinyStickerMarkup = () => `<img class="destiny-brand-sticker" src="/ass
 document.querySelectorAll('.brand-mark').forEach((mark) => { mark.innerHTML = destinyStickerMarkup(); });
 const favicon = document.querySelector('[data-destiny-favicon]');
 if (favicon) {
-  favicon.href = `/assets/${activeDestinySticker}`;
-  favicon.type = 'image/gif';
+  const iconSlug = activeDestinySticker.replace(/^destiny_/, '').replace(/\.gif$/, '');
+  favicon.href = `/assets/destiny-icon-${iconSlug}.png`;
+  favicon.type = 'image/png';
 }
 const state = { session: null, csrf: '', guilds: [], guild: null, settings: null, channels: [], page: 'overview', overview: null, ownerServers: null, ownerServersLoading: false, ownerServerSearch: '', ownerServerOffset: 0, selectedServer: null, serverDetailsLoading: false, audit: null, auditLoading: false, auditOffset: 0, reports: null, reportsLoading: false, reportOffset: 0, selectedReport: null, reportLoading: false, verifications: null, verificationsLoading: false, verificationOffset: 0, selectedVerification: null, verificationLoading: false, userLookup: null, userLookupLoading: false, rooms: null, roomsLoading: false, roomOffset: 0, operators: null, operatorsLoading: false, busy: false };
 const icon = {

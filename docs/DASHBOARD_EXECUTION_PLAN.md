@@ -190,3 +190,13 @@ Updated: 2026-11-13 (Asia/Kolkata)
 - Deployed to `destiny.chuglii.in`; deployment `7b926866-2511-469b-b48c-16db2c9dcd50` (2026-11-13 13:41:42 UTC). Live checks returned HTTP 200 for `/`, `/dashboard.js`, `/dashboard.css`, and all eight GIF assets. Hosted GIFs retain transparent-frame controls.
 - GitHub cannot receive the latest source while account `imcaffeineeee` remains suspended; the production Cloudflare Worker is live and local progress is recorded here.
 
+## Latest continuation: framed brand mark and favicon
+
+Updated: 2026-11-14 (Asia/Calcutta)
+
+- Replaced raw GIF tab icons with eight 128×128 PNG favicon badges generated from each sticker's first frame. Each uses the transparent character artwork inside a seafoam rounded tile with a restrained ink outline, so browser tabs have a clear static icon while reloads still rotate to a different sticker.
+- Refined the in-page brand mark with a larger rounded badge, subtle outline/shadow, and light/dark palette surfaces. The site mark remains animated and uses the same sticker selected for that reload; the PNG favicon uses its matching pose.
+- Added the favicon asset generator `scripts/build-destiny-favicon-assets.mjs` and package command `build:destiny-icons`; Cloudflare Worker and Vercel/static asset builds serve all eight generated icons.
+- Validation: `pnpm run build:cloudflare`, `node --check apps/shared/dashboard.js`, and `git diff --check` passed. Live homepage, JavaScript, CSS, and all eight favicon PNG routes returned HTTP 200. Browser review confirmed the selected GIF/PNG pair and the badge styling in both light and dark themes.
+- Deployed to `destiny.chuglii.in`; deployment `5105595a-1c41-4825-8e34-5da8e4f6d01b` (2026-11-14 05:10:52 UTC). GitHub source sync remains blocked by the suspended `imcaffeineeee` account.
+

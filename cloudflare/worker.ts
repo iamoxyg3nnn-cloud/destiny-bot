@@ -23,6 +23,14 @@ import shockStickerBase64 from '../apps/shared/assets/destiny_shock.gif?base64';
 import sleepyStickerBase64 from '../apps/shared/assets/destiny_sleepy.gif?base64';
 import talkStickerBase64 from '../apps/shared/assets/destiny_talk.gif?base64';
 import winkStickerBase64 from '../apps/shared/assets/destiny_wink.gif?base64';
+import blinkFaviconBase64 from '../apps/shared/assets/destiny-icon-blink.png?base64';
+import cuteFaviconBase64 from '../apps/shared/assets/destiny-icon-cute.png?base64';
+import heartsFaviconBase64 from '../apps/shared/assets/destiny-icon-hearts.png?base64';
+import kissFaviconBase64 from '../apps/shared/assets/destiny-icon-kiss.png?base64';
+import shockFaviconBase64 from '../apps/shared/assets/destiny-icon-shock.png?base64';
+import sleepyFaviconBase64 from '../apps/shared/assets/destiny-icon-sleepy.png?base64';
+import talkFaviconBase64 from '../apps/shared/assets/destiny-icon-talk.png?base64';
+import winkFaviconBase64 from '../apps/shared/assets/destiny-icon-wink.png?base64';
 
 type WorkerEnv = Record<string, string>;
 type NodeRequestLike = {
@@ -72,6 +80,14 @@ const staticFiles: Record<string, { body: string | Uint8Array; type: string }> =
   '/assets/destiny_sleepy.gif': { body: decodeBase64(sleepyStickerBase64), type: 'image/gif' },
   '/assets/destiny_talk.gif': { body: decodeBase64(talkStickerBase64), type: 'image/gif' },
   '/assets/destiny_wink.gif': { body: decodeBase64(winkStickerBase64), type: 'image/gif' },
+  '/assets/destiny-icon-blink.png': { body: decodeBase64(blinkFaviconBase64), type: 'image/png' },
+  '/assets/destiny-icon-cute.png': { body: decodeBase64(cuteFaviconBase64), type: 'image/png' },
+  '/assets/destiny-icon-hearts.png': { body: decodeBase64(heartsFaviconBase64), type: 'image/png' },
+  '/assets/destiny-icon-kiss.png': { body: decodeBase64(kissFaviconBase64), type: 'image/png' },
+  '/assets/destiny-icon-shock.png': { body: decodeBase64(shockFaviconBase64), type: 'image/png' },
+  '/assets/destiny-icon-sleepy.png': { body: decodeBase64(sleepyFaviconBase64), type: 'image/png' },
+  '/assets/destiny-icon-talk.png': { body: decodeBase64(talkFaviconBase64), type: 'image/png' },
+  '/assets/destiny-icon-wink.png': { body: decodeBase64(winkFaviconBase64), type: 'image/png' },
 };
 
 function responseFromNodeAdapter(request: Request, url: URL): Promise<Response> {
