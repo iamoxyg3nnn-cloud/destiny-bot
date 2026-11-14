@@ -11,7 +11,7 @@ import community from '../apps/shared/assets/feature-community.svg?raw';
 import anonymous from '../apps/shared/assets/feature-anonymous.svg?raw';
 import profile from '../apps/shared/assets/feature-profile.svg?raw';
 import reveal from '../apps/shared/assets/feature-reveal.svg?raw';
-import destinyMark from '../apps/shared/assets/destiny-mark.svg?raw';
+import destinyWaifuBase64 from '../apps/shared/assets/destiny-waifu.png?base64';
 import matchEmojiBase64 from '../apps/shared/assets/destiny_match.png?base64';
 import profileEmojiBase64 from '../apps/shared/assets/destiny_profile.png?base64';
 import shieldEmojiBase64 from '../apps/shared/assets/destiny_shield.png?base64';
@@ -53,7 +53,7 @@ const staticFiles: Record<string, { body: string | Uint8Array; type: string }> =
   '/assets/feature-anonymous.svg': { body: anonymous, type: 'image/svg+xml' },
   '/assets/feature-profile.svg': { body: profile, type: 'image/svg+xml' },
   '/assets/feature-reveal.svg': { body: reveal, type: 'image/svg+xml' },
-  '/assets/destiny-mark.svg': { body: destinyMark, type: 'image/svg+xml' },
+  '/assets/destiny-waifu.png': { body: decodeBase64(destinyWaifuBase64), type: 'image/png' },
   '/assets/destiny_match.png': { body: decodeBase64(matchEmojiBase64), type: 'image/png' },
   '/assets/destiny_profile.png': { body: decodeBase64(profileEmojiBase64), type: 'image/png' },
   '/assets/destiny_shield.png': { body: decodeBase64(shieldEmojiBase64), type: 'image/png' },
