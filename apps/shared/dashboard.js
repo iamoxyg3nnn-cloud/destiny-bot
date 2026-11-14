@@ -1,11 +1,11 @@
 const root = document.getElementById('app');
 const app = document.body.dataset.app;
 const customEmoji = (name) => `<img class="destiny-emoji destiny-emoji-${name}" src="/assets/${name}.png" alt="" aria-hidden="true" loading="lazy">`;
-const destinyMarkMarkup = () => '<img class="destiny-brand-icon" src="/assets/destiny-mark.svg" alt="" aria-hidden="true" fetchpriority="high">';
+const destinyMarkMarkup = () => '<img class="destiny-brand-icon" src="/assets/destiny-mark.svg?v=20261114-waifu" alt="" aria-hidden="true" fetchpriority="high">';
 document.querySelectorAll('.brand-mark').forEach((mark) => { mark.innerHTML = destinyMarkMarkup(); });
 const favicon = document.querySelector('[data-destiny-favicon]');
 if (favicon) {
-  favicon.href = '/assets/destiny-mark.svg';
+  favicon.href = '/assets/destiny-mark.svg?v=20261114-waifu';
   favicon.type = 'image/svg+xml';
 }
 const state = { session: null, csrf: '', guilds: [], guild: null, settings: null, channels: [], page: 'overview', overview: null, ownerServers: null, ownerServersLoading: false, ownerServerSearch: '', ownerServerOffset: 0, selectedServer: null, serverDetailsLoading: false, audit: null, auditLoading: false, auditOffset: 0, reports: null, reportsLoading: false, reportOffset: 0, selectedReport: null, reportLoading: false, verifications: null, verificationsLoading: false, verificationOffset: 0, selectedVerification: null, verificationLoading: false, userLookup: null, userLookupLoading: false, rooms: null, roomsLoading: false, roomOffset: 0, operators: null, operatorsLoading: false, busy: false };
