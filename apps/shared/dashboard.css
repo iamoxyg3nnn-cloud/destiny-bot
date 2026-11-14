@@ -71,3 +71,8 @@ html[data-theme="dark"] .loading-view .brand-mark{background:#294238!important;b
 .feature-index{display:flex;align-items:center;gap:6px}
 .feature-index .destiny-emoji{width:19px;height:19px}
 .cta-spark .destiny-emoji{width:34px;height:34px}
+/* Mascot wordmark lockup */
+.brand-lockup{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:0}
+.brand-lockup .destiny-brand-lockup{display:block;width:158px;height:auto;max-width:100%}
+.brand-lockup small{margin-left:2px}
+html[data-theme="dark"] .brand-lockup .destiny-brand-lockup{content:url('/assets/destiny-logo-dark.svg?v=20261114-logo-v1')}

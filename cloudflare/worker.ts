@@ -11,6 +11,9 @@ import community from '../apps/shared/assets/feature-community.svg?raw';
 import anonymous from '../apps/shared/assets/feature-anonymous.svg?raw';
 import profile from '../apps/shared/assets/feature-profile.svg?raw';
 import reveal from '../apps/shared/assets/feature-reveal.svg?raw';
+import destinyLogo from '../apps/shared/assets/destiny-logo.svg?raw';
+import destinyLogoDark from '../apps/shared/assets/destiny-logo-dark.svg?raw';
+import destinyFavicon from '../apps/shared/assets/destiny-favicon.svg?raw';
 import destinyWaifuBase64 from '../apps/shared/assets/destiny-waifu.png?base64';
 import matchEmojiBase64 from '../apps/shared/assets/destiny_match.png?base64';
 import profileEmojiBase64 from '../apps/shared/assets/destiny_profile.png?base64';
@@ -53,6 +56,9 @@ const staticFiles: Record<string, { body: string | Uint8Array; type: string }> =
   '/assets/feature-anonymous.svg': { body: anonymous, type: 'image/svg+xml' },
   '/assets/feature-profile.svg': { body: profile, type: 'image/svg+xml' },
   '/assets/feature-reveal.svg': { body: reveal, type: 'image/svg+xml' },
+  '/assets/destiny-logo.svg': { body: destinyLogo, type: 'image/svg+xml' },
+  '/assets/destiny-logo-dark.svg': { body: destinyLogoDark, type: 'image/svg+xml' },
+  '/assets/destiny-favicon.svg': { body: destinyFavicon, type: 'image/svg+xml' },
   '/assets/destiny-waifu.png': { body: decodeBase64(destinyWaifuBase64), type: 'image/png' },
   '/assets/destiny_match.png': { body: decodeBase64(matchEmojiBase64), type: 'image/png' },
   '/assets/destiny_profile.png': { body: decodeBase64(profileEmojiBase64), type: 'image/png' },
