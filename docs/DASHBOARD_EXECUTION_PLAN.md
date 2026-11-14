@@ -200,3 +200,11 @@ Updated: 2026-11-14 (Asia/Calcutta)
 - Validation: `pnpm run build:cloudflare`, `node --check apps/shared/dashboard.js`, and `git diff --check` passed. Live homepage, JavaScript, CSS, and all eight favicon PNG routes returned HTTP 200. Browser review confirmed the selected GIF/PNG pair and the badge styling in both light and dark themes.
 - Deployed to `destiny.chuglii.in`; deployment `5105595a-1c41-4825-8e34-5da8e4f6d01b` (2026-11-14 05:10:52 UTC). GitHub source sync remains blocked by the suspended `imcaffeineeee` account.
 
+
+## Latest continuation: unified Destiny brand mark
+
+- Created a new transparent SVG emblem at `apps/shared/assets/destiny-mark.svg`: overlapping seafoam and lavender chat bubbles with ink outlines and an amber star, matching the site's palette and Discord community purpose.
+- Replaced rotating sticker imagery in public navigation, footer, dashboard sidebar, and initial loading screen; both dashboard shells and the dynamic favicon now use the same fixed SVG mark. Kept functional navigation symbols and content emojis distinct so their meanings stay clear.
+- Removed the eight sticker-derived favicon PNGs and their generation script/command. Sticker GIFs remain available as content assets.
+- Deployed the rebuilt Cloudflare Worker `destiny-dashboard` as deployment `b32bb26a497042748d5cf9a2cb436ab8` on 2026-11-14. Kept all existing secret bindings through Cloudflare binding inheritance.
+- Verified live `/`, `/health`, and `/assets/destiny-mark.svg` return HTTP 200; SVG is served as `image/svg+xml`. Browser review confirmed the new mark in the live header and footer, and the favicon DOM points to the same asset in dark and light theme states.

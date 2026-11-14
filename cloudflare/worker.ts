@@ -11,26 +11,11 @@ import community from '../apps/shared/assets/feature-community.svg?raw';
 import anonymous from '../apps/shared/assets/feature-anonymous.svg?raw';
 import profile from '../apps/shared/assets/feature-profile.svg?raw';
 import reveal from '../apps/shared/assets/feature-reveal.svg?raw';
+import destinyMark from '../apps/shared/assets/destiny-mark.svg?raw';
 import matchEmojiBase64 from '../apps/shared/assets/destiny_match.png?base64';
 import profileEmojiBase64 from '../apps/shared/assets/destiny_profile.png?base64';
 import shieldEmojiBase64 from '../apps/shared/assets/destiny_shield.png?base64';
 import sparkEmojiBase64 from '../apps/shared/assets/destiny_spark.png?base64';
-import blinkStickerBase64 from '../apps/shared/assets/destiny_blink.gif?base64';
-import cuteStickerBase64 from '../apps/shared/assets/destiny_cute.gif?base64';
-import heartsStickerBase64 from '../apps/shared/assets/destiny_hearts.gif?base64';
-import kissStickerBase64 from '../apps/shared/assets/destiny_kiss.gif?base64';
-import shockStickerBase64 from '../apps/shared/assets/destiny_shock.gif?base64';
-import sleepyStickerBase64 from '../apps/shared/assets/destiny_sleepy.gif?base64';
-import talkStickerBase64 from '../apps/shared/assets/destiny_talk.gif?base64';
-import winkStickerBase64 from '../apps/shared/assets/destiny_wink.gif?base64';
-import blinkFaviconBase64 from '../apps/shared/assets/destiny-icon-blink.png?base64';
-import cuteFaviconBase64 from '../apps/shared/assets/destiny-icon-cute.png?base64';
-import heartsFaviconBase64 from '../apps/shared/assets/destiny-icon-hearts.png?base64';
-import kissFaviconBase64 from '../apps/shared/assets/destiny-icon-kiss.png?base64';
-import shockFaviconBase64 from '../apps/shared/assets/destiny-icon-shock.png?base64';
-import sleepyFaviconBase64 from '../apps/shared/assets/destiny-icon-sleepy.png?base64';
-import talkFaviconBase64 from '../apps/shared/assets/destiny-icon-talk.png?base64';
-import winkFaviconBase64 from '../apps/shared/assets/destiny-icon-wink.png?base64';
 
 type WorkerEnv = Record<string, string>;
 type NodeRequestLike = {
@@ -68,26 +53,11 @@ const staticFiles: Record<string, { body: string | Uint8Array; type: string }> =
   '/assets/feature-anonymous.svg': { body: anonymous, type: 'image/svg+xml' },
   '/assets/feature-profile.svg': { body: profile, type: 'image/svg+xml' },
   '/assets/feature-reveal.svg': { body: reveal, type: 'image/svg+xml' },
+  '/assets/destiny-mark.svg': { body: destinyMark, type: 'image/svg+xml' },
   '/assets/destiny_match.png': { body: decodeBase64(matchEmojiBase64), type: 'image/png' },
   '/assets/destiny_profile.png': { body: decodeBase64(profileEmojiBase64), type: 'image/png' },
   '/assets/destiny_shield.png': { body: decodeBase64(shieldEmojiBase64), type: 'image/png' },
   '/assets/destiny_spark.png': { body: decodeBase64(sparkEmojiBase64), type: 'image/png' },
-  '/assets/destiny_blink.gif': { body: decodeBase64(blinkStickerBase64), type: 'image/gif' },
-  '/assets/destiny_cute.gif': { body: decodeBase64(cuteStickerBase64), type: 'image/gif' },
-  '/assets/destiny_hearts.gif': { body: decodeBase64(heartsStickerBase64), type: 'image/gif' },
-  '/assets/destiny_kiss.gif': { body: decodeBase64(kissStickerBase64), type: 'image/gif' },
-  '/assets/destiny_shock.gif': { body: decodeBase64(shockStickerBase64), type: 'image/gif' },
-  '/assets/destiny_sleepy.gif': { body: decodeBase64(sleepyStickerBase64), type: 'image/gif' },
-  '/assets/destiny_talk.gif': { body: decodeBase64(talkStickerBase64), type: 'image/gif' },
-  '/assets/destiny_wink.gif': { body: decodeBase64(winkStickerBase64), type: 'image/gif' },
-  '/assets/destiny-icon-blink.png': { body: decodeBase64(blinkFaviconBase64), type: 'image/png' },
-  '/assets/destiny-icon-cute.png': { body: decodeBase64(cuteFaviconBase64), type: 'image/png' },
-  '/assets/destiny-icon-hearts.png': { body: decodeBase64(heartsFaviconBase64), type: 'image/png' },
-  '/assets/destiny-icon-kiss.png': { body: decodeBase64(kissFaviconBase64), type: 'image/png' },
-  '/assets/destiny-icon-shock.png': { body: decodeBase64(shockFaviconBase64), type: 'image/png' },
-  '/assets/destiny-icon-sleepy.png': { body: decodeBase64(sleepyFaviconBase64), type: 'image/png' },
-  '/assets/destiny-icon-talk.png': { body: decodeBase64(talkFaviconBase64), type: 'image/png' },
-  '/assets/destiny-icon-wink.png': { body: decodeBase64(winkFaviconBase64), type: 'image/png' },
 };
 
 function responseFromNodeAdapter(request: Request, url: URL): Promise<Response> {

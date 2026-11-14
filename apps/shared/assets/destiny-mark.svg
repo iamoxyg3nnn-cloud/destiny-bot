@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>Destiny</title>
+  <path d="M12 18.5C12 14.91 14.91 12 18.5 12h27C49.09 12 52 14.91 52 18.5v20C52 42.09 49.09 45 45.5 45H31l-10.7 8.1c-1.25.95-3.05.06-3.05-1.51V44.1A9.5 9.5 0 0 1 12 36.5v-18Z" fill="#D9F1E8" stroke="#263B35" stroke-width="3.5" stroke-linejoin="round"/>
+  <path d="M27.5 30.5c0-2.76 2.24-5 5-5h13c2.76 0 5 2.24 5 5v9c0 2.76-2.24 5-5 5H39l-5.05 4.08c-1.13.91-2.81.1-2.81-1.35V44.5h-1.64c-1.1 0-2-.9-2-2v-12Z" fill="#DCD6FF" stroke="#263B35" stroke-width="3.5" stroke-linejoin="round"/>
+  <path d="m37 10 2.2 5.1 5.3 1.4-5.3 1.4L37 23l-2.2-5.1-5.3-1.4 5.3-1.4L37 10Z" fill="#F2B65F" stroke="#263B35" stroke-width="1.8" stroke-linejoin="round"/>
+  <circle cx="21.5" cy="27" r="2" fill="#263B35"/>
+  <circle cx="28" cy="27" r="2" fill="#263B35"/>
+</svg>

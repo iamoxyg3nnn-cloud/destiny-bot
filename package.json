@@ -8,7 +8,6 @@
     "build": "tsc",
     "build:vercel": "pnpm run build && node scripts/build-vercel-dashboard.mjs",
     "build:cloudflare": "pnpm run build && node scripts/build-cloudflare-dashboard.mjs",
-    "build:destiny-icons": "node scripts/build-destiny-favicon-assets.mjs",
     "bot": "tsx src/bot/index.ts",
     "shards": "tsx src/bot/sharding.ts",
     "dashboard:server": "tsx src/dashboard/server.ts",
