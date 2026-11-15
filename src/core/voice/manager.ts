@@ -39,6 +39,8 @@ export const ICEBREAKER_TOPICS = [
   "What is your go-to comfort meal when having a rough day?"
 ];
 
+export const MAX_VOICE_EXTENSIONS = 3; // Maximum 3 extensions (+15 mins) to prevent channel hoarding
+
 export function getRandomIcebreakerTopic(): string {
   const index = Math.floor(Math.random() * ICEBREAKER_TOPICS.length);
   return ICEBREAKER_TOPICS[index];
@@ -86,7 +88,7 @@ export function createVoiceDashboardContainer(
         `\`00:00 ━━━━🔘──────── ${durationStr}\`\n\n` +
         `### 📋 Session Rules & Controls\n` +
         `• **🎲 Icebreaker**: Get an instant question to start the conversation\n` +
-        `• **⏳ Extend**: Mutual vote to add +5 minutes to this call\n` +
+        `• **⏳ Extend**: Mutual vote to add +5 minutes to this call (max 3 times)\n` +
         `• **🎭 Reveal**: Mutual agreement to exchange real Discord tags\n` +
         `• **🚨 Leave & Block**: Instant panic exit — kicks partner & blocks them permanently\n\n` +
         `-# 🔒 Ephemeral Voice Channel • Automatically deleted when both leave or time expires.`
@@ -97,6 +99,8 @@ export function createVoiceDashboardContainer(
 }
 
 export class VoiceManager {
+  private singleDisconnectTimers = new Map<string, NodeJS.Timeout>();
+
   /**
    * Resolves whether to spawn in the local community server or fall back to Eclairs.
    */
@@ -124,9 +128,17 @@ export class VoiceManager {
           const m1 = await localGuild.members.fetch(user1DiscordId).catch(() => null);
           const m2 = await localGuild.members.fetch(user2DiscordId).catch(() => null);
           if (m1 && m2) {
+            // Validate category permission if specified
+            let validCatId = categoryId;
+            if (categoryId && localGuild.channels?.cache) {
+              const catChan = localGuild.channels.cache.get(categoryId);
+              if (!catChan || catChan.type !== ChannelType.GuildCategory) {
+                validCatId = null;
+              }
+            }
             return {
               guild: localGuild,
-              categoryId,
+              categoryId: validCatId,
               isEclairsFallback: false,
               durationMins: Number.isFinite(durationMins) && durationMins > 0 ? durationMins : 5,
             };
@@ -174,120 +186,126 @@ export class VoiceManager {
     user2: UserProfile,
     preferredGuildId?: string
   ): Promise<{ channel: VoiceChannel; guild: Guild; isEclairsFallback: boolean; durationMins: number; roomId: string } | null> {
-    const resolved = await this.resolveVoiceGuild(client, preferredGuildId, user1.discordUserId, user2.discordUserId);
-    if (!resolved) {
-      console.error('[VoiceManager] Could not resolve voice guild for users:', user1.discordUserId, user2.discordUserId);
+    try {
+      const resolved = await this.resolveVoiceGuild(client, preferredGuildId, user1.discordUserId, user2.discordUserId);
+      if (!resolved) {
+        console.error('[VoiceManager] Could not resolve voice guild for users:', user1.discordUserId, user2.discordUserId);
+        return null;
+      }
+
+      const { guild, categoryId, isEclairsFallback, durationMins } = resolved;
+      const roomId = `vroom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+
+      const channel = await guild.channels.create({
+        name: `🪐・destiny-${roomCode}`,
+        type: ChannelType.GuildVoice,
+        parent: categoryId || undefined,
+        userLimit: 2,
+        permissionOverwrites: [
+          {
+            id: guild.roles.everyone.id,
+            deny: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect],
+          },
+          {
+            id: client.user!.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.Connect,
+              PermissionFlagsBits.Speak,
+              PermissionFlagsBits.ManageChannels,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.ReadMessageHistory,
+            ],
+          },
+          {
+            id: user1.discordUserId,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.Connect,
+              PermissionFlagsBits.Speak,
+              PermissionFlagsBits.Stream,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.ReadMessageHistory,
+            ],
+          },
+          {
+            id: user2.discordUserId,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.Connect,
+              PermissionFlagsBits.Speak,
+              PermissionFlagsBits.Stream,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.ReadMessageHistory,
+            ],
+          },
+        ],
+      });
+
+      const dashboard = createVoiceDashboardContainer(
+        user1.destinyId,
+        user2.destinyId,
+        durationMins,
+        isEclairsFallback,
+        guild.name
+      );
+
+      await channel.send({
+        components: [dashboard],
+        flags: [MessageFlags.IsComponentsV2],
+      }).catch(console.error);
+
+      await stateStore.set(`voice:room:${roomId}:channel_id`, channel.id, 86400);
+      await stateStore.set(`voice:room:${roomId}:guild_id`, guild.id, 86400);
+      await stateStore.set(`voice:room:${roomId}:user1`, user1.discordUserId, 86400);
+      await stateStore.set(`voice:room:${roomId}:user2`, user2.discordUserId, 86400);
+      await stateStore.set(`voice:room:${roomId}:destiny1`, user1.destinyId, 86400);
+      await stateStore.set(`voice:room:${roomId}:destiny2`, user2.destinyId, 86400);
+      await stateStore.set(`voice:room:${roomId}:created_at`, String(Date.now()), 86400);
+      await stateStore.set(`voice:room:${roomId}:duration_minutes`, String(durationMins), 86400);
+      await stateStore.set(`voice:room:${roomId}:extensions`, '0', 86400);
+      await stateStore.set(`voice:channel:${channel.id}:room_id`, roomId, 86400);
+
+      // Track active voice sessions for both users
+      await stateStore.set(`user:active_voice_room:${user1.id}`, roomId, 86400);
+      await stateStore.set(`user:active_voice_room:${user2.id}`, roomId, 86400);
+      await stateStore.set(`user:active_room:${user1.id}`, roomId, 86400);
+      await stateStore.set(`user:active_room:${user2.id}`, roomId, 86400);
+
+      // 3-Minute Abandonment Sweeper: auto-deletes if both users never connect
+      setTimeout(async () => {
+        try {
+          const startedAt = await stateStore.get(`voice:room:${roomId}:started_at`);
+          if (!startedAt) {
+            const freshChannel = client.channels.cache.get(channel.id) as VoiceChannel | undefined;
+            if (freshChannel) {
+              const abandonCard = new ContainerBuilder()
+                .setAccentColor(COLORS.DANGER)
+                .addTextDisplayComponents(
+                  new TextDisplayBuilder().setContent(
+                    formatCustomEmojiText(
+                      `# ⏱️ Session Canceled Due to Inactivity\n\n` +
+                      `Both participants did not connect within **3 minutes**.\n` +
+                      `This temporary voice room has been automatically closed.\n\n` +
+                      `-# Run /find match to search again whenever you are ready!`
+                    )
+                  )
+                );
+              await freshChannel.send({ components: [abandonCard], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+              await this.deleteVoiceRoom(client, roomId, channel.id);
+            }
+          }
+        } catch (err: any) {
+          console.warn('[VoiceManager] Abandonment check error:', err?.message || err);
+        }
+      }, 3 * 60 * 1000);
+
+      return { channel, guild, isEclairsFallback, durationMins, roomId };
+    } catch (err: any) {
+      console.error('[VoiceManager] Failed to create voice match room channel:', err?.message || err);
       return null;
     }
-
-    const { guild, categoryId, isEclairsFallback, durationMins } = resolved;
-    const roomId = `vroom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-
-    const channel = await guild.channels.create({
-      name: `🪐・destiny-${roomCode}`,
-      type: ChannelType.GuildVoice,
-      parent: categoryId || undefined,
-      userLimit: 2,
-      permissionOverwrites: [
-        {
-          id: guild.roles.everyone.id,
-          deny: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect],
-        },
-        {
-          id: client.user!.id,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.Connect,
-            PermissionFlagsBits.Speak,
-            PermissionFlagsBits.ManageChannels,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ReadMessageHistory,
-          ],
-        },
-        {
-          id: user1.discordUserId,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.Connect,
-            PermissionFlagsBits.Speak,
-            PermissionFlagsBits.Stream,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ReadMessageHistory,
-          ],
-        },
-        {
-          id: user2.discordUserId,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.Connect,
-            PermissionFlagsBits.Speak,
-            PermissionFlagsBits.Stream,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ReadMessageHistory,
-          ],
-        },
-      ],
-    });
-
-    const dashboard = createVoiceDashboardContainer(
-      user1.destinyId,
-      user2.destinyId,
-      durationMins,
-      isEclairsFallback,
-      guild.name
-    );
-
-    await channel.send({
-      components: [dashboard],
-      flags: [MessageFlags.IsComponentsV2],
-    }).catch(console.error);
-
-    await stateStore.set(`voice:room:${roomId}:channel_id`, channel.id, 86400);
-    await stateStore.set(`voice:room:${roomId}:guild_id`, guild.id, 86400);
-    await stateStore.set(`voice:room:${roomId}:user1`, user1.discordUserId, 86400);
-    await stateStore.set(`voice:room:${roomId}:user2`, user2.discordUserId, 86400);
-    await stateStore.set(`voice:room:${roomId}:destiny1`, user1.destinyId, 86400);
-    await stateStore.set(`voice:room:${roomId}:destiny2`, user2.destinyId, 86400);
-    await stateStore.set(`voice:room:${roomId}:created_at`, String(Date.now()), 86400);
-    await stateStore.set(`voice:room:${roomId}:duration_minutes`, String(durationMins), 86400);
-    await stateStore.set(`voice:channel:${channel.id}:room_id`, roomId, 86400);
-
-    // Track active voice sessions for both users
-    await stateStore.set(`user:active_voice_room:${user1.id}`, roomId, 86400);
-    await stateStore.set(`user:active_voice_room:${user2.id}`, roomId, 86400);
-    await stateStore.set(`user:active_room:${user1.id}`, roomId, 86400);
-    await stateStore.set(`user:active_room:${user2.id}`, roomId, 86400);
-
-    // 3-Minute Abandonment Sweeper: auto-deletes if both users never connect
-    setTimeout(async () => {
-      try {
-        const startedAt = await stateStore.get(`voice:room:${roomId}:started_at`);
-        if (!startedAt) {
-          const freshChannel = client.channels.cache.get(channel.id) as VoiceChannel | undefined;
-          if (freshChannel) {
-            const abandonCard = new ContainerBuilder()
-              .setAccentColor(COLORS.DANGER)
-              .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                  formatCustomEmojiText(
-                    `# ⏱️ Session Canceled Due to Inactivity\n\n` +
-                    `Both participants did not connect within **3 minutes**.\n` +
-                    `This temporary voice room has been automatically closed.\n\n` +
-                    `-# Run /find match to search again whenever you are ready!`
-                  )
-                )
-              );
-            await freshChannel.send({ components: [abandonCard], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
-            await this.deleteVoiceRoom(client, roomId, channel.id);
-          }
-        }
-      } catch (err: any) {
-        console.warn('[VoiceManager] Abandonment check error:', err?.message || err);
-      }
-    }, 3 * 60 * 1000);
-
-    return { channel, guild, isEclairsFallback, durationMins, roomId };
   }
 
   /**
@@ -303,10 +321,27 @@ export class VoiceManager {
     const channel = (newState.channel || oldState.channel) as VoiceChannel | null;
     if (!channel || channel.type !== ChannelType.GuildVoice) return;
 
+    const u1 = await stateStore.get(`voice:room:${roomId}:user1`);
+    const u2 = await stateStore.get(`voice:room:${roomId}:user2`);
+
+    // Edge Case: Unauthorized 3rd-party user attempts to join
+    if (newState.channelId === channelId && newState.member && !newState.member.user.bot) {
+      if (newState.member.id !== u1 && newState.member.id !== u2) {
+        await newState.disconnect('Unauthorized: Destiny 1-on-1 private voice session').catch(() => {});
+        return;
+      }
+    }
+
     const connectedNonBots = channel.members.filter((m) => !m.user.bot).size;
 
     // Both connected -> start the timer!
     if (connectedNonBots >= 2) {
+      // Clear any pending single-disconnect grace timer
+      if (this.singleDisconnectTimers.has(roomId)) {
+        clearTimeout(this.singleDisconnectTimers.get(roomId)!);
+        this.singleDisconnectTimers.delete(roomId);
+      }
+
       const startedAt = await stateStore.get(`voice:room:${roomId}:started_at`);
       if (!startedAt) {
         const now = Date.now();
@@ -340,8 +375,56 @@ export class VoiceManager {
       }
     }
 
+    // Edge Case: 1 partner disconnected during an active call (WiFi glitch or tab close)
+    if (connectedNonBots === 1) {
+      const startedAt = await stateStore.get(`voice:room:${roomId}:started_at`);
+      if (startedAt && !this.singleDisconnectTimers.has(roomId)) {
+        const dcCard = new ContainerBuilder()
+          .setAccentColor(COLORS.GOLD)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              formatCustomEmojiText(
+                `⚠️ **Partner Disconnected**\n\n` +
+                `Your match partner left or disconnected. Waiting **90 seconds** for them to rejoin...\n\n` +
+                `-# If they do not return, the room will close automatically.`
+              )
+            )
+          );
+        await channel.send({ components: [dcCard], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+
+        const timer = setTimeout(async () => {
+          this.singleDisconnectTimers.delete(roomId);
+          try {
+            const freshChan = channel.guild.channels.cache.get(channel.id) as VoiceChannel | undefined;
+            if (freshChan && freshChan.members.filter((m) => !m.user.bot).size < 2) {
+              const timeoutCard = new ContainerBuilder()
+                .setAccentColor(COLORS.DANGER)
+                .addTextDisplayComponents(
+                  new TextDisplayBuilder().setContent(
+                    formatCustomEmojiText(
+                      `# ⏱️ Session Concluded\n\n` +
+                      `Your partner did not return within 90 seconds. The session has ended.\n\n` +
+                      `-# Run /find match to search again.`
+                    )
+                  )
+                );
+              await freshChan.send({ components: [timeoutCard], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+              await this.deleteVoiceRoom(channel.client, roomId, channel.id);
+            }
+          } catch {}
+        }, 90_000);
+
+        this.singleDisconnectTimers.set(roomId, timer);
+      }
+    }
+
     // Both left -> schedule cleanup in 30 seconds!
     if (connectedNonBots === 0) {
+      if (this.singleDisconnectTimers.has(roomId)) {
+        clearTimeout(this.singleDisconnectTimers.get(roomId)!);
+        this.singleDisconnectTimers.delete(roomId);
+      }
+
       setTimeout(async () => {
         try {
           const freshChannel = channel.guild.channels.cache.get(channel.id) as VoiceChannel | undefined;
@@ -381,7 +464,7 @@ export class VoiceManager {
           }
           await this.deleteVoiceRoom(client, roomId, channelId);
         } else {
-          // Re-arm check for when time actually expires (or check in max 15 seconds)
+          // Re-arm check for when time actually expires (max 15 seconds)
           setTimeout(checkExpiry, Math.min(remaining, 15_000));
         }
       } catch (err: any) {
@@ -393,7 +476,7 @@ export class VoiceManager {
   }
 
   /**
-   * Extends the voice call duration by 5 minutes upon mutual agreement.
+   * Extends the voice call duration by 5 minutes upon mutual agreement (capped at 3 extensions).
    */
   async handleExtendVoiceCall(
     client: Client,
@@ -409,6 +492,16 @@ export class VoiceManager {
       return { success: false, message: 'You are not a participant in this voice session.' };
     }
 
+    // Check maximum extension limit
+    const extCountStr = (await stateStore.get(`voice:room:${roomId}:extensions`)) || '0';
+    const extCount = parseInt(extCountStr, 10);
+    if (extCount >= MAX_VOICE_EXTENSIONS) {
+      return { 
+        success: false, 
+        message: 'Maximum call extensions reached (30 minutes total). Reveal profiles to add each other as friends!' 
+      };
+    }
+
     await stateStore.set(`voice:room:${roomId}:extend:${votingUserId}`, 'true', 86400);
 
     const u1Ext = (await stateStore.get(`voice:room:${roomId}:extend:${u1}`)) === 'true';
@@ -419,6 +512,7 @@ export class VoiceManager {
       const currentExpiry = expiresAtStr ? parseInt(expiresAtStr, 10) : Date.now();
       const newExpiry = Math.max(currentExpiry, Date.now()) + 5 * 60 * 1000;
       await stateStore.set(`voice:room:${roomId}:expires_at`, String(newExpiry), 86400);
+      await stateStore.set(`voice:room:${roomId}:extensions`, String(extCount + 1), 86400);
 
       // Reset votes for potential further extensions
       await stateStore.del(`voice:room:${roomId}:extend:${u1}`);
@@ -430,7 +524,7 @@ export class VoiceManager {
           .setAccentColor(COLORS.SUCCESS)
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              formatCustomEmojiText(`⏳ **Both partners agreed! +5 Minutes added to your voice session.**\n\n-# Continue talking and have fun!`)
+              formatCustomEmojiText(`⏳ **Both partners agreed! +5 Minutes added to your voice session.** (Extension ${extCount + 1}/${MAX_VOICE_EXTENSIONS})\n\n-# Continue talking and have fun!`)
             )
           );
         await channel.send({ components: [extendCard], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
@@ -546,9 +640,18 @@ export class VoiceManager {
   }
 
   /**
-   * Deletes a voice room and cleans up associated runtime state.
+   * Deletes a voice room and cleans up associated runtime state idempotently.
    */
   async deleteVoiceRoom(client: Client, roomId: string, channelId: string): Promise<void> {
+    const alreadyDeleted = await stateStore.get(`voice:room:${roomId}:deleted`);
+    if (alreadyDeleted) return;
+    await stateStore.set(`voice:room:${roomId}:deleted`, 'true', 3600);
+
+    if (this.singleDisconnectTimers.has(roomId)) {
+      clearTimeout(this.singleDisconnectTimers.get(roomId)!);
+      this.singleDisconnectTimers.delete(roomId);
+    }
+
     try {
       const channel = client.channels.cache.get(channelId) as VoiceChannel | undefined;
       if (channel) {
@@ -587,8 +690,44 @@ export class VoiceManager {
       await stateStore.del(`voice:room:${roomId}:started_at`);
       await stateStore.del(`voice:room:${roomId}:expires_at`);
       await stateStore.del(`voice:room:${roomId}:duration_minutes`);
+      await stateStore.del(`voice:room:${roomId}:extensions`);
       await stateStore.del(`voice:channel:${channelId}:room_id`);
     }
+  }
+
+  /**
+   * Sweeps orphaned ephemeral voice channels from crashes or past sessions.
+   */
+  async sweepOrphanedVoiceChannels(client: Client): Promise<number> {
+    let swept = 0;
+    const now = Date.now();
+    for (const guild of client.guilds.cache.values()) {
+      if (!guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) continue;
+      if (!guild.channels?.cache) continue;
+      const allChannels = Array.from(guild.channels.cache.values());
+      const destinyVoiceChannels = allChannels.filter(
+        (c: any) => c.type === ChannelType.GuildVoice && typeof c.name === 'string' && c.name.startsWith('🪐・destiny-')
+      );
+      for (const ch of destinyVoiceChannels) {
+        const voiceChan = ch as VoiceChannel;
+        const nonBotMembers = voiceChan.members ? Array.from(voiceChan.members.values()).filter((m: any) => !m.user?.bot).length : 0;
+        const createdAt = voiceChan.createdTimestamp || 0;
+        const isOld = now - createdAt > 20 * 60 * 1000; // Older than 20 mins
+        if (nonBotMembers === 0 && isOld) {
+          const roomId = await stateStore.get(`voice:channel:${voiceChan.id}:room_id`);
+          if (roomId) {
+            await this.deleteVoiceRoom(client, roomId, voiceChan.id);
+          } else {
+            await voiceChan.delete('Sweeping orphaned Destiny voice pod').catch(() => {});
+          }
+          swept += 1;
+        }
+      }
+    }
+    if (swept > 0) {
+      console.log(`[VoiceManager] Swept ${swept} orphaned voice channels.`);
+    }
+    return swept;
   }
 }
 

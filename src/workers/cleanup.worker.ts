@@ -55,6 +55,18 @@ export class CleanupWorker {
     if (staleRoomsClosed > 0) {
       console.log(`[Cleanup] Closed ${staleRoomsClosed} rooms inactive for at least 24 hours.`);
     }
+
+    try {
+      const { getDiscordClient } = await import('../bot/client-registry.js');
+      const client = getDiscordClient();
+      if (client) {
+        const { voiceManager } = await import('../core/voice/manager.js');
+        await voiceManager.sweepOrphanedVoiceChannels(client);
+      }
+    } catch (e: any) {
+      console.warn('[Cleanup] Voice sweeper error:', e?.message || e);
+    }
+
     return { staleRoomsClosed };
   }
 

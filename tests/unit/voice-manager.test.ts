@@ -232,4 +232,102 @@ describe('VoiceManager & Blind Voice Matchmaking', () => {
       expect(mockDelete).toHaveBeenCalled();
     });
   });
+
+  describe('Edge Case Hardening', () => {
+    it('caps call extensions at MAX_VOICE_EXTENSIONS (3 extensions = 30m max)', async () => {
+      const channelId = 'channel-vc-400';
+      const roomId = 'room-vc-400';
+
+      const memory = new Map<string, string>();
+      vi.spyOn(stateStore, 'get').mockImplementation(async (key: string) => memory.get(key) || null);
+      vi.spyOn(stateStore, 'set').mockImplementation(async (key: string, val: string) => {
+        memory.set(key, val);
+        return true as any;
+      });
+
+      memory.set(`voice:channel:${channelId}:room_id`, roomId);
+      memory.set(`voice:room:${roomId}:user1`, 'u1');
+      memory.set(`voice:room:${roomId}:user2`, 'u2');
+      memory.set(`voice:room:${roomId}:extensions`, '3'); // Already at max
+
+      const mockClient = { channels: { cache: { get: () => null } } } as any;
+
+      const res = await voiceManager.handleExtendVoiceCall(mockClient, channelId, 'u1');
+      expect(res.success).toBe(false);
+      expect(res.message).toContain('Maximum call extensions reached');
+    });
+
+    it('sweeps and deletes orphaned voice channels older than 20 minutes', async () => {
+      const mockDelete = vi.fn().mockResolvedValue(true);
+      const oldChannel = {
+        id: 'chan-orphan-1',
+        type: ChannelType.GuildVoice,
+        name: '🪐・destiny-ORPH',
+        createdTimestamp: Date.now() - 25 * 60 * 1000, // 25 mins old
+        members: new Map(), // 0 non-bot members
+        delete: mockDelete,
+      };
+
+      const mockGuild = {
+        id: 'guild-1',
+        members: {
+          me: {
+            permissions: {
+              has: () => true,
+            },
+          },
+        },
+        channels: {
+          cache: new Map([['chan-orphan-1', oldChannel]]),
+        },
+      };
+
+      const mockClient = {
+        guilds: {
+          cache: new Map([['guild-1', mockGuild]]),
+        },
+        channels: {
+          cache: new Map(),
+        },
+      } as any;
+
+      vi.spyOn(stateStore, 'get').mockResolvedValue(null);
+
+      const swept = await voiceManager.sweepOrphanedVoiceChannels(mockClient);
+      expect(swept).toBe(1);
+      expect(mockDelete).toHaveBeenCalled();
+    });
+
+    it('evicts unauthorized 3rd-party users from the private voice channel', async () => {
+      const channelId = 'channel-vc-500';
+      const roomId = 'room-vc-500';
+
+      vi.spyOn(stateStore, 'get').mockImplementation(async (key: string) => {
+        if (key === `voice:channel:${channelId}:room_id`) return roomId;
+        if (key === `voice:room:${roomId}:user1`) return 'u1';
+        if (key === `voice:room:${roomId}:user2`) return 'u2';
+        return null;
+      });
+
+      const mockDisconnect = vi.fn().mockResolvedValue(true);
+      const intruderMember = {
+        id: 'intruder-user-999',
+        user: { bot: false },
+        voice: { disconnect: mockDisconnect },
+      };
+
+      const newState = {
+        channelId,
+        member: intruderMember,
+        channel: {
+          type: ChannelType.GuildVoice,
+          members: new Map([[intruderMember.id, intruderMember]]),
+        },
+        disconnect: mockDisconnect,
+      } as any;
+
+      await voiceManager.handleVoiceStateUpdate({} as any, newState);
+      expect(mockDisconnect).toHaveBeenCalled();
+    });
+  });
 });

@@ -902,6 +902,23 @@ export class MatchmakingManager {
 
             if (userA) await sendCleanDmPanel(userA, { components: [vcNotice(ticketB.destinyId)], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
             if (userB) await sendCleanDmPanel(userB, { components: [vcNotice(ticketA.destinyId)], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+          } else {
+            // Voice channel creation failed (guild at limit or missing permissions)
+            const failNotice = new ContainerBuilder()
+              .setAccentColor(COLORS.DANGER)
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  formatCustomEmojiText(
+                    `# ⚠️ Voice Room Creation Failed\n\n` +
+                    `We matched you with a partner, but a temporary voice room could not be created at this moment (the server may have reached Discord's 500-channel limit or bot lacks Manage Channels permissions).\n\n` +
+                    `Your ticket has been returned to the queue so you will be paired again shortly!`
+                  )
+                )
+              );
+            if (userA) await sendCleanDmPanel(userA, { components: [failNotice], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+            if (userB) await sendCleanDmPanel(userB, { components: [failNotice], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+            await this.joinQueue(userProfileA, ticketA.guildId, 'voice').catch(() => {});
+            await this.joinQueue(userProfileB, ticketB.guildId, 'voice').catch(() => {});
           }
         }
       } catch (err: any) {

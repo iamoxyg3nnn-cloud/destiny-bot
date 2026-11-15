@@ -23,6 +23,7 @@ import { messageCommandHandler } from './messages/handler.js';
 import { messageRelayService } from './relay/index.js';
 import { slashCommands } from './commands/definitions.js';
 import { matchmakingWorker } from '../workers/matchmaking.worker.js';
+import { voiceManager } from '../core/voice/manager.js';
 
 let guildSnapshotTimer: NodeJS.Timeout | null = null;
 
@@ -137,6 +138,7 @@ export class DestinyBot {
           await removeLegacyEmojiGgAssets(readyClient);
           await this.syncSlashCommands();
           await matchmakingWorker.start();
+          await voiceManager.sweepOrphanedVoiceChannels(readyClient).catch((e: any) => console.warn('[Bot] Orphaned voice sweeper error:', e?.message || e));
         }
         initPresence(readyClient);
       } catch (error) {
