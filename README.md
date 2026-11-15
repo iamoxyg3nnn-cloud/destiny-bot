@@ -59,7 +59,7 @@ DESTINY_STREAM_URL=https://www.twitch.tv/ninja
 `BOT_OWNER_IDS` is a comma-separated allowlist of Discord IDs with global bot-owner authority; it supports multiple owners. See [Administration setup](docs/ADMINISTRATION.md) for bot-owner, server-admin and moderator boundaries.
 
 The application stores durable profiles, rooms, messages, queue state, runtime locks,
-rate limits, worker heartbeats, and dashboard sessions in Supabase PostgreSQL. Profile
+rate limits and worker heartbeats in Supabase PostgreSQL. Profile
 card image caching remains process-local and expires after 15 minutes.
 
 ### 3. Database Schema Setup
@@ -84,8 +84,8 @@ Execute the SQL migrations located in `supabase/migrations/` in order. Migration
 18. `018_deny_public_table_access.sql` — Explicitly deny direct `anon` and `authenticated` access to backend-only application tables.
 19. `019_temporary_safety_bans.sql` — Add 24-hour report suspensions while preserving permanent bans.
 
-20. `020_platform_operator_capabilities.sql` — Store scoped platform-operator grants and audit them transactionally.
-21. `021_dashboard_runtime_state.sql` — Store encrypted dashboard sessions and rate-limit state.
+20. `020_platform_operator_capabilities.sql` — Platform-operator grants from the retired web dashboard; retained in migration history.
+21. `021_dashboard_runtime_state.sql` — Runtime state from the retired web dashboard; retained in migration history.
 22. `022_runtime_state_and_limits.sql` — Store bot runtime state, distributed locks, and atomic rate-limit events.
 
 **Deployment note:** Fresh databases must apply all migrations `001`–`022` in order. Existing deployments use `scripts/apply-migrations.sh`, which tracks completed files in the private `destiny_internal.schema_migrations` schema and skips them on subsequent restarts. Do not run `supabase db push` until the separate Supabase CLI migration history is reconciled.

@@ -20,18 +20,4 @@ describe('guild settings persistence', () => {
       crossServerEnabled: false,
     });
   });
-
-  it('rejects stale dashboard writes instead of overwriting a newer value', async () => {
-    const guildId = '876543210987654322';
-    const first = await db.saveGuildDashboardSetting(guildId, 'crossServerEnabled', false, null, 'Concurrent Guild');
-    expect(first.status).toBe('saved');
-    if (first.status !== 'saved') return;
-
-    const stale = await db.saveGuildDashboardSetting(guildId, 'crossServerEnabled', true, null, 'Concurrent Guild');
-    const fresh = await db.saveGuildDashboardSetting(guildId, 'crossServerEnabled', true, first.updatedAt, 'Concurrent Guild');
-
-    expect(stale.status).toBe('conflict');
-    expect(fresh.status).toBe('saved');
-    expect((await db.getGuildSettings(guildId, true))?.crossServerEnabled).toBe(true);
-  });
 });

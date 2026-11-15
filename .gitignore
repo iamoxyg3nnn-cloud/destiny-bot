@@ -1,10 +1,9 @@
-# Dependencies
+﻿# Dependencies
 node_modules/
 .pnpm-store/
 
 # Production builds & artifacts
 dist/
-/public/
 
 # Environment configurations & secrets (CRITICAL: NEVER COMMIT)
 .env
@@ -40,6 +39,6 @@ data/assets/
 scratch/
 coverage/
 
-# Downloaded tooling (e.g. the cloudflared binary)
+# Downloaded tooling
 .tools/
-cloudflare/dist/
+

@@ -33,7 +33,7 @@ Destiny is a focused, distributed anonymous-chat system for matchmaking compatib
 | • Atomic distributed locks       |                   | • Users & Profiles (Destiny ID)   |
 | • Sliding-window rate limits     |                   | • Rooms & Message Audit Trails    |
 | • Matchmaking tickets and rooms  |                   | • Reports, Blocks & Verifications |
-| • Worker/dashboard runtime state |                   | • Audit & Server Settings         |
+| • Worker runtime state           |                   | • Audit & Server Settings         |
 +----------------------------------+                   +-----------------------------------+
 ```
 

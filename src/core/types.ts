@@ -143,25 +143,6 @@ export interface AdminAuditLog {
   createdAt: string;
 }
 
-export const PLATFORM_OPERATOR_CAPABILITIES = [
-  'platform.health.read',
-  'platform.servers.read',
-  'platform.audit.read',
-  'safety.reports.review',
-  'safety.verification.review',
-  'users.status.lookup',
-  'conversations.metadata.read',
-] as const;
-
-export type PlatformOperatorCapability = typeof PLATFORM_OPERATOR_CAPABILITIES[number];
-
-export interface PlatformOperatorGrant {
-  discordUserId: string;
-  capability: PlatformOperatorCapability;
-  grantedBy: string;
-  grantedAt: string;
-}
-
 export interface GuildSettings {
   guildId: string;
   guildName?: string;

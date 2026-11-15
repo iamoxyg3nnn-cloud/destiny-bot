@@ -6,12 +6,8 @@
   "main": "dist/src/bot/index.js",
   "scripts": {
     "build": "tsc",
-    "build:vercel": "pnpm run build && node scripts/build-vercel-dashboard.mjs",
-    "build:cloudflare": "pnpm run build && node scripts/build-cloudflare-dashboard.mjs",
     "bot": "tsx src/bot/index.ts",
     "shards": "tsx src/bot/sharding.ts",
-    "dashboard:server": "tsx src/dashboard/server.ts",
-    "dashboard:owner": "tsx src/dashboard/owner.ts",
     "worker": "tsx src/workers/index.ts",
     "start": "tsx src/index.ts",
     "test": "vitest run",
@@ -41,7 +37,6 @@
   "devDependencies": {
     "@types/node": "^22.13.5",
     "@types/uuid": "^10.0.0",
-    "esbuild": "^0.28.2",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3",
     "vitest": "^3.0.6"

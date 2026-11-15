@@ -23,7 +23,7 @@ jobs:
   # CI — TypeScript, tests, migrations, Docker. Runs on pushes and PRs.
   # ──────────────────────────────────────────────────────────────────────────
   checks:
-    name: TypeScript, tests and dashboards
+    name: TypeScript and tests
     if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     concurrency:
@@ -50,8 +50,6 @@ jobs:
         run: pnpm run build
       - name: Unit and integration tests
         run: pnpm test
-      - name: Check shared dashboard JavaScript syntax
-        run: node --check apps/shared/dashboard.js
 
   migrations:
     name: Supabase migration smoke test

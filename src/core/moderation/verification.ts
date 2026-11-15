@@ -88,10 +88,7 @@ export class VerificationService {
     // Notification delivery is secondary; it must not roll back a recorded
     // moderation decision or make the verification review report a failure.
     try {
-      // Cloudflare Worker requests do not share the long-lived Discord client
-      // process; persist the moderation decision there and leave notifications
-      // to the bot runner.
-      if (process.env.CLOUDFLARE_WORKER === '1') return { success: true, message: outcome.message };
+      // DM delivery shares the live bot client in this process.
       const { bot } = await import('../../bot/index.js');
       if (bot.client?.isReady() && outcome.user.discordUserId) {
         const discordUser = await bot.client.users.fetch(outcome.user.discordUserId).catch(() => null);
