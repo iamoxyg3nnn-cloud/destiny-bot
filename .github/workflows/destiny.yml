@@ -1,6 +1,8 @@
-name: Destiny Bot Runner
+name: Destiny
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - main
@@ -13,20 +15,130 @@ on:
   schedule:
     - cron: "17 */6 * * *"
 
-concurrency:
-  group: destiny-bot-runner
-  # A separate workflow_run watcher dispatches only after this run completes.
-  # Never cancel an active bot session when another trigger arrives.
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
 jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # CI — TypeScript, tests, migrations, Docker. Runs on pushes and PRs.
+  # ──────────────────────────────────────────────────────────────────────────
+  checks:
+    name: TypeScript, tests and dashboards
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: destiny-ci-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      NODE_ENV: test
+      SUPABASE_URL: https://mock-supabase.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: mock-service-role-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install root dependencies
+        run: pnpm install --frozen-lockfile --prod=false
+      - name: Validate migration script
+        run: sh -n scripts/apply-migrations.sh
+      - name: TypeScript build
+        run: pnpm run build
+      - name: Unit and integration tests
+        run: pnpm test
+      - name: Check shared dashboard JavaScript syntax
+        run: node --check apps/shared/dashboard.js
+
+  migrations:
+    name: Supabase migration smoke test
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: destiny-ci-${{ github.ref }}
+      cancel-in-progress: true
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: destiny_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d destiny_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGPASSWORD: postgres
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGDATABASE: destiny_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create Supabase roles and apply migrations
+        run: |
+          set -euo pipefail
+          # Use the same pinned PostgreSQL client image as the service. This
+          # avoids apt mirror/DNS dependencies on the hosted runner.
+          docker run --rm --network host \
+            -e PGPASSWORD="${PGPASSWORD}" \
+            -e PGHOST=127.0.0.1 \
+            -e PGPORT=5432 \
+            -e PGUSER=postgres \
+            -e PGDATABASE=destiny_test \
+            -e DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/destiny_test" \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace postgres:16-alpine sh -ec '
+              psql -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN;"
+              psql -v ON_ERROR_STOP=1 -c "CREATE ROLE authenticated NOLOGIN;"
+              psql -v ON_ERROR_STOP=1 -c "CREATE ROLE service_role NOLOGIN BYPASSRLS;"
+              echo "First pass: apply and record migrations"
+              sh /workspace/scripts/apply-migrations.sh
+              echo "Second pass: confirm every migration is skipped"
+              sh /workspace/scripts/apply-migrations.sh
+              applied="$(psql -Atqc "SELECT count(*) FROM destiny_internal.schema_migrations")"
+              expected="$(find /workspace/supabase/migrations -maxdepth 1 -name "*.sql" | wc -l | tr -d " ")"
+              test "$applied" = "$expected"
+            '
+
+  docker:
+    name: Docker image builds
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: destiny-ci-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build bot image
+        run: docker build -f docker/Dockerfile.bot -t destiny-bot:ci .
+      - name: Build worker image
+        run: docker build -f docker/Dockerfile.worker -t destiny-workers:ci .
+      - name: Validate Docker Compose configuration
+        run: |
+          cp .env.example .env
+          docker compose -f docker/docker-compose.yml config >/dev/null
+          rm .env
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Bot runtime — long-running session. Never cancelled by newer triggers.
+  # ──────────────────────────────────────────────────────────────────────────
   run-bot:
     name: Run Destiny Ecosystem
+    if: ${{ github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    concurrency:
+      group: destiny-bot-runner
+      # The continuation job dispatches the successor session after this one
+      # completes. Never cancel an active bot session when another trigger arrives.
+      cancel-in-progress: false
 
     env:
       DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
@@ -49,7 +161,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v4
         with:
           version: 9
 
@@ -122,15 +234,15 @@ jobs:
           set -e
 
           if [ "${rc}" -eq 124 ]; then
-            echo "::notice::Session window ended cleanly after ${SESSION_MINUTES}m; completion watcher will start the next session."
+            echo "::notice::Session window ended cleanly after ${SESSION_MINUTES}m; continuation will start the next session."
             exit 0
           fi
           if [ "${rc}" -eq 0 ]; then
-            echo "::notice::Destiny bot process stopped cleanly; completion watcher will start the next session."
+            echo "::notice::Destiny bot process stopped cleanly; continuation will start the next session."
             exit 0
           fi
 
-          echo "::error::Destiny bot exited with status ${rc}; the completion watcher will start a recovery session."
+          echo "::error::Destiny bot exited with status ${rc}; continuation will start a recovery session."
           exit "${rc}"
 
       - name: Session Summary
@@ -139,7 +251,74 @@ jobs:
           {
             echo "### 🌌 Destiny Bot Session"
             echo ""
-            echo "- **Status:** Session ended; completion watcher schedules the successor"
+            echo "- **Status:** Session ended; continuation schedules the successor"
             echo "- **Runner:** ${RUNNER_NAME} (GitHub Actions Ubuntu)"
             echo "- **Runtime storage:** Supabase PostgreSQL"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Session continuation — was a separate workflow only because workflow_run
+  # chaining cannot live in the same file. A dependent job achieves the same
+  # self-chaining behaviour with a single workflow file.
+  # ──────────────────────────────────────────────────────────────────────────
+  continuation:
+    name: Start the next Destiny session
+    needs: run-bot
+    if: ${{ !cancelled() && needs.run-bot.result != 'cancelled' && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: destiny-session-continuation
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Back off after an unsuccessful session
+        if: ${{ needs.run-bot.result != 'success' }}
+        run: |
+          echo "::warning::Previous Destiny session concluded as ${{ needs.run-bot.result }}."
+          echo "Waiting 3 minutes before starting a recovery session."
+          sleep 180
+
+      - name: Dispatch the next bot session
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "Previous run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "Previous conclusion: ${{ needs.run-bot.result }}"
+          gh workflow run destiny.yml \
+            --repo "${GH_REPO}" \
+            --ref main \
+            -f session_minutes=345
+          echo "::notice::Successor session dispatch accepted by GitHub Actions."
+
+      - name: Verify successor run was created
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6; do
+            if gh run list --repo "${GH_REPO}" --workflow destiny.yml --event workflow_dispatch --branch main --limit 20 --json status --jq 'any(.[]; (.status == "queued" or .status == "in_progress"))' | grep -qx true; then
+              echo "::notice::Verified that GitHub created the successor workflow run."
+              exit 0
+            fi
+            echo "Waiting for GitHub to publish the dispatched run (attempt ${attempt}/6)..."
+            sleep 5
+          done
+          echo "::error::Dispatch was accepted but no successor run appeared in the Actions queue."
+          exit 1
+
+      - name: Continuation summary
+        if: always()
+        run: |
+          {
+            echo "### Destiny session continuation"
+            echo ""
+            echo "- Previous conclusion: ${{ needs.run-bot.result }}"
+            echo "- Branch: main"
+            echo "- Successor: dispatch requested"
           } >> "${GITHUB_STEP_SUMMARY}"
