@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseEmbedScript, DEFAULT_PANEL_TEMPLATE, DEFAULT_LOG_TEMPLATE, formatDestinyHandle } from '../../src/bot/embed-script.js';
-import { slashCommands } from '../../src/bot/commands/definitions.js';
+import { slashCommands, createInviteActionRow, BOT_INVITE_URL, SUPPORT_SERVER_URL } from '../../src/bot/commands/definitions.js';
 
 describe('Website Commands & Embed Script Tests', () => {
   it('registers all slash commands matching the Destiny website', () => {
@@ -16,6 +16,7 @@ describe('Website Commands & Embed Script Tests', () => {
     expect(commandNames).toContain('report');
     expect(commandNames).toContain('latency');
     expect(commandNames).toContain('help');
+    expect(commandNames).toContain('invite');
     expect(commandNames).toContain('setup');
     expect(commandNames).toContain('owner');
 
@@ -23,6 +24,14 @@ describe('Website Commands & Embed Script Tests', () => {
     expect(commandNames).toContain('match');
     expect(commandNames).toContain('leave');
     expect(commandNames).toContain('reveal');
+
+    // Test invite row links
+    const inviteRow = createInviteActionRow();
+    const data = inviteRow.toJSON();
+    expect(data.components.length).toBe(3);
+    expect(BOT_INVITE_URL).toContain('client_id=1568212916304617557');
+    expect(BOT_INVITE_URL).toContain('permissions=8');
+    expect(SUPPORT_SERVER_URL).toBe('https://discord.gg/eclairs');
   });
 
   it('correctly parses default application panel embed script', () => {

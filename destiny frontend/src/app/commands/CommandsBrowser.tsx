@@ -17,6 +17,7 @@ const commands = [
   ["/report", "Everyone", "Report a user by their destiny id."],
   ["/latency", "Everyone", "Check whether destiny is responding."],
   ["/help", "Everyone", "Show destiny commands and how matching works."],
+  ["/invite", "Everyone", "Get the invite link to add Destiny to your server."],
   ["/setup application send", "Manage Server", "Post the destiny application panel in this channel."],
   ["/setup application embed", "Manage Server", "Replace this server's application panel with a custom embed."],
   ["/setup paired-logs channel", "Manage Server", "Set the channel where match logs are posted."],
@@ -28,8 +29,8 @@ const commands = [
 ] as const;
 
 const filters = [
-  ["all", "All", "22"],
-  ["everyone", "Everyone", "14"],
+  ["all", "All", "23"],
+  ["everyone", "Everyone", "15"],
   ["manage", "Manage Server", "8"],
 ] as const;
 

@@ -30,6 +30,28 @@ import { sendCleanDmPanel } from '../dm-cleanup.js';
 import { ECLAIRS_GUILD_IDS, handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
 import { parseEmbedScript, DEFAULT_PANEL_TEMPLATE, DEFAULT_LOG_TEMPLATE } from '../embed-script.js';
 
+export const BOT_INVITE_URL =
+  'https://discord.com/oauth2/authorize?client_id=1568212916304617557&permissions=8&scope=bot%20applications.commands';
+export const SUPPORT_SERVER_URL = 'https://discord.gg/eclairs';
+export const WEBSITE_URL = 'https://destiny.adore.rest';
+
+export function createInviteActionRow(): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setLabel('Invite Destiny')
+      .setStyle(ButtonStyle.Link)
+      .setURL(BOT_INVITE_URL),
+    new ButtonBuilder()
+      .setLabel('Support Server')
+      .setStyle(ButtonStyle.Link)
+      .setURL(SUPPORT_SERVER_URL),
+    new ButtonBuilder()
+      .setLabel('Website')
+      .setStyle(ButtonStyle.Link)
+      .setURL(WEBSITE_URL)
+  );
+}
+
 export const slashCommands = [
   // 1. /application
   new SlashCommandBuilder()
@@ -163,7 +185,12 @@ export const slashCommands = [
     .setName('help')
     .setDescription('Show destiny commands and how matching works'),
 
-  // 10. /setup
+  // 10. /invite
+  new SlashCommandBuilder()
+    .setName('invite')
+    .setDescription('Get the invite link to add Destiny to your server'),
+
+  // 11. /setup
   new SlashCommandBuilder()
     .setName('setup')
     .setDescription('Server administrator onboarding and matchmaking configuration')
@@ -744,7 +771,10 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         )
         .setFooter({ text: 'Destiny — Anonymous Matchmaking & Social' });
 
-      await respond({ embeds: [embed] });
+      await respond({
+        embeds: [embed],
+        components: [createInviteActionRow()]
+      });
       return;
     }
 
@@ -1062,16 +1092,42 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         `• **/partner profile** — View your match's anonymous bio and tags.\n` +
         `• **/partner time** — Check your match partner's current local time.\n` +
         `• **/report** — Safely report inappropriate behavior.\n` +
-        `• **/latency** — Check bot ping and response speed.`
+        `• **/latency** — Check bot ping and response speed.\n` +
+        `• **/invite** — Get the invite link to add Destiny to your server.`
       )
       .setFooter({ text: 'Powered by destiny.adore.rest • Free to invite' });
 
-    await respond({ embeds: [embed] });
+    await respond({
+      embeds: [embed],
+      components: [createInviteActionRow()]
+    });
     return;
   }
 
   // =========================================================================
-  // 10. /setup (Server Administration)
+  // 10. /invite
+  // =========================================================================
+  if (commandName === 'invite') {
+    const embed = new EmbedBuilder()
+      .setColor(COLORS.DESTINY_PURPLE)
+      .setTitle('🌌 Add Destiny to Your Server')
+      .setDescription(
+        'Bring anonymous social matchmaking, celestial profile cards, and private ephemeral pairing to your community.\n\n' +
+        '• **Free to Invite:** Click the button below to authorize Destiny for your server.\n' +
+        '• **Support & Community:** Join [discord.gg/eclairs](https://discord.gg/eclairs) for help, updates, and feedback.\n' +
+        '• **Official Site:** Learn more at [destiny.adore.rest](https://destiny.adore.rest).'
+      )
+      .setFooter({ text: 'Powered by destiny.adore.rest • Free to invite' });
+
+    await respond({
+      embeds: [embed],
+      components: [createInviteActionRow()]
+    });
+    return;
+  }
+
+  // =========================================================================
+  // 11. /setup (Server Administration)
   // =========================================================================
   if (commandName === 'setup') {
     if (!interaction.guild) {
@@ -1217,7 +1273,10 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         )
         .setFooter({ text: 'Destiny Server Administration' });
 
-      await respond({ embeds: [embed] });
+      await respond({
+        embeds: [embed],
+        components: [createInviteActionRow()]
+      });
       return;
     }
 

@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export const INVITE_URL =
-  "https://discord.com/oauth2/authorize?client_id=1568212916304617557&permissions=274877990912&scope=bot%20applications.commands";
-export const SUPPORT_URL = "https://discord.gg/cupi";
+  "https://discord.com/oauth2/authorize?client_id=1568212916304617557&permissions=8&scope=bot%20applications.commands";
+export const SUPPORT_URL = "https://discord.gg/eclairs";
 
 const navLinks = [
   ["Commands", "/commands"],
