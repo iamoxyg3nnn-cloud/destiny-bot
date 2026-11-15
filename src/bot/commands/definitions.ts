@@ -29,6 +29,7 @@ import { buildProfileModal, normalizeGender, parseList } from '../profile-modal.
 import { sendCleanDmPanel } from '../dm-cleanup.js';
 import { ECLAIRS_GUILD_IDS, handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
 import { parseEmbedScript, DEFAULT_PANEL_TEMPLATE, DEFAULT_LOG_TEMPLATE } from '../embed-script.js';
+import { socialManager } from '../../core/social/manager.js';
 
 export const BOT_INVITE_URL =
   'https://discord.com/oauth2/authorize?client_id=1568212916304617557&permissions=8&scope=bot%20applications.commands';
@@ -436,6 +437,59 @@ export const slashCommands = [
     .addBooleanOption((opt) =>
       opt.setName('opt_out').setDescription('Opt out of all automated prompts').setRequired(false)
     ),
+
+  new SlashCommandBuilder()
+    .setName('friends')
+    .setDescription('Destiny anonymous friends list and direct connections')
+    .addSubcommand((sub) =>
+      sub
+        .setName('list')
+        .setDescription('View your anonymous Destiny friends list')
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('add')
+        .setDescription('Send an anonymous friend request to a Destiny handle')
+        .addStringOption((opt) =>
+          opt
+            .setName('destiny_id')
+            .setDescription('Partner Destiny handle (e.g. destiny#0417)')
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('remove')
+        .setDescription('Remove a friend from your Destiny friends list')
+        .addStringOption((opt) =>
+          opt
+            .setName('destiny_id')
+            .setDescription('Partner Destiny handle to remove')
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('chat')
+        .setDescription('Start a direct private chat with a Destiny friend')
+        .addStringOption((opt) =>
+          opt
+            .setName('destiny_id')
+            .setDescription('Partner Destiny handle')
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('call')
+        .setDescription('Start an ephemeral voice speed call with a Destiny friend')
+        .addStringOption((opt) =>
+          opt
+            .setName('destiny_id')
+            .setDescription('Partner Destiny handle')
+            .setRequired(true)
+        )
+    ),
 ];
 
 /**
@@ -754,18 +808,28 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         }
         const isUser1 = room.user1Id === user.id;
         const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
+        const partnerUserId = isUser1 ? room.user2Id : room.user1Id;
+        const partnerDestinyId = isUser1 ? (room.user2Pseudonym || 'destiny#????') : (room.user1Pseudonym || 'destiny#????');
+        const myDestinyId = isUser1 ? (room.user1Pseudonym || user.destinyId) : (room.user2Pseudonym || user.destinyId);
+
         if (partnerDiscordId) {
           interaction.client.users.fetch(partnerDiscordId)
-            .then((partner) => sendCleanDmPanel(partner, {
-              embeds: [
-                new EmbedBuilder()
-                  .setColor(COLORS.DARK)
-                  .setTitle(formatCustomEmojiText('🚪 Chat Session Ended'))
-                  .setDescription('Your anonymous partner has left the chat session. Your real identity remained hidden.'),
-              ],
-            }))
+            .then(async (partner) => {
+              const partnerWrapUp = socialManager.createSessionWrapUpContainer(myDestinyId, user.id, room.id);
+              await sendCleanDmPanel(partner, {
+                components: [partnerWrapUp],
+                flags: [MessageFlags.IsComponentsV2]
+              }).catch(() => {});
+            })
             .catch(() => {});
         }
+
+        const myWrapUp = socialManager.createSessionWrapUpContainer(partnerDestinyId, partnerUserId, room.id);
+        await respond({
+          components: [myWrapUp],
+          flags: [MessageFlags.IsComponentsV2]
+        });
+        return;
       }
 
       await respond({ content: formatCustomEmojiText('🚪 You have cleanly ended the anonymous chat session. Your real identity remained hidden.') });
@@ -798,9 +862,17 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         return;
       }
 
+      const accolades = await socialManager.getAccolades(targetProfile.id);
+      const totalAccolades = accolades.greatListener + accolades.hilarious + accolades.respectful + accolades.insightful;
+      const accoladeText = totalAccolades > 0
+        ? `🏆 **Verified Peer Accolades**\n` +
+          `• 🎧 Great Listener: **${accolades.greatListener}**  • 😂 Hilarious: **${accolades.hilarious}**\n` +
+          `• 🤝 Respectful: **${accolades.respectful}**  • 💡 Insightful: **${accolades.insightful}**`
+        : `🏆 **Verified Peer Accolades**: *No peer badges yet. Complete sessions to earn badges!*`;
+
       const { attachment } = await buildProfileCard(targetProfile, targetUser, interaction.member);
       await respond({
-        content: formatCustomEmojiText('🪐 **Destiny Profile Card**'),
+        content: formatCustomEmojiText(`🪐 **Destiny Profile Card**\n\n${accoladeText}`),
         files: [attachment],
         components: [createProfileActionRow()],
       });
@@ -826,6 +898,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       const usedLookups = parseInt(usedLookupsStr || '0', 10);
       const lookupsLeft = user.genderVerified ? 'Unlimited ✨' : `${Math.max(0, 10 - usedLookups)} / 10 daily`;
       const { formatDestinyHandle } = await import('../embed-script.js');
+      const accolades = await socialManager.getAccolades(user.id);
 
       const embed = new EmbedBuilder()
         .setColor(COLORS.PRIMARY)
@@ -839,6 +912,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
           { name: 'Reputation Score', value: `${user.reputationScore}/100`, inline: true },
           { name: 'Age Verification', value: `${user.age}+ (${user.genderVerified ? 'Verified' : 'Self-declared'})`, inline: true },
           { name: 'Gender', value: `\`${user.gender}\``, inline: true },
+          { name: 'Peer Accolades', value: `🎧 ${accolades.greatListener} • 😂 ${accolades.hilarious} • 🤝 ${accolades.respectful} • 💡 ${accolades.insightful}`, inline: true },
           { name: 'Language', value: user.languages.length > 0 ? user.languages.join(', ') : 'en', inline: true },
           { name: 'Interests', value: user.interests.length > 0 ? user.interests.map((i) => `\`${i}\``).join(' ') : '*None*', inline: false },
         )
@@ -1494,6 +1568,117 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       );
     await respond({ embeds: [embed] });
     return;
+  }
+
+  // =========================================================================
+  // 13. /friends (Anonymous Friendship Network)
+  // =========================================================================
+  if (commandName === 'friends') {
+    const sub = interaction.options.getSubcommand();
+
+    if (sub === 'list') {
+      const friends = await socialManager.getFriends(user.id);
+      if (friends.length === 0) {
+        const emptyContainer = new ContainerBuilder()
+          .setAccentColor(COLORS.DESTINY_PURPLE)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              formatCustomEmojiText(
+                `# 👥 Destiny Friends List\n\n` +
+                `You don't have any Destiny friends yet!\n\n` +
+                `• When a match concludes, click **[⭐ Would Talk Again]** to trigger mutual reconnection.\n` +
+                `• Or add someone directly with \`/friends add destiny_id:destiny#XXXX\`.\n\n` +
+                `-# 🔒 100% Anonymous • Real Discord tags stay hidden.`
+              )
+            )
+          )
+          .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+          .addActionRowComponents(
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+              new ButtonBuilder()
+                .setCustomId('destiny_btn_start')
+                .setLabel('Find Match')
+                .setEmoji(resolveBotEmoji('✨'))
+                .setStyle(ButtonStyle.Success)
+            )
+          );
+        await respond({ components: [emptyContainer], flags: [MessageFlags.IsComponentsV2] });
+        return;
+      }
+
+      const friendLines = friends.map((f, i) => {
+        const sinceDate = new Date(f.since).toLocaleDateString();
+        return `${i + 1}. **${f.destinyId}** — Friends since ${sinceDate}`;
+      }).join('\n');
+
+      const listContainer = new ContainerBuilder()
+        .setAccentColor(COLORS.DESTINY_PURPLE)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            formatCustomEmojiText(
+              `# 👥 Your Destiny Friends (${friends.length})\n\n` +
+              friendLines + '\n\n' +
+              `• Use \`/friends chat destiny_id:destiny#XXXX\` to start a 1-on-1 private chat.\n` +
+              `• Use \`/friends call destiny_id:destiny#XXXX\` to spin up a private voice call.\n` +
+              `• Use \`/friends remove destiny_id:destiny#XXXX\` to remove a friend.\n\n` +
+              `-# 🔒 Safe & Anonymous • Zero Discord profiles exposed.`
+            )
+          )
+        );
+      await respond({ components: [listContainer], flags: [MessageFlags.IsComponentsV2] });
+      return;
+    }
+
+    if (sub === 'add') {
+      const targetDestinyId = interaction.options.getString('destiny_id', true).trim();
+      const result = await socialManager.sendFriendRequest(user, targetDestinyId);
+      if (result.success && result.receiver) {
+        await socialManager.notifyFriendRequest(interaction.client, user, result.receiver);
+      }
+      await respond({ content: formatCustomEmojiText(result.message) });
+      return;
+    }
+
+    if (sub === 'remove') {
+      const targetDestinyId = interaction.options.getString('destiny_id', true).trim();
+      const result = await socialManager.removeFriend(user.id, targetDestinyId);
+      await respond({ content: formatCustomEmojiText(result.message) });
+      return;
+    }
+
+    if (sub === 'chat') {
+      const targetDestinyId = interaction.options.getString('destiny_id', true).trim();
+      const targetUser = await db.getUserByDestinyId(targetDestinyId).catch(() => null);
+      if (!targetUser) {
+        await respond({ content: formatCustomEmojiText(`❌ Could not find any user with Destiny ID \`${targetDestinyId}\`.`) });
+        return;
+      }
+      const areFriends = await socialManager.areFriends(user.id, targetUser.id);
+      if (!areFriends) {
+        await respond({ content: formatCustomEmojiText(`⚠️ You must be Destiny friends with **${targetDestinyId}** to start a direct chat. Send a request with \`/friends add\`.`) });
+        return;
+      }
+      const chatRes = await socialManager.startDirectChat(interaction.client, user, targetUser);
+      await respond({ content: formatCustomEmojiText(chatRes.message) });
+      return;
+    }
+
+    if (sub === 'call') {
+      const targetDestinyId = interaction.options.getString('destiny_id', true).trim();
+      const targetUser = await db.getUserByDestinyId(targetDestinyId).catch(() => null);
+      if (!targetUser) {
+        await respond({ content: formatCustomEmojiText(`❌ Could not find any user with Destiny ID \`${targetDestinyId}\`.`) });
+        return;
+      }
+      const areFriends = await socialManager.areFriends(user.id, targetUser.id);
+      if (!areFriends) {
+        await respond({ content: formatCustomEmojiText(`⚠️ You must be Destiny friends with **${targetDestinyId}** to start a direct call. Send a request with \`/friends add\`.`) });
+        return;
+      }
+      const callRes = await socialManager.startDirectCall(interaction.client, user, targetUser);
+      await respond({ content: formatCustomEmojiText(callRes.message) });
+      return;
+    }
   }
 }
 

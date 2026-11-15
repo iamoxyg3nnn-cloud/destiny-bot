@@ -29,7 +29,7 @@ import { reporterService } from '../../core/moderation/reporter.js';
 import { verificationService } from '../../core/moderation/verification.js';
 import { ECLAIRS_GUILD_IDS, handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
 import { embedService, COLORS } from '../embeds/index.js';
-import { ProfileField, ReportItem, UserProfile } from '../../core/types.js';
+import { ProfileField, ReportItem, UserProfile, PraiseTag } from '../../core/types.js';
 import {
   buildProfileCard,
   createProfileActionRow,
@@ -40,6 +40,7 @@ import { refreshBotPresence } from '../presence-manager.js';
 import { createRevealResultContainer, resolveRevealPair } from '../reveal-view.js';
 import { handleCommand } from '../commands/definitions.js';
 import { sendCleanDmPanel } from '../dm-cleanup.js';
+import { socialManager } from '../../core/social/manager.js';
 
 /**
  * Ultra-fast safe defer reply wrapper (<5ms)
@@ -762,63 +763,26 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         }
 
         if (room) {
-          const partnerDiscordId = room.user1Id === user.id ? room.user2DiscordId : room.user1DiscordId;
+          const isUser1 = room.user1Id === user.id;
+          const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
+          const partnerUserId = isUser1 ? room.user2Id : room.user1Id;
+          const partnerDestinyId = isUser1 ? (room.user2Pseudonym || 'destiny#????') : (room.user1Pseudonym || 'destiny#????');
+          const myDestinyId = isUser1 ? (room.user1Pseudonym || user.destinyId) : (room.user2Pseudonym || user.destinyId);
+
           if (partnerDiscordId) {
-            btn.client.users.fetch(partnerDiscordId).then((partner) => {
-              const partnerContainer = new ContainerBuilder()
-                .setAccentColor(COLORS.DARK)
-                .addTextDisplayComponents(
-                  new TextDisplayBuilder().setContent(
-                    formatCustomEmojiText('# 🚪 Chat Session Ended\n\nYour anonymous partner has ended the chat session.\nType `start` in DM to find a new match!')
-                  )
-                )
-                .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-                .addActionRowComponents(
-                  new ActionRowBuilder<ButtonBuilder>().addComponents(
-                    new ButtonBuilder()
-                      .setCustomId('destiny_btn_start')
-                      .setLabel('Find New Match')
-                      .setStyle(ButtonStyle.Success),
-                    new ButtonBuilder()
-                      .setCustomId(`btn_report_room_${room.id}`)
-                      .setLabel('Report User')
-                      .setStyle(ButtonStyle.Danger)
-                  )
-                );
-
-              const sendOptions: any = { 
-                components: [partnerContainer], 
-                flags: [MessageFlags.IsComponentsV2] 
-              };
-
-              sendCleanDmPanel(partner, sendOptions).catch(() => {});
+            btn.client.users.fetch(partnerDiscordId).then(async (partner) => {
+              const partnerWrapUp = socialManager.createSessionWrapUpContainer(myDestinyId, user.id, room.id);
+              await sendCleanDmPanel(partner, {
+                components: [partnerWrapUp],
+                flags: [MessageFlags.IsComponentsV2]
+              }).catch(() => {});
             }).catch(() => {});
           }
+
+          const myWrapUp = socialManager.createSessionWrapUpContainer(partnerDestinyId, partnerUserId, room.id);
+          await safeEditReply(btn, { components: [myWrapUp] });
+          return;
         }
-
-        const leaveResponseContainer = new ContainerBuilder()
-            .setAccentColor(COLORS.DARK)
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                formatCustomEmojiText('# 🚪 Session Left\n\nYou have safely left the anonymous chat session.')
-              )
-            )
-            .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-            .addActionRowComponents(
-              new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder()
-                  .setCustomId('destiny_btn_start')
-                  .setLabel('Find New Match')
-                  .setStyle(ButtonStyle.Success),
-              new ButtonBuilder()
-                .setCustomId(`btn_report_room_${room?.id || roomId}`)
-                .setLabel('Report User')
-                .setStyle(ButtonStyle.Danger)
-            )
-          );
-
-        const editOptions: any = { components: [leaveResponseContainer] };
-        await safeEditReply(btn, editOptions);
     } else {
         const noRoomContainer = new ContainerBuilder()
           .setAccentColor(COLORS.DARK)
@@ -1141,6 +1105,236 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
 
       const successContainer = embedService.createReportSuccessContainer(reportDelivered, reportResult.message);
       await safeEditReply(btn, { components: [successContainer] });
+      return;
+    }
+
+    // --- Dismiss Session Wrap-up ---
+    if (customId === 'destiny_dismiss_wrapup') {
+      const ok = await safeDeferReply(btn);
+      if (!ok) return;
+      await safeEditReply(btn, {
+        content: formatCustomEmojiText('👋 Session wrap-up dismissed. Have a wonderful day!'),
+        components: []
+      });
+      return;
+    }
+
+    // --- Award Peer Praise Accolade ---
+    if (customId.startsWith('destiny_praise_')) {
+      const ok = await safeDeferReply(btn);
+      if (!ok) return;
+
+      const user = await db.getUserByDiscordId(discordUser.id, true);
+      if (!user) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('❌ Please complete your profile first with `/application`.') });
+        return;
+      }
+
+      // Format: destiny_praise_${tag}_${targetUserId}_${roomId}
+      const raw = customId.replace('destiny_praise_', '');
+      let tag: PraiseTag = 'respectful';
+      let targetUserId = '';
+      let roomId = '';
+
+      if (raw.startsWith('great_listener_')) {
+        tag = 'great_listener';
+        const rest = raw.replace('great_listener_', '').split('_');
+        targetUserId = rest[0];
+        roomId = rest.slice(1).join('_');
+      } else if (raw.startsWith('hilarious_')) {
+        tag = 'hilarious';
+        const rest = raw.replace('hilarious_', '').split('_');
+        targetUserId = rest[0];
+        roomId = rest.slice(1).join('_');
+      } else if (raw.startsWith('respectful_')) {
+        tag = 'respectful';
+        const rest = raw.replace('respectful_', '').split('_');
+        targetUserId = rest[0];
+        roomId = rest.slice(1).join('_');
+      } else if (raw.startsWith('insightful_')) {
+        tag = 'insightful';
+        const rest = raw.replace('insightful_', '').split('_');
+        targetUserId = rest[0];
+        roomId = rest.slice(1).join('_');
+      }
+
+      const praiseRes = await socialManager.addAccolade(user.id, targetUserId, tag, roomId);
+      await safeEditReply(btn, { content: formatCustomEmojiText(praiseRes.message) });
+      return;
+    }
+
+    // --- Mutual Match Reconnect Actions (Direct Chat / Voice Call) ---
+    if (customId.startsWith('destiny_reconnect_chat_')) {
+      const ok = await safeDeferReply(btn);
+      if (!ok) return;
+
+      const user = await db.getUserByDiscordId(discordUser.id, true);
+      if (!user) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('❌ Profile not found.') });
+        return;
+      }
+
+      const targetUserId = customId.replace('destiny_reconnect_chat_', '');
+      const targetUser = await db.getUserById(targetUserId).catch(() => null);
+      if (!targetUser) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('❌ Target user profile no longer exists.') });
+        return;
+      }
+
+      const chatRes = await socialManager.startDirectChat(btn.client, user, targetUser);
+      await safeEditReply(btn, { content: formatCustomEmojiText(chatRes.message) });
+      return;
+    }
+
+    if (customId.startsWith('destiny_reconnect_voice_')) {
+      const ok = await safeDeferReply(btn);
+      if (!ok) return;
+
+      const user = await db.getUserByDiscordId(discordUser.id, true);
+      if (!user) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('❌ Profile not found.') });
+        return;
+      }
+
+      const targetUserId = customId.replace('destiny_reconnect_voice_', '');
+      const targetUser = await db.getUserById(targetUserId).catch(() => null);
+      if (!targetUser) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('❌ Target user profile no longer exists.') });
+        return;
+      }
+
+      const callRes = await socialManager.startDirectCall(btn.client, user, targetUser);
+      await safeEditReply(btn, { content: formatCustomEmojiText(callRes.message) });
+      return;
+    }
+
+    // --- Second Chance Reconnect Vote ("Would Talk Again") ---
+    if (customId.startsWith('destiny_reconnect_')) {
+      const ok = await safeDeferReply(btn);
+      if (!ok) return;
+
+      const user = await db.getUserByDiscordId(discordUser.id, true);
+      if (!user) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('❌ Please complete your profile first with `/application`.') });
+        return;
+      }
+
+      // Format: destiny_reconnect_${targetUserId}_${roomId}
+      const parts = customId.replace('destiny_reconnect_', '').split('_');
+      const targetUserId = parts[0];
+      const roomId = parts.slice(1).join('_');
+
+      const voteRes = await socialManager.castReconnectVote(user.id, targetUserId, roomId);
+      if (!voteRes) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('⚠️ Could not record vote. User profile not found.') });
+        return;
+      }
+
+      if (voteRes.isMutual) {
+        // Both participants voted yes!
+        const mutualCardForTarget = socialManager.createMutualReconnectContainer(user.destinyId, user.id);
+        const mutualCardForVoter = socialManager.createMutualReconnectContainer(voteRes.targetUser.destinyId, voteRes.targetUser.id);
+
+        const targetDiscordUser = await btn.client.users.fetch(voteRes.targetUser.discordUserId).catch(() => null);
+        if (targetDiscordUser) {
+          await sendCleanDmPanel(targetDiscordUser, {
+            components: [mutualCardForTarget],
+            flags: [MessageFlags.IsComponentsV2]
+          }).catch(() => {});
+        }
+
+        await safeEditReply(btn, {
+          components: [mutualCardForVoter]
+        });
+        return;
+      }
+
+      await safeEditReply(btn, {
+        content: formatCustomEmojiText(
+          '⭐ **Secret Second Chance Vote Recorded!**\n\n' +
+          'If your partner also voted **[Would Talk Again]** within 24 hours, Destiny will trigger a mutual match reconnect card for both of you!\n\n' +
+          '-# 🔒 100% Anonymous • Your vote is never revealed unless mutual.'
+        )
+      });
+      return;
+    }
+
+    // --- Friend Request Actions ---
+    if (customId.startsWith('destiny_friend_add_')) {
+      const ok = await safeDeferReply(btn);
+      if (!ok) return;
+
+      const user = await db.getUserByDiscordId(discordUser.id, true);
+      if (!user) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('❌ Please complete your profile first with `/application`.') });
+        return;
+      }
+
+      const targetUserId = customId.replace('destiny_friend_add_', '');
+      const targetUser = await db.getUserById(targetUserId).catch(() => null);
+      if (!targetUser) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('❌ User profile not found.') });
+        return;
+      }
+
+      const addRes = await socialManager.sendFriendRequest(user, targetUser.destinyId);
+      if (addRes.success && addRes.receiver) {
+        await socialManager.notifyFriendRequest(btn.client, user, addRes.receiver);
+      }
+      await safeEditReply(btn, { content: formatCustomEmojiText(addRes.message) });
+      return;
+    }
+
+    if (customId.startsWith('destiny_friend_accept_')) {
+      const ok = await safeDeferReply(btn);
+      if (!ok) return;
+
+      const user = await db.getUserByDiscordId(discordUser.id, true);
+      if (!user) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('❌ Please complete your profile first with `/application`.') });
+        return;
+      }
+
+      const senderUserId = customId.replace('destiny_friend_accept_', '');
+      const acceptRes = await socialManager.acceptFriendRequest(user, senderUserId);
+      if (acceptRes.success && acceptRes.sender) {
+        const senderDiscordUser = await btn.client.users.fetch(acceptRes.sender.discordUserId).catch(() => null);
+        if (senderDiscordUser) {
+          const acceptNotice = new ContainerBuilder()
+            .setAccentColor(COLORS.SUCCESS)
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                formatCustomEmojiText(
+                  `# 🎉 Friend Request Accepted!\n\n` +
+                  `**${user.destinyId}** accepted your anonymous Destiny friend request!\n\n` +
+                  `You can now start direct 1-on-1 private chats and speed calls anytime using \`/friends chat\` or \`/friends call\`!`
+                )
+              )
+            );
+          await sendCleanDmPanel(senderDiscordUser, {
+            components: [acceptNotice],
+            flags: [MessageFlags.IsComponentsV2]
+          }).catch(() => {});
+        }
+      }
+
+      await safeEditReply(btn, { content: formatCustomEmojiText(acceptRes.message) });
+      return;
+    }
+
+    if (customId.startsWith('destiny_friend_decline_')) {
+      const ok = await safeDeferReply(btn);
+      if (!ok) return;
+
+      const user = await db.getUserByDiscordId(discordUser.id, true);
+      if (!user) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('❌ Profile not found.') });
+        return;
+      }
+
+      const senderUserId = customId.replace('destiny_friend_decline_', '');
+      await socialManager.declineFriendRequest(user.id, senderUserId);
+      await safeEditReply(btn, { content: formatCustomEmojiText('Friend request declined.') });
       return;
     }
   }

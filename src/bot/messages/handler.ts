@@ -22,6 +22,7 @@ import { buildProfileCard, createProfileActionRow, isProfileComplete } from '../
 import { refreshBotPresence } from '../presence-manager.js';
 import { createRevealResultContainer, resolveRevealPair } from '../reveal-view.js';
 import { sendCleanDmPanel } from '../dm-cleanup.js';
+import { socialManager } from '../../core/social/manager.js';
 
 /**
  * Safe message reply helper with Components V2:
@@ -142,59 +143,22 @@ export class MessageCommandHandler {
             }).catch(() => {});
           }
 
-          // Notify partner in DM
-          const partnerDiscordId = activeRoom.user1Id === user.id ? activeRoom.user2DiscordId : activeRoom.user1DiscordId;
+          // Notify partner in DM and provide post-session wrap-up card
+          const isUser1 = activeRoom.user1Id === user.id;
+          const partnerDiscordId = isUser1 ? activeRoom.user2DiscordId : activeRoom.user1DiscordId;
+          const partnerUserId = isUser1 ? activeRoom.user2Id : activeRoom.user1Id;
+          const partnerDestinyId = isUser1 ? (activeRoom.user2Pseudonym || 'destiny#????') : (activeRoom.user1Pseudonym || 'destiny#????');
+          const myDestinyId = isUser1 ? (activeRoom.user1Pseudonym || user.destinyId) : (activeRoom.user2Pseudonym || user.destinyId);
+
           if (partnerDiscordId) {
             client.users.fetch(partnerDiscordId).then((partner) => {
-              const partnerContainer = new ContainerBuilder()
-                .setAccentColor(COLORS.DARK)
-                .addTextDisplayComponents(
-                  new TextDisplayBuilder().setContent(
-                    formatCustomEmojiText('# 🚪 Chat Session Ended\n\nYour anonymous partner has left the chat session.\nClick below to find a new match or report if inappropriate behavior occurred.')
-                  )
-                )
-                .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-                .addActionRowComponents(
-                  new ActionRowBuilder<ButtonBuilder>().addComponents(
-                    new ButtonBuilder()
-                      .setCustomId('destiny_btn_start')
-                      .setLabel('Find New Match')
-                      .setEmoji(resolveBotEmoji('✨'))
-                      .setStyle(ButtonStyle.Success),
-                    new ButtonBuilder()
-                      .setCustomId(`btn_report_room_${activeRoom.id}`)
-                      .setLabel('Report User')
-                      .setEmoji(resolveBotEmoji('🚨'))
-                      .setStyle(ButtonStyle.Danger)
-                  )
-                );
-              sendCleanDmPanel(partner, { components: [partnerContainer], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+              const partnerWrapUp = socialManager.createSessionWrapUpContainer(myDestinyId, user.id, activeRoom.id);
+              sendCleanDmPanel(partner, { components: [partnerWrapUp], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
             }).catch(() => {});
           }
 
-          const leaveResponseContainer = new ContainerBuilder()
-            .setAccentColor(COLORS.DARK)
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                formatCustomEmojiText('# 🚪 Session Left\n\nYou have safely left the anonymous chat session.')
-              )
-            )
-            .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-            .addActionRowComponents(
-              new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder()
-                  .setCustomId('destiny_btn_start')
-                  .setLabel('Find New Match')
-                  .setEmoji(resolveBotEmoji('✨'))
-                  .setStyle(ButtonStyle.Success),
-                new ButtonBuilder()
-                  .setCustomId(`btn_report_room_${activeRoom.id}`)
-                  .setLabel('Report User')
-                  .setEmoji(resolveBotEmoji('🚨'))
-                  .setStyle(ButtonStyle.Danger)
-              )
-            );
-          await safeV2Reply(message, leaveResponseContainer);
+          const myWrapUp = socialManager.createSessionWrapUpContainer(partnerDestinyId, partnerUserId, activeRoom.id);
+          await safeV2Reply(message, myWrapUp);
           return true;
         }
 

@@ -665,18 +665,47 @@ export class VoiceManager {
     } finally {
       const u1 = await stateStore.get(`voice:room:${roomId}:user1`);
       const u2 = await stateStore.get(`voice:room:${roomId}:user2`);
+      const destiny1 = await stateStore.get(`voice:room:${roomId}:destiny1`);
+      const destiny2 = await stateStore.get(`voice:room:${roomId}:destiny2`);
+
+      let p1: UserProfile | null = null;
+      let p2: UserProfile | null = null;
+
       if (u1) {
-        const p1 = await db.getUserByDiscordId(u1).catch(() => null);
+        p1 = await db.getUserByDiscordId(u1).catch(() => null);
         if (p1) {
           await stateStore.del(`user:active_voice_room:${p1.id}`);
           await stateStore.del(`user:active_room:${p1.id}`);
         }
       }
       if (u2) {
-        const p2 = await db.getUserByDiscordId(u2).catch(() => null);
+        p2 = await db.getUserByDiscordId(u2).catch(() => null);
         if (p2) {
           await stateStore.del(`user:active_voice_room:${p2.id}`);
           await stateStore.del(`user:active_room:${p2.id}`);
+        }
+      }
+
+      // Deliver post-session wrap-up card (Second-Chance voting & Peer Accolades)
+      if (p1 && p2 && u1 && u2 && destiny1 && destiny2) {
+        try {
+          const isBlocked = await blockerService.isBlocked(p1.id, p2.id);
+          if (!isBlocked) {
+            const { socialManager } = await import('../social/manager.js');
+            const { sendCleanDmPanel } = await import('../../bot/dm-cleanup.js');
+            const user1Discord = await client.users.fetch(u1).catch(() => null);
+            const user2Discord = await client.users.fetch(u2).catch(() => null);
+            if (user1Discord) {
+              const card1 = socialManager.createSessionWrapUpContainer(destiny2, p2.id, roomId);
+              await sendCleanDmPanel(user1Discord, { components: [card1], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+            }
+            if (user2Discord) {
+              const card2 = socialManager.createSessionWrapUpContainer(destiny1, p1.id, roomId);
+              await sendCleanDmPanel(user2Discord, { components: [card2], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+            }
+          }
+        } catch (wrapUpErr: any) {
+          console.warn('[VoiceManager] Wrap-up delivery failed:', wrapUpErr?.message || wrapUpErr);
         }
       }
 

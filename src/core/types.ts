@@ -27,8 +27,25 @@ export interface UserProfile {
   reputationScore: number;
   bio?: string;
   matchIntent?: string;
+  accolades?: ReputationAccolades;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ReputationAccolades {
+  greatListener: number;
+  hilarious: number;
+  respectful: number;
+  insightful: number;
+}
+
+export type PraiseTag = 'great_listener' | 'hilarious' | 'respectful' | 'insightful';
+
+export interface DestinyFriend {
+  userId: string;
+  destinyId: string;
+  discordUserId: string;
+  since: number;
 }
 
 export interface MatchTicket {

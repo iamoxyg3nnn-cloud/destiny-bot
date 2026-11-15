@@ -15,6 +15,11 @@ const commands = [
   ["/partner birthday", "Everyone", "View your active match's upcoming birthday."],
   ["/partner time", "Everyone", "View your active match's current local time."],
   ["/report", "Everyone", "Report a user by their destiny id."],
+  ["/friends list", "Everyone", "View your anonymous Destiny friends list."],
+  ["/friends add", "Everyone", "Send an anonymous friend request to a Destiny handle."],
+  ["/friends remove", "Everyone", "Remove a friend from your Destiny friends list."],
+  ["/friends chat", "Everyone", "Start a private direct chat room with a Destiny friend."],
+  ["/friends call", "Everyone", "Start an ephemeral voice speed call with a Destiny friend."],
   ["/latency", "Everyone", "Check whether destiny is responding."],
   ["/help", "Everyone", "Show destiny commands and how matching works."],
   ["/invite", "Everyone", "Get the invite link to add Destiny to your server."],
@@ -33,8 +38,8 @@ const commands = [
 ] as const;
 
 const filters = [
-  ["all", "All", "27"],
-  ["everyone", "Everyone", "15"],
+  ["all", "All", "32"],
+  ["everyone", "Everyone", "20"],
   ["manage", "Manage Server", "12"],
 ] as const;
 
