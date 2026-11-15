@@ -121,11 +121,11 @@ img { display: block; max-width: 100%; }
 .nav-menu-btn[aria-expanded="true"] { border-color: var(--color-rose); color: var(--color-rose-ink); }
 .nav-invite {
   display: inline-flex; align-items: center; gap: .375rem; flex-shrink: 0; padding: .5rem .875rem;
-  border: 1px solid #4752c4; border-radius: 999px; background: #5865f2; color: white;
-  font-size: 12px; font-weight: 800; line-height: 1; box-shadow: 0 8px 20px -10px #5865f2b3;
+  border: 1px solid var(--color-rose-deep); border-radius: 999px; background: var(--color-rose-deep); color: white;
+  font-size: 12px; font-weight: 800; line-height: 1; box-shadow: 0 8px 20px -10px #be2e5bbf;
   transition: background .2s ease, border-color .2s ease, transform .2s ease;
 }
-.nav-invite:hover { border-color: #3c45a5; background: #4752c4; }
+.nav-invite:hover { border-color: var(--color-rose-ink); background: var(--color-rose-ink); }
 .nav-invite:active { transform: scale(.97); }
 .discord-icon { width: 1rem; height: 1rem; flex: none; }
 .nav-mobile-menu {

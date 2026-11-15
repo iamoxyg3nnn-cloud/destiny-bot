@@ -93,6 +93,17 @@ export function SiteHeader() {
           <a href={SUPPORT_URL} target="_blank" rel="noopener noreferrer" className="nav-mobile-link" onClick={close}>
             Support
           </a>
+          <a
+            href={INVITE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nav-invite"
+            onClick={close}
+            style={{ alignSelf: "flex-start", marginTop: "0.5rem" }}
+          >
+            <DiscordIcon />
+            <span>Invite destiny</span>
+          </a>
         </div>
       </div>
     </header>
