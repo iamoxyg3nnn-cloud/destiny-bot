@@ -131,6 +131,17 @@ export class MessageCommandHandler {
           // The conversation just ended — reflect it in the rotating presence.
           refreshBotPresence();
 
+          const guildId = await stateStore.get(`room:${activeRoom.id}:guild_id`);
+          if (guildId) {
+            const { dispatchPairedLogEvent } = await import('../paired-logs.js');
+            dispatchPairedLogEvent(client, guildId, 'Unmatch', {
+              discordUserId1: activeRoom.user1DiscordId,
+              discordUserId2: activeRoom.user2DiscordId,
+              pseudonym1: activeRoom.user1Pseudonym,
+              pseudonym2: activeRoom.user2Pseudonym,
+            }).catch(() => {});
+          }
+
           // Notify partner in DM
           const partnerDiscordId = activeRoom.user1Id === user.id ? activeRoom.user2DiscordId : activeRoom.user1DiscordId;
           if (partnerDiscordId) {
@@ -212,6 +223,17 @@ export class MessageCommandHandler {
             // Partner had already consented — resolve the reveal immediately.
             const { mine, partner } = resolveRevealPair(activeRoom, user.id, consentResult);
             await safeV2Reply(message, createRevealResultContainer(partner, consentResult.agreedFields));
+
+            const guildId = await stateStore.get(`room:${activeRoom.id}:guild_id`);
+            if (guildId) {
+              const { dispatchPairedLogEvent } = await import('../paired-logs.js');
+              dispatchPairedLogEvent(client, guildId, 'Reveal', {
+                discordUserId1: activeRoom.user1DiscordId,
+                discordUserId2: activeRoom.user2DiscordId,
+                pseudonym1: activeRoom.user1Pseudonym,
+                pseudonym2: activeRoom.user2Pseudonym,
+              }).catch(() => {});
+            }
 
             if (partnerDiscordId) {
               const partnerUser = await client.users.fetch(partnerDiscordId).catch(() => null);
@@ -643,7 +665,7 @@ export class MessageCommandHandler {
     const { attachment } = await buildProfileCard(user, message.author, message.member);
 
     await message.reply({
-      content: formatCustomEmojiText('🪐 **Your Destiny Profile** — update anything anytime with `/profile`.'),
+      content: formatCustomEmojiText('🪐 **Your Destiny Profile** — update anything anytime with `/application`.'),
       files: [attachment],
       components: [createProfileActionRow()],
     });

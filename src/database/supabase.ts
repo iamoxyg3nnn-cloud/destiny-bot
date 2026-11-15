@@ -193,9 +193,22 @@ export class DatabaseService {
   }
 
   async getUserByDestinyId(destinyId: string): Promise<UserProfile | null> {
+    const raw = (destinyId || '').trim();
+    if (!raw) return null;
+    const cleanId = raw.replace(/^destiny#/i, '');
+    const withPrefix = raw.startsWith('destiny#') ? raw : `destiny#${cleanId}`;
+
     if (this.isMockMode || !this.client) {
       for (const user of this.mockUsers.values()) {
-        if (user.destinyId === destinyId) return await this.enrichProfileExtensions(this.normalizeUserBan(user));
+        if (
+          user.destinyId === raw ||
+          user.destinyId === cleanId ||
+          user.destinyId === withPrefix ||
+          user.destinyId.toLowerCase() === raw.toLowerCase() ||
+          user.destinyId.toLowerCase() === cleanId.toLowerCase()
+        ) {
+          return await this.enrichProfileExtensions(this.normalizeUserBan(user));
+        }
       }
       return null;
     }
@@ -203,7 +216,7 @@ export class DatabaseService {
     const { data, error } = await this.client
       .from('users')
       .select('*')
-      .eq('destiny_id', destinyId)
+      .or(`destiny_id.eq.${raw},destiny_id.eq.${cleanId},destiny_id.eq.${withPrefix}`)
       .maybeSingle();
 
     if (error) throw new Error(`Failed to load user by Destiny ID: ${error.message}`);

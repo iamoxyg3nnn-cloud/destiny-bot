@@ -1,1 +1,148 @@
-[]
+[
+  {
+    "userId": "d63ff30d-7261-47a5-a7d6-4e1a1fb67390",
+    "destinyId": "A8I7YA",
+    "discordUserId": "111122223333444455",
+    "age": 21,
+    "gender": "female",
+    "preferredGender": [
+      "any"
+    ],
+    "minAgePref": 18,
+    "maxAgePref": 99,
+    "languages": [
+      "en"
+    ],
+    "interests": [
+      "music",
+      "anime",
+      "gaming"
+    ],
+    "queuedAt": 1794727842543
+  },
+  {
+    "userId": "452d234e-ddff-4c72-ae5b-a248783400d5",
+    "destinyId": "TRX7E3",
+    "discordUserId": "555544443333222211",
+    "age": 23,
+    "gender": "male",
+    "preferredGender": [
+      "any"
+    ],
+    "minAgePref": 18,
+    "maxAgePref": 99,
+    "languages": [
+      "en"
+    ],
+    "interests": [
+      "gaming",
+      "coding",
+      "music"
+    ],
+    "queuedAt": 1794727842546
+  },
+  {
+    "userId": "e0c0405f-3fff-46c3-9f39-b67698d30a8a",
+    "destinyId": "17VP29",
+    "discordUserId": "111122223333444455",
+    "age": 21,
+    "gender": "female",
+    "preferredGender": [
+      "any"
+    ],
+    "minAgePref": 18,
+    "maxAgePref": 99,
+    "languages": [
+      "en"
+    ],
+    "interests": [
+      "music",
+      "anime",
+      "gaming"
+    ],
+    "queuedAt": 1794727978915
+  },
+  {
+    "userId": "7c3bd984-baf3-4b48-8b17-2ace5c4c0257",
+    "destinyId": "C7X00O",
+    "discordUserId": "555544443333222211",
+    "age": 23,
+    "gender": "male",
+    "preferredGender": [
+      "any"
+    ],
+    "minAgePref": 18,
+    "maxAgePref": 99,
+    "languages": [
+      "en"
+    ],
+    "interests": [
+      "gaming",
+      "coding",
+      "music"
+    ],
+    "queuedAt": 1794727978917
+  },
+  {
+    "userId": "34df94a0-92a6-4efe-beed-9c0b717ab51a",
+    "destinyId": "CTX002",
+    "discordUserId": "987654321012345679",
+    "age": 26,
+    "gender": "male",
+    "preferredGender": [
+      "any"
+    ],
+    "minAgePref": 18,
+    "maxAgePref": 99,
+    "languages": [
+      "en"
+    ],
+    "interests": [
+      "gaming"
+    ],
+    "guildId": "234567890123456789",
+    "queuedAt": 1794728108979
+  },
+  {
+    "userId": "cea821bd-9d2c-46cb-97b9-793f1f73e531",
+    "destinyId": "ONX6FH",
+    "discordUserId": "111122223333444455",
+    "age": 21,
+    "gender": "female",
+    "preferredGender": [
+      "any"
+    ],
+    "minAgePref": 18,
+    "maxAgePref": 99,
+    "languages": [
+      "en"
+    ],
+    "interests": [
+      "music",
+      "anime",
+      "gaming"
+    ],
+    "queuedAt": 1794728109109
+  },
+  {
+    "userId": "afb0e598-ef65-4c9f-9b0a-ab508c614c0f",
+    "destinyId": "SP1UW8",
+    "discordUserId": "555544443333222211",
+    "age": 23,
+    "gender": "male",
+    "preferredGender": [
+      "any"
+    ],
+    "minAgePref": 18,
+    "maxAgePref": 99,
+    "languages": [
+      "en"
+    ],
+    "interests": [
+      "gaming",
+      "coding",
+      "music"
+    ],
+    "queuedAt": 1794728109111
+  }
+]

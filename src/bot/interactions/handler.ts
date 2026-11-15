@@ -1,4 +1,4 @@
-import { formatCustomEmojiText } from '../custom-emojis.js';
+import { formatCustomEmojiText, resolveBotEmoji } from '../custom-emojis.js';
 import { 
   Interaction, 
   ButtonInteraction, 
@@ -17,7 +17,8 @@ import {
   MessageFlags,
   AttachmentBuilder,
   Message,
-  PermissionFlagsBits
+  PermissionFlagsBits,
+  EmbedBuilder
 } from 'discord.js';
 import { db } from '../../database/supabase.js';
 import { config } from '../../config/index.js';
@@ -49,6 +50,15 @@ async function safeDeferReply(interaction: ButtonInteraction | StringSelectMenuI
   if (interaction.deferred || interaction.replied) return true;
   try {
     if (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isChannelSelectMenu()) {
+      const isPublicGuildMessage = Boolean(
+        interaction.guildId && 
+        interaction.message && 
+        !interaction.message.flags?.has(MessageFlags.Ephemeral)
+      );
+      if (isPublicGuildMessage) {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        return true;
+      }
       await interaction.deferUpdate();
       return true;
     }
@@ -124,7 +134,7 @@ async function safeEditReply(interaction: ButtonInteraction | StringSelectMenuIn
 }
 
 export async function handleInteraction(interaction: Interaction): Promise<void> {
-  const retiredMessage = 'This control is no longer available. Use /match to start an anonymous chat or /profile to manage your profile.';
+  const retiredMessage = 'This control is no longer available. Use /find match to start an anonymous chat or /application to manage your profile.';
 
   // Slash commands are routed to the command controller.
   if (interaction.isChatInputCommand()) {
@@ -274,6 +284,19 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         const container = createRevealResultContainer(partner, res.agreedFields);
         await safeEditReply(select, { components: [container] });
 
+        if (room) {
+          const guildId = await stateStore.get(`room:${room.id}:guild_id`);
+          if (guildId) {
+            const { dispatchPairedLogEvent } = await import('../paired-logs.js');
+            dispatchPairedLogEvent(select.client, guildId, 'Reveal', {
+              discordUserId1: room.user1DiscordId,
+              discordUserId2: room.user2DiscordId,
+              pseudonym1: room.user1Pseudonym,
+              pseudonym2: room.user2Pseudonym,
+            }).catch(() => {});
+          }
+        }
+
         // Deliver the matching reveal card to the partner as well.
         if (room) {
           const isUser1 = room.user1Id === user.id;
@@ -353,7 +376,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
     if (customId === 'destiny_btn_card_static') {
       const user = await db.getUserByDiscordId(discordUser.id);
       if (!user) {
-        await btn.reply({ content: 'Please set up your profile first with `/profile`.', flags: MessageFlags.Ephemeral }).catch(() => {});
+        await btn.reply({ content: 'Please set up your profile first with `/application`.', flags: MessageFlags.Ephemeral }).catch(() => {});
         return;
       }
 
@@ -486,6 +509,109 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       return;
     }
 
+    // --- Proposal Accept Button ---
+    if (customId.startsWith('destiny_proposal_accept_')) {
+      const ok = await safeDeferReply(btn);
+      if (!ok) return;
+      const proposalId = customId.replace('destiny_proposal_accept_', '');
+      const user = await db.getUserByDiscordId(discordUser.id, true);
+      if (!user) return;
+
+      const { proposalManager } = await import('../../core/matchmaking/proposal.js');
+      const res = await proposalManager.handleAccept(proposalId, user.id);
+      if (res.status === 'accepted') {
+        const notice = new ContainerBuilder()
+          .setAccentColor(COLORS.SUCCESS)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              formatCustomEmojiText('# 🎉 Match Accepted!\n\nBoth you and your partner accepted the match! You are now connected in a private anonymous session. Type a message here in DMs to begin!')
+            )
+          );
+        await safeEditReply(btn, { components: [notice] });
+      } else if (res.status === 'waiting') {
+        const notice = new ContainerBuilder()
+          .setAccentColor(COLORS.DESTINY_PURPLE)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              formatCustomEmojiText('# ⏳ Waiting for Partner...\n\nYou accepted the match! Waiting for your anonymous partner to accept within the remaining time...')
+            )
+          );
+        await safeEditReply(btn, { components: [notice] });
+      } else {
+        const notice = new ContainerBuilder()
+          .setAccentColor(COLORS.GOLD)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              formatCustomEmojiText('# ⚠️ Match Proposal Expired\n\nThis match proposal timed out or was cancelled. Run /find match to search again!')
+            )
+          );
+        await safeEditReply(btn, { components: [notice] });
+      }
+      return;
+    }
+
+    // --- Proposal Pass Button ---
+    if (customId.startsWith('destiny_proposal_pass_')) {
+      const ok = await safeDeferReply(btn);
+      if (!ok) return;
+      const proposalId = customId.replace('destiny_proposal_pass_', '');
+      const user = await db.getUserByDiscordId(discordUser.id, true);
+      if (!user) return;
+
+      const { proposalManager } = await import('../../core/matchmaking/proposal.js');
+      await proposalManager.handlePass(proposalId, user.id);
+
+      const notice = new ContainerBuilder()
+        .setAccentColor(COLORS.DARK)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            formatCustomEmojiText('# ✖️ Match Passed\n\nYou passed on this match. You can run /find match whenever you are ready to search again.')
+          )
+        );
+      await safeEditReply(btn, { components: [notice] });
+      return;
+    }
+
+    // --- Search Discovery Scope Buttons ---
+    if (customId === 'destiny_scope_global' || customId === 'destiny_scope_guild') {
+      const ok = await safeDeferReply(btn);
+      if (!ok) return;
+
+      const user = await db.getUserByDiscordId(discordUser.id, true);
+      if (!user) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('Please set up your profile first with /application.') });
+        return;
+      }
+
+      const newScope = customId === 'destiny_scope_global' ? 'global' : 'guild';
+      await stateStore.set(`user:${user.id}:search_scope`, newScope, 86400 * 30);
+
+      const embed = new EmbedBuilder()
+        .setColor(COLORS.PRIMARY)
+        .setTitle('🔭 Destiny Discovery Scope')
+        .setDescription(
+          `Your personal matchmaking pool has been updated to: **${newScope === 'global' ? 'Global (All Servers)' : 'Guild Only (This Server Only)'}**.\n\n` +
+          `• **Global**: Connect with compatible users from any Destiny community.\n` +
+          `• **Guild Only**: Limit your matches only to members sharing your current server.`
+        );
+
+      const scopeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId('destiny_scope_global')
+          .setLabel('Set to Global')
+          .setStyle(newScope === 'global' ? ButtonStyle.Success : ButtonStyle.Secondary)
+          .setEmoji(resolveBotEmoji('🌍')),
+        new ButtonBuilder()
+          .setCustomId('destiny_scope_guild')
+          .setLabel('Set to Guild Only')
+          .setStyle(newScope === 'guild' ? ButtonStyle.Success : ButtonStyle.Secondary)
+          .setEmoji(resolveBotEmoji('🏰'))
+      );
+
+      await safeEditReply(btn, { embeds: [embed], components: [scopeRow] });
+      return;
+    }
+
     // --- Start Matchmaking Button ---
     if (customId === 'destiny_btn_start') {
       const ok = await safeDeferReply(btn);
@@ -568,6 +694,19 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
 
         // The conversation just ended — reflect it in the rotating presence.
         refreshBotPresence();
+
+        if (room) {
+          const guildId = await stateStore.get(`room:${room.id}:guild_id`);
+          if (guildId) {
+            const { dispatchPairedLogEvent } = await import('../paired-logs.js');
+            dispatchPairedLogEvent(btn.client, guildId, 'Unmatch', {
+              discordUserId1: room.user1DiscordId,
+              discordUserId2: room.user2DiscordId,
+              pseudonym1: room.user1Pseudonym,
+              pseudonym2: room.user2Pseudonym,
+            }).catch(() => {});
+          }
+        }
 
         if (room) {
           const partnerDiscordId = room.user1Id === user.id ? room.user2DiscordId : room.user1DiscordId;
@@ -1000,7 +1139,7 @@ async function handleProfileModalSubmit(interaction: ModalSubmitInteraction): Pr
   const age = parseInt(ageStr, 10);
   if (!/^\d{2}$/.test(ageStr) || !Number.isInteger(age) || age < 18 || age > 99) {
     await safeEditReply(interaction, {
-      content: formatCustomEmojiText('🔞 **Age Verification Failed**: You must be at least 18 years old to use Destiny (18-99). Use `/profile` to try again.'),
+      content: formatCustomEmojiText('🔞 **Age Verification Failed**: You must be at least 18 years old to use Destiny (18-99). Use `/application` to try again.'),
     });
     return;
   }
@@ -1019,7 +1158,7 @@ async function handleProfileModalSubmit(interaction: ModalSubmitInteraction): Pr
   const savedUser = await matchmakingManager.withTicketLock(profileLockId, async () => {
     const existing = await db.getUserByDiscordId(interaction.user.id, true);
     if (profileBefore && existing?.id !== profileBefore.id) {
-      throw new Error('Profile changed while the edit form was open. Please reopen /profile.');
+      throw new Error('Profile changed while the edit form was open. Please reopen /application.');
     }
     const languages = languagesStr
       ? parseList(languagesStr, 6)
@@ -1052,7 +1191,7 @@ async function handleProfileModalSubmit(interaction: ModalSubmitInteraction): Pr
     await interaction.editReply({
       content:
         `${formatCustomEmojiText("✅")} **Profile saved!** Your anonymous Destiny ID is \`${savedUser.destinyId}\`.\n` +
-        `Update anything anytime with \`/profile\`, then tap **Find Match** when you are ready.`,
+        `Update anything anytime with \`/application\`, then tap **Find Match** when you are ready.`,
       files: [attachment],
       components: [createProfileActionRow()],
     });

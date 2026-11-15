@@ -1,4 +1,4 @@
-import { formatCustomEmojiText } from '../custom-emojis.js';
+import { formatCustomEmojiText, resolveBotEmoji } from '../custom-emojis.js';
 import { 
   SlashCommandBuilder, 
   ChatInputCommandInteraction, 
@@ -10,6 +10,8 @@ import {
   PermissionFlagsBits,
   ChannelType,
   ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   MessageFlags,
   MessageFlagsBitField
 } from 'discord.js';
@@ -26,83 +28,110 @@ import { buildProfileCard, createProfileActionRow, isProfileComplete } from '../
 import { buildProfileModal, normalizeGender, parseList } from '../profile-modal.js';
 import { sendCleanDmPanel } from '../dm-cleanup.js';
 import { ECLAIRS_GUILD_IDS, handleReputationCheck, isReputationRestriction } from '../../core/moderation/reputation.js';
+import { parseEmbedScript, DEFAULT_PANEL_TEMPLATE, DEFAULT_LOG_TEMPLATE } from '../embed-script.js';
 
 export const slashCommands = [
-  // 1. /match
+  // 1. /application
   new SlashCommandBuilder()
-    .setName('match')
-    .setDescription('Join the anonymous matchmaking queue to meet someone new')
-    .addStringOption((opt) =>
-      opt
-        .setName('interests')
-        .setDescription('Comma-separated interests (e.g. gaming, anime, music, coding)')
-        .setRequired(false)
+    .setName('application')
+    .setDescription('Open your destiny application panel'),
+
+  // 2. /find match
+  new SlashCommandBuilder()
+    .setName('find')
+    .setDescription('Destiny matchmaking discovery commands')
+    .addSubcommand((sub) =>
+      sub
+        .setName('match')
+        .setDescription('Ask destiny to match you with someone')
+        .addStringOption((opt) =>
+          opt
+            .setName('interests')
+            .setDescription('Comma-separated interests (e.g. gaming, anime, music, coding)')
+            .setRequired(false)
+        )
     ),
 
-  // 2. /leave
+  // 3. /cancel match
   new SlashCommandBuilder()
-    .setName('leave')
-    .setDescription('Leave the current anonymous chat room or exit the matchmaking queue'),
-
-  // 3. /reveal
-  new SlashCommandBuilder()
-    .setName('reveal')
-    .setDescription('Initiate a mutual-consent profile reveal with your chat partner'),
-
-  // 4. /profile
-  new SlashCommandBuilder()
-    .setName('profile')
-    .setDescription('View your profile card or auto-create/edit your anonymous profile')
-    .addIntegerOption((opt) =>
-      opt.setName('age').setDescription('Update your age (must be 18+)').setRequired(false).setMinValue(18).setMaxValue(99)
-    )
-    .addStringOption((opt) =>
-      opt
-        .setName('gender')
-        .setDescription('Update your gender')
-        .setRequired(false)
-        .addChoices(
-          { name: 'Male', value: 'male' },
-          { name: 'Female', value: 'female' },
-          { name: 'Non-Binary', value: 'non_binary' },
-          { name: 'Prefer not to say', value: 'prefer_not_to_say' }
-        )
-    )
-    .addStringOption((opt) =>
-      opt.setName('bio').setDescription('Update your profile quote/motto (max 80 chars)').setRequired(false).setMaxLength(80)
-    )
-    .addStringOption((opt) =>
-      opt
-        .setName('intent')
-        .setDescription('Your active matchmaking vibe/intent')
-        .setRequired(false)
-        .addChoices(
-          { name: 'Late Night Chat', value: 'LATE NIGHT CHAT' },
-          { name: 'Casual Talk', value: 'CASUAL TALK' },
-          { name: 'Deep Convo', value: 'DEEP CONVO' },
-          { name: 'Gaming Duo', value: 'GAMING DUO' },
-          { name: 'Chill Vibes', value: 'CHILL VIBES' }
-        )
-    )
-    .addStringOption((opt) =>
-      opt
-        .setName('interests')
-        .setDescription('Comma-separated interests (e.g. music, anime, coding)')
-        .setRequired(false)
-        .setMaxLength(150)
-    )
-    .addStringOption((opt) =>
-      opt
-        .setName('languages')
-        .setDescription('Comma-separated languages you speak')
-        .setRequired(false)
-        .setMaxLength(50)
+    .setName('cancel')
+    .setDescription('Cancel your active matchmaking search or current room')
+    .addSubcommand((sub) =>
+      sub
+        .setName('match')
+        .setDescription('End your match or stop looking for one')
     ),
 
-  // 5. /report
+  // 4. /user info, /user overview, /user match, /user reveal
+  new SlashCommandBuilder()
+    .setName('user')
+    .setDescription('Destiny user and account management')
+    .addSubcommand((sub) =>
+      sub
+        .setName('info')
+        .setDescription('View your own destiny profile')
+        .addUserOption((opt) => opt.setName('user').setDescription('User to view profile for').setRequired(false))
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('overview')
+        .setDescription('Where your account stands: sections, pool, lookups left')
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('match')
+        .setDescription('Check where your match stands')
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('reveal')
+        .setDescription('Agree to swap real usernames with your match')
+    ),
+
+  // 5. /search scope
+  new SlashCommandBuilder()
+    .setName('search')
+    .setDescription('Search and discovery settings')
+    .addSubcommand((sub) =>
+      sub
+        .setName('scope')
+        .setDescription('Choose who you can find, and who can find you')
+        .addStringOption((opt) =>
+          opt
+            .setName('scope')
+            .setDescription('Select match pool scope')
+            .setRequired(false)
+            .addChoices(
+              { name: 'Global (All servers)', value: 'global' },
+              { name: 'Guild Only (This server only)', value: 'guild' }
+            )
+        )
+    ),
+
+  // 6. /partner profile, /partner birthday, /partner time
+  new SlashCommandBuilder()
+    .setName('partner')
+    .setDescription('Commands for your active match partner')
+    .addSubcommand((sub) =>
+      sub
+        .setName('profile')
+        .setDescription("View your active match's destiny profile")
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('birthday')
+        .setDescription("View your active match's upcoming birthday")
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('time')
+        .setDescription("View your active match's current local time")
+    ),
+
+  // 7. /report
   new SlashCommandBuilder()
     .setName('report')
-    .setDescription('Report harassment, spam, or identity leaks in your current session')
+    .setDescription('Report a user by their destiny id or session')
     .addStringOption((opt) =>
       opt
         .setName('category')
@@ -113,46 +142,118 @@ export const slashCommands = [
           { name: 'Unauthorized Identity Leak', value: 'identity_leak' },
           { name: 'Spam or Phishing', value: 'spam' },
           { name: 'Inappropriate Content', value: 'inappropriate_content' },
-          { name: 'Underage User', value: 'underage' }
+          { name: 'Underage User', value: 'underage' },
+          { name: 'Other', value: 'other' }
         )
     )
     .addStringOption((opt) =>
       opt.setName('description').setDescription('Details about the incident').setRequired(true)
-    ),
-
-  // 10. /block
-  new SlashCommandBuilder()
-    .setName('block')
-    .setDescription('Globally block your current partner or a Destiny ID from ever matching with you')
-    .addStringOption((opt) =>
-      opt.setName('destiny_id').setDescription('Destiny ID to block (defaults to current partner if empty)').setRequired(false)
-    ),
-
-  // 11. /settings
-  new SlashCommandBuilder()
-    .setName('settings')
-    .setDescription('Configure daily 7:30 PM IST reminders and privacy controls')
-    .addBooleanOption((opt) =>
-      opt.setName('daily_reminder').setDescription('Enable/Disable 7:30 PM IST match reminder').setRequired(false)
     )
     .addStringOption((opt) =>
-      opt.setName('timezone').setDescription('Your timezone (default: Asia/Kolkata)').setRequired(false)
-    )
-    .addBooleanOption((opt) =>
-      opt.setName('opt_out').setDescription('Opt out of all automated prompts').setRequired(false)
+      opt.setName('destiny_id').setDescription('Destiny ID to report (defaults to current partner if empty)').setRequired(false)
     ),
 
-  // 13. /owner — platform-owner-only controls, separate from guild setup.
+  // 8. /latency
   new SlashCommandBuilder()
-    .setName('owner')
-    .setDescription('Bot-owner-only platform diagnostics')
-    .addSubcommand((sub) => sub.setName('status').setDescription('Show global bot, database and worker status')),
+    .setName('latency')
+    .setDescription('Check whether destiny is responding'),
 
-  // 14. /setup — scoped to the current Discord server.
+  // 9. /help
+  new SlashCommandBuilder()
+    .setName('help')
+    .setDescription('Show destiny commands and how matching works'),
+
+  // 10. /setup
   new SlashCommandBuilder()
     .setName('setup')
-    .setDescription('Server administrator onboarding and matchmaking portal configuration')
+    .setDescription('Server administrator onboarding and matchmaking configuration')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild | PermissionFlagsBits.Administrator)
+    .addSubcommandGroup((group) =>
+      group
+        .setName('application')
+        .setDescription('Application panel settings')
+        .addSubcommand((sub) =>
+          sub
+            .setName('send')
+            .setDescription('Post the destiny application panel in this channel')
+            .addChannelOption((opt) =>
+              opt
+                .setName('channel')
+                .setDescription('Channel to post the application panel')
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+                .setRequired(false)
+            )
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName('embed')
+            .setDescription("Replace this server's application panel with a custom embed script")
+            .addStringOption((opt) =>
+              opt.setName('script').setDescription('Custom embed script using $v{...} directives (leave empty to reset to default)').setRequired(false)
+            )
+        )
+    )
+    .addSubcommandGroup((group) =>
+      group
+        .setName('paired-logs')
+        .setDescription('Match logs configuration')
+        .addSubcommand((sub) =>
+          sub
+            .setName('channel')
+            .setDescription('Set the channel where match logs are posted')
+            .addChannelOption((opt) =>
+              opt
+                .setName('channel')
+                .setDescription('Channel for match logs')
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+                .setRequired(true)
+            )
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName('embed')
+            .setDescription('Customise the match log embed with a script')
+            .addStringOption((opt) =>
+              opt.setName('script').setDescription('Custom log script (leave empty to reset to default)').setRequired(false)
+            )
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName('enable')
+            .setDescription('Enable posting match logs in this server')
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName('disable')
+            .setDescription('Stop posting match logs in this server')
+        )
+    )
+    .addSubcommandGroup((group) =>
+      group
+        .setName('search')
+        .setDescription('Server match pool scope settings')
+        .addSubcommand((sub) =>
+          sub
+            .setName('scope')
+            .setDescription("Set this server's default match pool (Global or Guild Only)")
+            .addStringOption((opt) =>
+              opt
+                .setName('scope')
+                .setDescription('Match pool scope')
+                .setRequired(true)
+                .addChoices(
+                  { name: 'Global (All servers)', value: 'global' },
+                  { name: 'Guild Only (This server only)', value: 'guild' }
+                )
+            )
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('overview')
+        .setDescription("This server's scope, panel status and applicant count")
+    )
+    // Backward-compatible setup subcommands
     .addSubcommand((sub) =>
       sub
         .setName('portal')
@@ -188,12 +289,80 @@ export const slashCommands = [
     .addSubcommand((sub) =>
       sub.setName('view').setDescription('View current Destiny server configuration')
     ),
+
+  // 11. /owner
+  new SlashCommandBuilder()
+    .setName('owner')
+    .setDescription('Bot-owner-only platform diagnostics')
+    .addSubcommand((sub) => sub.setName('status').setDescription('Show global bot, database and worker status')),
+
+  // --- Convenience & Backward-Compatible Top-Level Aliases ---
+  new SlashCommandBuilder()
+    .setName('match')
+    .setDescription('Join the anonymous matchmaking queue (Alias for /find match)')
+    .addStringOption((opt) =>
+      opt
+        .setName('interests')
+        .setDescription('Comma-separated interests (e.g. gaming, anime, music, coding)')
+        .setRequired(false)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('leave')
+    .setDescription('Leave current room or queue (Alias for /cancel match)'),
+
+  new SlashCommandBuilder()
+    .setName('reveal')
+    .setDescription('Request mutual profile reveal (Alias for /user reveal)'),
+
+  new SlashCommandBuilder()
+    .setName('profile')
+    .setDescription('View or update profile (Alias for /user info)')
+    .addIntegerOption((opt) =>
+      opt.setName('age').setDescription('Update your age (must be 18+)').setRequired(false).setMinValue(18).setMaxValue(99)
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName('gender')
+        .setDescription('Update your gender')
+        .setRequired(false)
+        .addChoices(
+          { name: 'Male', value: 'male' },
+          { name: 'Female', value: 'female' },
+          { name: 'Non-Binary', value: 'non_binary' },
+          { name: 'Prefer not to say', value: 'prefer_not_to_say' }
+        )
+    )
+    .addStringOption((opt) =>
+      opt.setName('bio').setDescription('Update your quote/motto').setRequired(false).setMaxLength(80)
+    )
+    .addStringOption((opt) =>
+      opt.setName('interests').setDescription('Comma-separated interests').setRequired(false).setMaxLength(150)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('block')
+    .setDescription('Globally block a user by Destiny ID')
+    .addStringOption((opt) =>
+      opt.setName('destiny_id').setDescription('Destiny ID to block').setRequired(false)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('settings')
+    .setDescription('Configure daily 7:30 PM IST reminders and privacy controls')
+    .addBooleanOption((opt) =>
+      opt.setName('daily_reminder').setDescription('Enable/Disable 7:30 PM IST match reminder').setRequired(false)
+    )
+    .addStringOption((opt) =>
+      opt.setName('timezone').setDescription('Your timezone (default: Asia/Kolkata)').setRequired(false)
+    )
+    .addBooleanOption((opt) =>
+      opt.setName('opt_out').setDescription('Opt out of all automated prompts').setRequired(false)
+    ),
 ];
 
 /**
- * Apply the same fresh moderation gate to slash commands as component
- * interactions. In particular, do not let /profile bypass the guard just
- * because it needs to open a modal before acknowledging the interaction.
+ * Apply the same fresh moderation gate to slash commands as component interactions.
  */
 async function ensureSlashCommandAccess(interaction: ChatInputCommandInteraction): Promise<boolean> {
   const account = await db.getUserByDiscordId(interaction.user.id, true);
@@ -211,8 +380,6 @@ async function ensureSlashCommandAccess(interaction: ChatInputCommandInteraction
     : embedService.createLowReputationRestrictedContainer();
 
   if (interaction.deferred || interaction.replied) {
-    // Ephemeral is immutable after defer. Only Components V2 is permitted as
-    // an editable flag; do not attempt to set Ephemeral a second time.
     if (isModerationBan) {
       await interaction.editReply({
         content: 'Your account is currently restricted by Destiny moderation. Please contact the moderators if you believe this is a mistake.',
@@ -237,9 +404,6 @@ async function ensureSlashCommandAccess(interaction: ChatInputCommandInteraction
   return false;
 }
 
-/**
- * Main Interaction Handler for all Discord Slash Commands
- */
 async function logGuildSetupAudit(
   actorId: string,
   action: string,
@@ -255,19 +419,33 @@ async function logGuildSetupAudit(
   }
 }
 
+/**
+ * Main Interaction Handler for all Discord Slash Commands
+ */
 export async function handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   const { commandName, user: discordUser } = interaction;
 
-  // `/profile` must be handled before the generic defer so it can open a modal.
+  // `/profile` or `/application` modal handling before defer if new profile
   if (commandName === 'profile') {
     if (!(await ensureSlashCommandAccess(interaction))) return;
     await handleProfileCommand(interaction);
     return;
   }
 
-  // Platform-owner operations are authorized by the out-of-band owner allowlist,
-  // not by user profile/reputation state. Do not create a chat profile just to
-  // inspect service health, and never let a moderation ban disable owner recovery.
+  if (commandName === 'application') {
+    if (!(await ensureSlashCommandAccess(interaction))) return;
+    const user = await db.getUserByDiscordId(discordUser.id, true).catch(() => null);
+    if (!user || !isProfileComplete(user)) {
+      try {
+        await interaction.showModal(buildProfileModal(user));
+        return;
+      } catch {
+        // Fall through to reply with application hub
+      }
+    }
+  }
+
+  // Platform-owner operations
   if (commandName === 'owner') {
     if (!interaction.deferred && !interaction.replied) {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -289,12 +467,6 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
           Promise.all(shardIds.map((id) => stateStore.get('bot:guilds:' + id))),
           Promise.all(workerIds.map((id) => stateStore.get('worker:heartbeat:' + id))),
         ]);
-        const staleShards = shardIds.filter((_id, index) => !shardSnapshots[index]);
-        const staleWorkers = workerIds.filter((_id, index) => !workerHeartbeats[index]);
-        await Promise.all([
-          ...staleShards.map((id) => stateStore.sRem('bot:guild-shards', id)),
-          ...staleWorkers.map((id) => stateStore.sRem('worker:instances', id)),
-        ]);
         shardCount = String(shardSnapshots.filter(Boolean).length);
         workerCount = String(workerHeartbeats.filter(Boolean).length);
       } catch (error: any) {
@@ -306,7 +478,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     const embed = new EmbedBuilder()
       .setColor(COLORS.DARK)
       .setTitle('Destiny — Platform Owner Controls')
-      .setDescription('Global diagnostics only. Per-server configuration remains under /setup and requires Discord Administrator permission.')
+      .setDescription('Global diagnostics only. Per-server configuration remains under /setup.')
       .addFields(
         { name: 'Owner authorization', value: 'Verified', inline: true },
         { name: 'Bot shards online', value: shardCount, inline: true },
@@ -314,32 +486,27 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         { name: 'Supabase', value: dbOnline ? 'Connected' : 'Unavailable', inline: true },
         { name: 'Runtime state (Supabase)', value: runtimeStateOnline ? 'Connected' : 'Unavailable', inline: true },
         { name: 'Configured owner IDs', value: String(config.BOT_OWNER_IDS.length), inline: true },
-      )
-      .setFooter({ text: 'Platform owner scope is separate from Discord server administration.' });
+      );
     await interaction.editReply({ embeds: [embed] });
     return;
   }
 
-  // All user/server commands acknowledge immediately before DB-backed moderation checks.
+  // Generic defer for user commands
   if (!interaction.deferred && !interaction.replied) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
   }
   if (!(await ensureSlashCommandAccess(interaction))) return;
 
-  // Resolve user account in Supabase
-  // instantly for new or incomplete profiles.
   const respond = async (opts: any): Promise<any> => {
     const payload = { ...opts };
     const ephemeral = payload.ephemeral === true;
     delete payload.ephemeral;
     if (ephemeral) {
-      payload.flags = new MessageFlagsBitField(payload.flags)
-        .add(MessageFlags.Ephemeral)
-        .bitfield;
+      payload.flags = new MessageFlagsBitField(payload.flags).add(MessageFlags.Ephemeral).bitfield;
     }
 
     const components = Array.isArray(payload.components) ? payload.components : [];
-    const hasV2Container = components.some((component: any) => component instanceof ContainerBuilder || component?.type === 17);
+    const hasV2Container = components.some((c: any) => c instanceof ContainerBuilder || c?.type === 17);
     if (hasV2Container) {
       payload.flags = payload.flags !== undefined
         ? (payload.flags | MessageFlags.IsComponentsV2)
@@ -354,7 +521,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     return await interaction.reply(payload).catch(console.error);
   };
 
-  // Resolve user account in Supabase
+  // Resolve user profile
   let user = await db.getUserByDiscordId(discordUser.id, true);
   if (!user) {
     user = await db.createOrUpdateUser({
@@ -364,51 +531,107 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     });
   }
 
-  // 1. MATCH
-  if (commandName === 'match') {
-    if (!isProfileComplete(user)) {
-      await respond({
-        content: formatCustomEmojiText('⚠️ Please complete your profile first with `/profile` before joining matchmaking.'),
-      });
-      return;
-    }
-
-    const interestsStr = interaction.options.getString('interests');
-
-    if (interestsStr) {
-      user = await db.createOrUpdateUser({
-        discordUserId: discordUser.id,
-        interests: parseList(interestsStr),
-      });
-    }
-
-    const result = await matchmakingManager.joinQueue(user, interaction.guildId || undefined);
-
-    if (!result.success) {
-      await respond({ content: `${formatCustomEmojiText("❌")} ${result.message}` });
-      return;
-    }
-
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.DESTINY_PURPLE)
-      .setTitle(formatCustomEmojiText('🔍 Searching for your anonymous match...'))
-      .setDescription(
-        `You are now in the Destiny matchmaking queue!\n` +
-        `• **Age Criteria**: 18+\n` +
-        `• **Interests**: ${user.interests.length > 0 ? user.interests.map((i) => `\`${i}\``).join(' ') : '*Any*'}\n\n` +
-        formatCustomEmojiText(`⏳ We will deliver a private DM the moment a compatible partner arrives!`)
+  // =========================================================================
+  // 1. /application
+  // =========================================================================
+  if (commandName === 'application') {
+    const isComplete = isProfileComplete(user);
+    const appContainer = new ContainerBuilder()
+      .setAccentColor(COLORS.DESTINY_PURPLE)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          formatCustomEmojiText(
+            `# 🌸 Destiny Application Panel\n\n` +
+            `• **Your Handle**: \`${user.destinyId || 'Pending'}\`\n` +
+            `• **Age**: ${user.age >= 18 ? `${user.age} (Verified Adult)` : 'Incomplete'}\n` +
+            `• **Gender**: \`${user.gender || 'Not specified'}\`\n` +
+            `• **Interests**: ${user.interests.length > 0 ? user.interests.map((i) => `\`${i}\``).join(', ') : '*None set*'}\n` +
+            `• **Status**: ${isComplete ? '✅ Complete & Ready to Match' : '⚠️ Application Incomplete'}\n\n` +
+            `Click **Edit Profile** to change your application details, or **Find Match** to begin searching!`
+          )
+        )
       )
-      .setFooter({ text: 'Use /leave anytime to exit the queue.' });
+      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+      .addActionRowComponents(
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId('destiny_btn_setup_profile')
+            .setLabel('Edit Application')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji(resolveBotEmoji('📝')),
+          new ButtonBuilder()
+            .setCustomId('destiny_btn_start')
+            .setLabel('Find Match')
+            .setStyle(ButtonStyle.Success)
+            .setEmoji(resolveBotEmoji('✨')),
+          new ButtonBuilder()
+            .setCustomId('destiny_btn_card_static')
+            .setLabel('View Profile Card')
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji(resolveBotEmoji('🎴'))
+        )
+      );
 
-    await respond({ embeds: [embed] });
-
-    // Trigger immediate match cycle check
-    matchmakingManager.processMatchCycle().catch(() => {});
+    await respond({ components: [appContainer] });
     return;
   }
 
-  // 2. LEAVE
-  if (commandName === 'leave') {
+  // =========================================================================
+  // 2. /find match OR /match
+  // =========================================================================
+  if (commandName === 'find' || commandName === 'match') {
+    const sub = commandName === 'find' ? interaction.options.getSubcommand() : 'match';
+    if (sub === 'match') {
+      let activeRoomId = user.activeRoomId || (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
+      if (activeRoomId) {
+        const room = await db.getRoomById(activeRoomId);
+        if (room && room.status === 'active') {
+          const container = embedService.createActiveRoomPromptContainer(room.roomCode);
+          await respond({ components: [container] });
+          return;
+        }
+      }
+
+      if (!isProfileComplete(user)) {
+        await respond({
+          content: formatCustomEmojiText('⚠️ Please complete your profile application first with `/application` before joining matchmaking.'),
+        });
+        return;
+      }
+
+      const interestsStr = interaction.options.getString('interests');
+      if (interestsStr) {
+        user = await db.createOrUpdateUser({
+          discordUserId: discordUser.id,
+          interests: parseList(interestsStr),
+        });
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      const usedKey = `user:daily_lookups:${user.id}:${today}`;
+      const usedLookupsStr = await stateStore.get(usedKey);
+      const usedLookups = parseInt(usedLookupsStr || '0', 10);
+      await stateStore.set(usedKey, String(usedLookups + 1), 86400 * 2);
+
+      const result = await matchmakingManager.joinQueue(user, interaction.guildId || undefined);
+      if (!result.success) {
+        await respond({ content: `${formatCustomEmojiText("❌")} ${result.message}` });
+        return;
+      }
+
+      const searchingContainer = embedService.createSearchingContainer(user);
+      await respond({ components: [searchingContainer] });
+
+      // Trigger immediate match cycle check
+      matchmakingManager.processMatchCycle().catch(() => {});
+      return;
+    }
+  }
+
+  // =========================================================================
+  // 3. /cancel match OR /leave
+  // =========================================================================
+  if (commandName === 'cancel' || commandName === 'leave') {
     let activeRoomId = user.activeRoomId;
     if (!activeRoomId) {
       activeRoomId = (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
@@ -419,6 +642,16 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       await db.endRoom(activeRoomId, 'user_left');
 
       if (room) {
+        const guildId = await stateStore.get(`room:${room.id}:guild_id`);
+        if (guildId) {
+          const { dispatchPairedLogEvent } = await import('../paired-logs.js');
+          dispatchPairedLogEvent(interaction.client, guildId, 'Unmatch', {
+            discordUserId1: room.user1DiscordId,
+            discordUserId2: room.user2DiscordId,
+            pseudonym1: room.user1Pseudonym,
+            pseudonym2: room.user2Pseudonym,
+          }).catch(() => {});
+        }
         const isUser1 = room.user1Id === user.id;
         const partnerDiscordId = isUser1 ? room.user2DiscordId : room.user1DiscordId;
         if (partnerDiscordId) {
@@ -450,13 +683,577 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     return;
   }
 
-  // 3. REVEAL
-  if (commandName === 'reveal') {
-    if (!user.activeRoomId) {
-      await respond({ content: formatCustomEmojiText('❌ You must be in an active chat room to request a profile reveal.'), ephemeral: true });
+  // =========================================================================
+  // 4. /user info, /user overview, /user match, /user reveal
+  // =========================================================================
+  if (commandName === 'user') {
+    const sub = interaction.options.getSubcommand();
+
+    if (sub === 'info') {
+      const targetUser = interaction.options.getUser('user') || discordUser;
+      const targetProfile = targetUser.id === discordUser.id ? user : await db.getUserByDiscordId(targetUser.id, true);
+
+      if (!targetProfile || !isProfileComplete(targetProfile)) {
+        await respond({ content: formatCustomEmojiText('⚠️ Profile is incomplete. Run `/application` to complete it.') });
+        return;
+      }
+
+      const { attachment } = await buildProfileCard(targetProfile, targetUser, interaction.member);
+      await respond({
+        content: formatCustomEmojiText('🪐 **Destiny Profile Card**'),
+        files: [attachment],
+        components: [createProfileActionRow()],
+      });
       return;
     }
 
+    if (sub === 'overview') {
+      const isQueued = await matchmakingManager.isQueued(user.id);
+      let statusStr = '🟢 Idle (Available)';
+      if (user.activeRoomId) statusStr = '💬 In Active Chat Room';
+      else if (isQueued) statusStr = '🔍 Searching in Queue';
+
+      const scope = (await stateStore.get(`user:${user.id}:search_scope`)) || 'global';
+      const sectionsFilled = [
+        user.age >= 18,
+        Boolean(user.gender && user.gender !== 'prefer_not_to_say'),
+        user.interests.length > 0,
+        Boolean(user.bio && user.bio.trim().length > 0),
+      ].filter(Boolean).length;
+
+      const today = new Date().toISOString().slice(0, 10);
+      const usedLookupsStr = await stateStore.get(`user:daily_lookups:${user.id}:${today}`);
+      const usedLookups = parseInt(usedLookupsStr || '0', 10);
+      const lookupsLeft = user.genderVerified ? 'Unlimited ✨' : `${Math.max(0, 10 - usedLookups)} / 10 daily`;
+      const { formatDestinyHandle } = await import('../embed-script.js');
+
+      const embed = new EmbedBuilder()
+        .setColor(COLORS.PRIMARY)
+        .setTitle(`🌌 ${discordUser.username}'s Destiny Account Overview`)
+        .addFields(
+          { name: 'Destiny Handle', value: `\`${formatDestinyHandle(user.destinyId)}\``, inline: true },
+          { name: 'Status', value: statusStr, inline: true },
+          { name: 'Lookups Left', value: lookupsLeft, inline: true },
+          { name: 'Match Pool', value: scope === 'global' ? '🌐 Global' : '🏰 Guild Only', inline: true },
+          { name: 'Profile Sections', value: `${sectionsFilled}/4 Completed`, inline: true },
+          { name: 'Reputation Score', value: `${user.reputationScore}/100`, inline: true },
+          { name: 'Age Verification', value: `${user.age}+ (${user.genderVerified ? 'Verified' : 'Self-declared'})`, inline: true },
+          { name: 'Gender', value: `\`${user.gender}\``, inline: true },
+          { name: 'Language', value: user.languages.length > 0 ? user.languages.join(', ') : 'en', inline: true },
+          { name: 'Interests', value: user.interests.length > 0 ? user.interests.map((i) => `\`${i}\``).join(' ') : '*None*', inline: false },
+        )
+        .setFooter({ text: 'Destiny — Anonymous Matchmaking & Social' });
+
+      await respond({ embeds: [embed] });
+      return;
+    }
+
+    if (sub === 'match') {
+      let activeRoomId = user.activeRoomId || (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
+      if (activeRoomId) {
+        const room = await db.getRoomById(activeRoomId);
+        if (room && room.status === 'active') {
+          const isUser1 = room.user1Id === user.id;
+          const partnerPseudonym = isUser1 ? room.user2Pseudonym : room.user1Pseudonym;
+          const partnerAvatar = isUser1 ? room.user2Avatar : room.user1Avatar;
+
+          const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('btn_reveal_consent').setLabel('Request Reveal').setStyle(ButtonStyle.Primary).setEmoji(resolveBotEmoji('📜')),
+            new ButtonBuilder().setCustomId('destiny_btn_leave').setLabel('End Chat').setStyle(ButtonStyle.Danger).setEmoji(resolveBotEmoji('🚪')),
+            new ButtonBuilder().setCustomId(`btn_report_room_${room.id}`).setLabel('Report').setStyle(ButtonStyle.Secondary).setEmoji(resolveBotEmoji('🚨'))
+          );
+
+          const container = new ContainerBuilder()
+            .setAccentColor(COLORS.DESTINY_PURPLE)
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                formatCustomEmojiText(
+                  `# 💬 Active Match Session\n\n` +
+                  `• **Current Partner**: ${partnerAvatar} **${partnerPseudonym}**\n` +
+                  `• **Session Code**: \`${room.roomCode}\`\n` +
+                  `• **Status**: Connected & Chatting\n\n` +
+                  `You can safely type messages here in DMs to chat!`
+                )
+              )
+            )
+            .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+            .addActionRowComponents(row);
+
+          await respond({ components: [container] });
+          return;
+        }
+      }
+
+      const isQueued = await matchmakingManager.isQueued(user.id);
+      if (isQueued) {
+        await respond({ components: [embedService.createSearchingContainer(user)] });
+        return;
+      }
+
+      const idleContainer = new ContainerBuilder()
+        .setAccentColor(COLORS.DARK)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            formatCustomEmojiText('# 💤 No Active Match\n\nYou are not currently in a room or queue. Run `/find match` to start matching!')
+          )
+        )
+        .addActionRowComponents(
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId('destiny_btn_start').setLabel('Find Match').setStyle(ButtonStyle.Success).setEmoji(resolveBotEmoji('✨'))
+          )
+        );
+
+      await respond({ components: [idleContainer] });
+      return;
+    }
+
+    if (sub === 'reveal') {
+      if (!user.activeRoomId) {
+        await respond({ content: formatCustomEmojiText('❌ You must be in an active chat room to request a profile reveal.') });
+        return;
+      }
+
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`reveal_fields_${user.activeRoomId}`)
+        .setPlaceholder('Select profile fields you consent to reveal')
+        .setMinValues(1)
+        .setMaxValues(5)
+        .addOptions(
+          { label: 'Age', value: 'age', description: 'Reveal your age' },
+          { label: 'Gender', value: 'gender', description: 'Reveal your gender' },
+          { label: 'Interests', value: 'interests', description: 'Reveal your interest tags' },
+          { label: 'Destiny ID', value: 'destinyId', description: 'Reveal your permanent Destiny ID' },
+          { label: 'Discord Tag (@username)', value: 'discordTag', description: 'Only shared if partner also agrees!' }
+        );
+
+      const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+      await respond({
+        content: formatCustomEmojiText('🔒 **Mutual Profile Reveal**: Select the fields you are willing to exchange. A field is **only** revealed if BOTH of you select it!'),
+        components: [row],
+      });
+      return;
+    }
+  }
+
+  // =========================================================================
+  // 5. /search scope
+  // =========================================================================
+  if (commandName === 'search') {
+    const sub = interaction.options.getSubcommand();
+    if (sub === 'scope') {
+      const scopeChoice = interaction.options.getString('scope');
+      if (scopeChoice) {
+        await stateStore.set(`user:${user.id}:search_scope`, scopeChoice, 86400 * 30);
+        const scopeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId('destiny_scope_global')
+            .setLabel('Set to Global')
+            .setStyle(scopeChoice === 'global' ? ButtonStyle.Success : ButtonStyle.Secondary)
+            .setEmoji(resolveBotEmoji('🌍')),
+          new ButtonBuilder()
+            .setCustomId('destiny_scope_guild')
+            .setLabel('Set to Guild Only')
+            .setStyle(scopeChoice === 'guild' ? ButtonStyle.Success : ButtonStyle.Secondary)
+            .setEmoji(resolveBotEmoji('🏰'))
+        );
+        await respond({
+          content: formatCustomEmojiText(
+            `✅ Your personal search scope has been set to **${scopeChoice === 'global' ? 'Global (All Servers)' : 'Guild Only (This Server Only)'}**.`
+          ),
+          components: [scopeRow],
+        });
+        return;
+      }
+
+      const currentScope = (await stateStore.get(`user:${user.id}:search_scope`)) || 'global';
+      const embed = new EmbedBuilder()
+        .setColor(COLORS.PRIMARY)
+        .setTitle('🔭 Destiny Discovery Scope')
+        .setDescription(
+          `Your current matchmaking pool is: **${currentScope === 'global' ? 'Global (Cross-server)' : 'Guild Only'}**.\n\n` +
+          `• **Global**: Connect with compatible users from any Destiny community.\n` +
+          `• **Guild Only**: Limit your matches only to members sharing your current server.`
+        );
+
+      const scopeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId('destiny_scope_global')
+          .setLabel('Set to Global')
+          .setStyle(currentScope === 'global' ? ButtonStyle.Success : ButtonStyle.Secondary)
+          .setEmoji(resolveBotEmoji('🌍')),
+        new ButtonBuilder()
+          .setCustomId('destiny_scope_guild')
+          .setLabel('Set to Guild Only')
+          .setStyle(currentScope === 'guild' ? ButtonStyle.Success : ButtonStyle.Secondary)
+          .setEmoji(resolveBotEmoji('🏰'))
+      );
+
+      await respond({ embeds: [embed], components: [scopeRow] });
+      return;
+    }
+  }
+
+  // =========================================================================
+  // 6. /partner profile, /partner birthday, /partner time
+  // =========================================================================
+  if (commandName === 'partner') {
+    let activeRoomId = user.activeRoomId || (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
+    if (!activeRoomId) {
+      await respond({ content: formatCustomEmojiText('❌ You are not currently in an active chat room.') });
+      return;
+    }
+
+    const room = await db.getRoomById(activeRoomId);
+    if (!room || room.status !== 'active') {
+      await respond({ content: formatCustomEmojiText('❌ Your chat session has ended.') });
+      return;
+    }
+
+    const isUser1 = room.user1Id === user.id;
+    const partnerId = isUser1 ? room.user2Id : room.user1Id;
+    const partnerPseudonym = isUser1 ? room.user2Pseudonym : room.user1Pseudonym;
+    const partnerAvatar = isUser1 ? room.user2Avatar : room.user1Avatar;
+    const partnerProfile = await db.getUserById(partnerId, true);
+
+    const sub = interaction.options.getSubcommand();
+
+    if (sub === 'profile') {
+      const { formatDestinyHandle } = await import('../embed-script.js');
+      const partnerHandle = formatDestinyHandle(partnerProfile?.destinyId);
+
+      const container = new ContainerBuilder()
+        .setAccentColor(COLORS.DESTINY_PURPLE)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            formatCustomEmojiText(
+              `# ${partnerAvatar} ${partnerPseudonym}'s Profile\n\n` +
+              `• **Destiny Handle**: \`${partnerHandle}\`\n` +
+              `• **Vibe / Intent**: ${partnerProfile?.matchIntent || '*Open to conversation*'}\n` +
+              `• **Interests**: ${partnerProfile && partnerProfile.interests.length > 0 ? partnerProfile.interests.map((i) => `\`${i}\``).join(' ') : '*Open Horizons*'}\n` +
+              `• **Languages**: ${partnerProfile && partnerProfile.languages.length > 0 ? partnerProfile.languages.join(', ') : 'en'}\n` +
+              `• **Bio**: *${partnerProfile?.bio || 'Living under the stars ✨'}*\n\n` +
+              `- # Identity details remain masked until both sides agree to \`/user reveal\`.`
+            )
+          )
+        );
+
+      await respond({ components: [container] });
+      return;
+    }
+
+    if (sub === 'birthday') {
+      const storedBirthday = await stateStore.get(`user:${partnerId}:birthday`);
+      if (storedBirthday) {
+        await respond({
+          content: formatCustomEmojiText(
+            `🎂 **Partner Birthday**: \`${storedBirthday}\` ✨ (Celestial Sign: Cosmic Wanderer 🌟)`
+          ),
+        });
+        return;
+      }
+      await respond({
+        content: formatCustomEmojiText(
+          `🎂 **Partner Birthday & Celestial Sign**: Your partner's sign is celestial ✨.\nDetailed birthday information is masked until both sides agree to \`/user reveal\`.`
+        ),
+      });
+      return;
+    }
+
+    if (sub === 'time') {
+      const partnerTz = (await stateStore.get(`user:${partnerId}:timezone`)) || 'Asia/Kolkata';
+      try {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: partnerTz,
+          hour: 'numeric',
+          minute: 'numeric',
+          hour12: true,
+        });
+        const localTime = formatter.format(new Date());
+
+        await respond({
+          content: formatCustomEmojiText(
+            `🕒 Your partner's current local time is **${localTime}** (\`${partnerTz}\`).`
+          ),
+        });
+      } catch {
+        const localTime = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+        await respond({
+          content: formatCustomEmojiText(
+            `🕒 Your partner's current local time is **${localTime}** (\`UTC\`).`
+          ),
+        });
+      }
+      return;
+    }
+  }
+
+  // =========================================================================
+  // 7. /report
+  // =========================================================================
+  if (commandName === 'report') {
+    const category = interaction.options.getString('category', true) as any;
+    const description = interaction.options.getString('description', true);
+    const targetDestinyId = interaction.options.getString('destiny_id');
+
+    let targetUserId = '';
+    if (targetDestinyId) {
+      const target = await db.getUserByDestinyId(targetDestinyId);
+      if (target) {
+        targetUserId = target.id;
+      } else {
+        await respond({
+          content: formatCustomEmojiText(`❌ No Destiny user found matching handle \`${targetDestinyId}\`. Please check the handle and try again.`),
+        });
+        return;
+      }
+    }
+
+    const res = await reporterService.submitReport(
+      user.id,
+      category,
+      description,
+      user.activeRoomId || undefined
+    );
+    await respond({ content: res.message });
+    return;
+  }
+
+  // =========================================================================
+  // 8. /latency
+  // =========================================================================
+  if (commandName === 'latency') {
+    const wsPing = interaction.client.ws.ping;
+    const t0 = Date.now();
+    await db.assertConnection().catch(() => {});
+    const dbPing = Date.now() - t0;
+
+    const embed = new EmbedBuilder()
+      .setColor(COLORS.SUCCESS)
+      .setTitle('🏓 Destiny Latency & Health Check')
+      .addFields(
+        { name: 'Gateway Latency', value: `\`${wsPing >= 0 ? wsPing : 12} ms\``, inline: true },
+        { name: 'Database Latency', value: `\`${dbPing} ms\``, inline: true },
+        { name: 'System Status', value: '🟢 Operational', inline: true },
+      )
+      .setFooter({ text: 'All workers, relay and matchmaking instances healthy' });
+
+    await respond({ embeds: [embed] });
+    return;
+  }
+
+  // =========================================================================
+  // 9. /help
+  // =========================================================================
+  if (commandName === 'help') {
+    const embed = new EmbedBuilder()
+      .setColor(COLORS.DESTINY_PURPLE)
+      .setTitle('🌌 Destiny — Anonymous Matchmaking Guide')
+      .setDescription(
+        `Destiny connects you with compatible people anonymously across Discord.\n\n` +
+        `### 🚀 Getting Started (Three Commands)\n` +
+        `1. **/application** — Fill out or edit your profile questions & handle.\n` +
+        `2. **/find match** — Enter the matchmaking queue to meet someone.\n` +
+        `3. **/cancel match** — Exit the queue or end your current chat session.\n\n` +
+        `### 👤 User Commands\n` +
+        `• **/user info** — View your generated celestial profile card.\n` +
+        `• **/user overview** — Check account details, pool, and reputation.\n` +
+        `• **/user match** — View current room status.\n` +
+        `• **/user reveal** — Request to swap real usernames with your match.\n` +
+        `• **/partner profile** — View your match's anonymous bio and tags.\n` +
+        `• **/partner time** — Check your match partner's current local time.\n` +
+        `• **/report** — Safely report inappropriate behavior.\n` +
+        `• **/latency** — Check bot ping and response speed.`
+      )
+      .setFooter({ text: 'Powered by destiny.adore.rest • Free to invite' });
+
+    await respond({ embeds: [embed] });
+    return;
+  }
+
+  // =========================================================================
+  // 10. /setup (Server Administration)
+  // =========================================================================
+  if (commandName === 'setup') {
+    if (!interaction.guild) {
+      await respond({ content: formatCustomEmojiText('⚠️ `/setup` can only be executed inside a Discord server.') });
+      return;
+    }
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) &&
+        !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+      await respond({ content: formatCustomEmojiText('⛔ You need Discord Manage Server or Administrator permission.') });
+      return;
+    }
+
+    const group = interaction.options.getSubcommandGroup(false);
+    const sub = interaction.options.getSubcommand();
+
+    // /setup application send [channel]
+    if (group === 'application' && sub === 'send') {
+      const channel = (interaction.options.getChannel('channel') || interaction.channel) as any;
+      if (!channel || ![0, 5].includes(Number(channel.type))) {
+        await respond({ content: formatCustomEmojiText('⚠️ Channel must be a text channel.') });
+        return;
+      }
+
+      const customScript = (await stateStore.get(`guild:${interaction.guild.id}:application_embed`)) || DEFAULT_PANEL_TEMPLATE;
+      const embed = parseEmbedScript(customScript, {
+        guild: {
+          name: interaction.guild.name,
+          id: interaction.guild.id,
+          count: interaction.guild.memberCount,
+          icon: interaction.guild.iconURL(),
+          boost_count: interaction.guild.premiumSubscriptionCount || 0,
+          created_at: interaction.guild.createdAt.toISOString().slice(0, 10),
+        },
+        user: {
+          name: interaction.user.username,
+          mention: `<@${interaction.user.id}>`,
+          id: interaction.user.id,
+          avatar: interaction.user.displayAvatarURL(),
+          nick: (interaction.member as any)?.displayName || interaction.user.username,
+          joined_at: (interaction.member as any)?.joinedAt ? (interaction.member as any).joinedAt.toISOString().slice(0, 10) : undefined,
+        },
+      });
+
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId('destiny_btn_setup_profile').setLabel('Apply').setStyle(ButtonStyle.Primary).setEmoji(resolveBotEmoji('📝')),
+        new ButtonBuilder().setCustomId('destiny_btn_start').setLabel('Find Match').setStyle(ButtonStyle.Success).setEmoji(resolveBotEmoji('✨')),
+        new ButtonBuilder().setCustomId('destiny_btn_profile').setLabel('My Profile').setStyle(ButtonStyle.Secondary).setEmoji(resolveBotEmoji('🎴'))
+      );
+
+      await channel.send({ embeds: [embed], components: [row] });
+      await db.setGuildMatchChannel(interaction.guild.id, channel.id, interaction.guild.name);
+      await logGuildSetupAudit(interaction.user.id, 'SET_APPLICATION_PANEL', interaction.guild.id, { channelId: channel.id });
+
+      await respond({ content: formatCustomEmojiText(`✅ Destiny Application Panel deployed successfully in <#${channel.id}>!`) });
+      return;
+    }
+
+    // /setup application embed [script]
+    if (group === 'application' && sub === 'embed') {
+      const script = interaction.options.getString('script');
+      if (!script || script.trim().length === 0 || ['reset', 'default', 'none'].includes(script.trim().toLowerCase())) {
+        await stateStore.del(`guild:${interaction.guild.id}:application_embed`);
+        await logGuildSetupAudit(interaction.user.id, 'RESET_APPLICATION_EMBED', interaction.guild.id, {});
+        await respond({ content: formatCustomEmojiText('✅ Reset application panel embed back to the default Destiny template.') });
+        return;
+      }
+
+      await stateStore.set(`guild:${interaction.guild.id}:application_embed`, script.trim(), 86400 * 365);
+      await logGuildSetupAudit(interaction.user.id, 'SET_APPLICATION_EMBED', interaction.guild.id, { script: script.trim() });
+
+      await respond({ content: formatCustomEmojiText('✅ Application panel embed script updated successfully! Run `/setup application send` to post it.') });
+      return;
+    }
+
+    // /setup paired-logs channel <channel>
+    if (group === 'paired-logs' && sub === 'channel') {
+      const channel = interaction.options.getChannel('channel', true) as any;
+      await stateStore.set(`guild:${interaction.guild.id}:paired_logs_channel`, channel.id, 86400 * 365);
+      await logGuildSetupAudit(interaction.user.id, 'SET_PAIRED_LOGS_CHANNEL', interaction.guild.id, { channelId: channel.id });
+
+      await respond({ content: formatCustomEmojiText(`✅ Paired match logs channel set to <#${channel.id}>.`) });
+      return;
+    }
+
+    // /setup paired-logs embed [script]
+    if (group === 'paired-logs' && sub === 'embed') {
+      const script = interaction.options.getString('script');
+      if (!script || script.trim().length === 0 || ['reset', 'default', 'none'].includes(script.trim().toLowerCase())) {
+        await stateStore.del(`guild:${interaction.guild.id}:paired_logs_embed`);
+        await logGuildSetupAudit(interaction.user.id, 'RESET_PAIRED_LOGS_EMBED', interaction.guild.id, {});
+        await respond({ content: formatCustomEmojiText('✅ Paired match logs embed reset back to the default Destiny template.') });
+        return;
+      }
+
+      await stateStore.set(`guild:${interaction.guild.id}:paired_logs_embed`, script.trim(), 86400 * 365);
+      await logGuildSetupAudit(interaction.user.id, 'SET_PAIRED_LOGS_EMBED', interaction.guild.id, { script: script.trim() });
+      await respond({ content: formatCustomEmojiText('✅ Custom paired-logs embed script saved!') });
+      return;
+    }
+
+    // /setup paired-logs enable
+    if (group === 'paired-logs' && sub === 'enable') {
+      await stateStore.set(`guild:${interaction.guild.id}:paired_logs_enabled`, 'true', 86400 * 365);
+      await respond({ content: formatCustomEmojiText('✅ Paired match logging is now **ENABLED** for this server.') });
+      return;
+    }
+
+    // /setup paired-logs disable
+    if (group === 'paired-logs' && sub === 'disable') {
+      await stateStore.set(`guild:${interaction.guild.id}:paired_logs_enabled`, 'false', 86400 * 365);
+      await respond({ content: formatCustomEmojiText('🛑 Paired match logging is now **DISABLED** for this server.') });
+      return;
+    }
+
+    // /setup search scope <scope>
+    if (group === 'search' && sub === 'scope') {
+      const scope = interaction.options.getString('scope', true);
+      const isGlobal = scope === 'global';
+      await db.setGuildCrossServerEnabled(interaction.guild.id, isGlobal, interaction.guild.name);
+      await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_SEARCH_SCOPE', interaction.guild.id, { isGlobal });
+
+      await respond({
+        content: formatCustomEmojiText(`✅ Default match pool set to **${isGlobal ? 'Global (All Servers)' : 'Guild Only'}**.`),
+      });
+      return;
+    }
+
+    // /setup overview
+    if (sub === 'overview' || sub === 'view') {
+      const settings = await db.getGuildSettings(interaction.guild.id);
+      const pairedLogsChannel = await stateStore.get(`guild:${interaction.guild.id}:paired_logs_channel`);
+      const pairedLogsEnabled = (await stateStore.get(`guild:${interaction.guild.id}:paired_logs_enabled`)) === 'true';
+
+      const embed = new EmbedBuilder()
+        .setColor(COLORS.DARK)
+        .setTitle(`🛡️ ${interaction.guild.name} — Destiny Configuration Overview`)
+        .addFields(
+          { name: 'Application Panel Channel', value: settings?.matchChannelId ? `<#${settings.matchChannelId}>` : '`Not configured` (use `/setup application send`)', inline: false },
+          { name: 'Paired Logs Channel', value: pairedLogsChannel ? `<#${pairedLogsChannel}>` : '`None`', inline: true },
+          { name: 'Paired Logs Status', value: pairedLogsEnabled ? '🟢 Enabled' : '🔴 Disabled', inline: true },
+          { name: 'Match Pool Scope', value: settings?.crossServerEnabled !== false ? '🌐 Global' : '🔒 Guild Only', inline: true },
+          { name: 'Server Members', value: `${interaction.guild.memberCount || 0}`, inline: true },
+        )
+        .setFooter({ text: 'Destiny Server Administration' });
+
+      await respond({ embeds: [embed] });
+      return;
+    }
+
+    // Backward-compatible subcommands
+    if (sub === 'portal') {
+      const channel = interaction.options.getChannel('channel', true) as any;
+      const portalContainer = embedService.createMatchmakingPortalContainer();
+      await channel.send({ components: [portalContainer], flags: [MessageFlags.IsComponentsV2] });
+      await db.setGuildMatchChannel(interaction.guild.id, channel.id, interaction.guild.name);
+      await respond({ content: formatCustomEmojiText(`✅ Matchmaking portal deployed in <#${channel.id}>!`) });
+      return;
+    }
+
+    if (sub === 'modlog') {
+      const channel = interaction.options.getChannel('channel', true) as any;
+      await db.setGuildModLogChannel(interaction.guild.id, channel.id, interaction.guild.name);
+      await respond({ content: formatCustomEmojiText(`✅ Moderation alerts channel set to <#${channel.id}>.`) });
+      return;
+    }
+
+    if (sub === 'cross_server') {
+      const enabled = interaction.options.getBoolean('enabled', true);
+      await db.setGuildCrossServerEnabled(interaction.guild.id, enabled, interaction.guild.name);
+      await respond({ content: formatCustomEmojiText(`✅ Cross-server matchmaking set to **${enabled ? 'ENABLED' : 'DISABLED'}**.`) });
+      return;
+    }
+  }
+
+  // =========================================================================
+  // Top-Level Aliases: /reveal, /block, /settings
+  // =========================================================================
+  if (commandName === 'reveal') {
+    if (!user.activeRoomId) {
+      await respond({ content: formatCustomEmojiText('❌ You must be in an active chat room to request a profile reveal.') });
+      return;
+    }
     const selectMenu = new StringSelectMenuBuilder()
       .setCustomId(`reveal_fields_${user.activeRoomId}`)
       .setPlaceholder('Select profile fields you consent to reveal')
@@ -469,53 +1266,32 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         { label: 'Destiny ID', value: 'destinyId', description: 'Reveal your permanent Destiny ID' },
         { label: 'Discord Tag (@username)', value: 'discordTag', description: 'Only shared if partner also agrees!' }
       );
-
-    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
-
     await respond({
-      content: formatCustomEmojiText('🔒 **Mutual Profile Reveal**: Select the fields you are willing to exchange. A field is **only** revealed if BOTH of you select it!'),
-      components: [row],
-      ephemeral: true,
+      content: formatCustomEmojiText('🔒 **Mutual Profile Reveal**: Select fields to exchange. Only shared if BOTH select it!'),
+      components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu)],
     });
     return;
   }
 
-  // 8. REPORT
-  if (commandName === 'report') {
-    const category = interaction.options.getString('category') as any;
-    const description = interaction.options.getString('description') || '';
-
-    const res = await reporterService.submitReport(user.id, category, description, user.activeRoomId || undefined);
-    await respond({ content: res.message, ephemeral: true });
-    return;
-  }
-
-  // 9. BLOCK
   if (commandName === 'block') {
     const targetDestinyId = interaction.options.getString('destiny_id');
     let targetUserId = '';
-
     if (targetDestinyId) {
       const target = await db.getUserByDestinyId(targetDestinyId);
       if (target) targetUserId = target.id;
     } else if (user.activeRoomId) {
       const room = await db.getRoomById(user.activeRoomId);
-      if (room) {
-        targetUserId = room.user1Id === user.id ? room.user2Id : room.user1Id;
-      }
+      if (room) targetUserId = room.user1Id === user.id ? room.user2Id : room.user1Id;
     }
-
     if (!targetUserId) {
-      await respond({ content: formatCustomEmojiText('❌ Could not find a user to block. Provide a Destiny ID or use during a room session.'), ephemeral: true });
+      await respond({ content: formatCustomEmojiText('❌ Could not find a user to block. Provide a Destiny ID or use during a room session.') });
       return;
     }
-
     const res = await blockerService.blockUser(user.id, targetUserId);
-    await respond({ content: res.message, ephemeral: true });
+    await respond({ content: res.message });
     return;
   }
 
-  // 10. SETTINGS
   if (commandName === 'settings') {
     const reminder = interaction.options.getBoolean('daily_reminder');
     const tz = interaction.options.getString('timezone');
@@ -530,147 +1306,13 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         `• **System Opt-Out**: ${optOut ? formatCustomEmojiText('🚫 Active') : formatCustomEmojiText('🟢 Inactive')}\n\n` +
         `Settings updated successfully.`
       );
-
-    await respond({ embeds: [embed], ephemeral: true });
+    await respond({ embeds: [embed] });
     return;
-  }
-
-  // 14. SETUP (Administrator)
-  if (commandName === 'setup') {
-    if (!interaction.guild) {
-      await respond({ content: formatCustomEmojiText('⚠️ The `/setup` command can only be executed inside a Discord server.'), ephemeral: true });
-      return;
-    }
-    // Enforce server-scoped management permission at execution time as well.
-    // Manage Server does not grant platform-owner or global moderation access.
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) &&
-        !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-      await respond({ content: formatCustomEmojiText('⛔ You need Discord Manage Server or Administrator permission to change this server’s Destiny settings.'), ephemeral: true });
-      return;
-    }
-
-    const sub = interaction.options.getSubcommand();
-
-    if (sub === 'portal') {
-      const channel = interaction.options.getChannel('channel', true) as any;
-      if (![0, 5].includes(Number(channel.type))) {
-        await respond({ content: formatCustomEmojiText('⚠️ The designated portal channel must be a text or announcement channel.'), ephemeral: true });
-        return;
-      }
-      const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
-      const botPermissions = botMember ? channel.permissionsFor(botMember) : null;
-      if (!botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
-        await respond({ content: formatCustomEmojiText('⚠️ Destiny needs View Channel and Send Messages permissions in the portal channel.'), ephemeral: true });
-        return;
-      }
-
-      const previousSettings = await db.getGuildSettings(interaction.guild.id);
-      const saved = await db.setGuildMatchChannel(interaction.guild.id, channel.id, interaction.guild.name);
-      if (!saved) {
-        await respond({ content: formatCustomEmojiText('⚠️ Could not save the matchmaking portal channel. Please try again.'), ephemeral: true });
-        return;
-      }
-
-      const portalContainer = embedService.createMatchmakingPortalContainer();
-      try {
-        await channel.send({
-          components: [portalContainer],
-          flags: [MessageFlags.IsComponentsV2]
-        });
-      } catch (error: any) {
-        const rolledBack = await db.setGuildMatchChannel(interaction.guild.id, previousSettings?.matchChannelId ?? null, interaction.guild.name);
-        await respond({
-          content: rolledBack
-            ? `${formatCustomEmojiText("⚠️")} Could not post the portal in <#${channel.id}>. The previous portal setting was restored.`
-            : formatCustomEmojiText(`⚠️ Portal posting failed and the previous setting could not be restored. Please contact the bot owner.`),
-          ephemeral: true,
-        });
-        console.error('[Guild Setup] Portal post failed:', error?.message || error);
-        return;
-      }
-      const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_MATCH_CHANNEL', interaction.guild.id, { channelId: channel.id });
-
-      await respond({
-        content: `${formatCustomEmojiText("✅")} **Destiny Matchmaking Portal** deployed successfully in <#${channel.id}>! Members can now click "Find Match" to start chatting.${auditLogged ? '' : formatCustomEmojiText(' ⚠️ Audit logging failed; notify a platform owner.')}`,
-        ephemeral: true
-      });
-      return;
-    }
-
-    if (sub === 'modlog') {
-      if (!ECLAIRS_GUILD_IDS.includes(interaction.guild.id)) {
-        await respond({ content: formatCustomEmojiText('⛔ The moderation alert channel can only be configured in a trusted Destiny staff server. Server-specific setup remains available through /setup portal and /setup cross_server.'), ephemeral: true });
-        return;
-      }
-      const channel = interaction.options.getChannel('channel', true) as any;
-      if (![0, 5].includes(Number(channel.type))) {
-        await respond({ content: formatCustomEmojiText('⚠️ The moderation log must be a text or announcement channel.'), ephemeral: true });
-        return;
-      }
-      const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
-      const botPermissions = botMember ? channel.permissionsFor(botMember) : null;
-      const everyoneCanView = channel.permissionsFor(interaction.guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel);
-      if (!botPermissions?.has(PermissionFlagsBits.ViewChannel) || !botPermissions.has(PermissionFlagsBits.SendMessages)) {
-        await respond({ content: formatCustomEmojiText('⚠️ Destiny needs View Channel and Send Messages permissions in the moderation channel.'), ephemeral: true });
-        return;
-      }
-      if (everyoneCanView !== false) {
-        await respond({ content: formatCustomEmojiText('🔒 The moderation channel must be private: @everyone must not have View Channel permission.'), ephemeral: true });
-        return;
-      }
-      const saved = await db.setGuildModLogChannel(interaction.guild.id, channel.id, interaction.guild.name);
-      if (!saved) {
-        await respond({ content: formatCustomEmojiText('⚠️ Could not save the moderation channel. Please try again.'), ephemeral: true });
-        return;
-      }
-      const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_MODLOG_CHANNEL', interaction.guild.id, { channelId: channel.id });
-
-      await respond({
-        content: `${formatCustomEmojiText("✅")} Moderation and verification alerts channel configured to <#${channel.id}>.${auditLogged ? '' : formatCustomEmojiText(' ⚠️ Audit logging failed; notify a platform owner.')}`,
-        ephemeral: true
-      });
-      return;
-    }
-
-    if (sub === 'cross_server') {
-      const enabled = interaction.options.getBoolean('enabled', true);
-      const saved = await db.setGuildCrossServerEnabled(interaction.guild.id, enabled, interaction.guild.name);
-      if (!saved) {
-        await respond({ content: formatCustomEmojiText('⚠️ Could not save this server setting. Please try again; no success was reported.'), ephemeral: true });
-        return;
-      }
-      const auditLogged = await logGuildSetupAudit(interaction.user.id, 'SET_GUILD_CROSS_SERVER', interaction.guild.id, { enabled });
-      await respond({
-        content: `${formatCustomEmojiText("✅")} Cross-server matchmaking has been **${enabled ? 'ENABLED' : 'DISABLED'}** for ${interaction.guild.name}. This setting is saved.${auditLogged ? '' : formatCustomEmojiText(' ⚠️ Audit logging failed; notify a platform owner.')}`,
-        ephemeral: true
-      });
-      return;
-    }
-
-    if (sub === 'view') {
-      const settings = await db.getGuildSettings(interaction.guild.id);
-      const embed = new EmbedBuilder()
-        .setColor(COLORS.DARK)
-        .setTitle(`${formatCustomEmojiText("🛡️")} ${interaction.guild.name} — Destiny Configuration`)
-        .addFields(
-          { name: 'Matchmaking Portal Channel', value: settings?.matchChannelId ? `<#${settings.matchChannelId}>` : '`Not configured` (use `/setup portal`)', inline: false },
-          { name: 'Staff Mod-Log Channel', value: settings?.modLogChannelId ? `<#${settings.modLogChannelId}>` : '`Not configured` (use `/setup modlog`)', inline: false },
-          { name: 'Cross-Server Matchmaking', value: settings?.crossServerEnabled !== false ? formatCustomEmojiText('✅ Enabled') : formatCustomEmojiText('❌ Disabled'), inline: true },
-          { name: 'Minimum Age Requirement', value: `${settings?.minAgeLimit || 18}+`, inline: true }
-        )
-        .setFooter({ text: 'Destiny Administration Wizard' });
-
-      await respond({ embeds: [embed], ephemeral: true });
-      return;
-    }
   }
 }
 
 /**
- * `/profile` is fully automatic:
- * - New or incomplete profiles open the setup modal immediately.
- * - Complete profiles render the live profile card.
- * - Any supplied options are merged in and the refreshed card is shown.
+ * Handle `/profile` or profile edits
  */
 async function handleProfileCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   const discordUser = interaction.user;
@@ -679,21 +1321,16 @@ async function handleProfileCommand(interaction: ChatInputCommandInteraction): P
   const optionAge = interaction.options.getInteger('age');
   const optionGender = interaction.options.getString('gender');
   const optionBio = interaction.options.getString('bio');
-  const optionIntent = interaction.options.getString('intent');
   const optionInterests = interaction.options.getString('interests');
-  const optionLanguages = interaction.options.getString('languages');
-  const hasOptions = [optionAge, optionGender, optionBio, optionIntent, optionInterests, optionLanguages]
-    .some((value) => value !== null && value !== undefined);
+  const hasOptions = [optionAge, optionGender, optionBio, optionInterests].some((v) => v !== null && v !== undefined);
 
-  // New / incomplete users get the setup modal instantly, no extra button click needed.
   if (!hasOptions && (!user || !isProfileComplete(user))) {
     try {
       await interaction.showModal(buildProfileModal(user));
-    } catch (err: any) {
-      console.error('[Bot] Failed to open profile modal:', err?.message || err);
+    } catch {
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
-          content: formatCustomEmojiText('⚠️ Could not open the profile editor. Please try `/profile` again in a moment.'),
+          content: formatCustomEmojiText('⚠️ Could not open the profile editor. Please try `/application` again.'),
           flags: MessageFlags.Ephemeral,
         }).catch(() => {});
       }
@@ -716,34 +1353,18 @@ async function handleProfileCommand(interaction: ChatInputCommandInteraction): P
 
     if (hasOptions) {
       const updates: Partial<UserProfile> & { discordUserId: string } = { discordUserId: discordUser.id };
-
       if (optionAge !== null) updates.age = optionAge;
       if (optionGender) updates.gender = normalizeGender(optionGender);
       if (optionBio !== null) updates.bio = optionBio.trim();
-      if (optionIntent) updates.matchIntent = optionIntent;
       if (optionInterests !== null && optionInterests.trim().length > 0) {
         updates.interests = parseList(optionInterests);
       }
-      if (optionLanguages !== null && optionLanguages.trim().length > 0) {
-        updates.languages = parseList(optionLanguages, 6);
-      }
-
       user = await db.createOrUpdateUser(updates);
     }
 
-    if (!isProfileComplete(user)) {
-      await interaction.editReply({
-        content:
-          formatCustomEmojiText('⚠️ Your profile is still incomplete. Age (18+) and gender are required before you can match.\n') +
-          'Use `/profile` again to finish setup — it only takes a few seconds.',
-      }).catch(() => {});
-      return;
-    }
-
     const { attachment } = await buildProfileCard(user, discordUser, interaction.member);
-
     await interaction.editReply({
-      content: formatCustomEmojiText('🪐 **Your Destiny Profile** — update anything anytime with `/profile`.'),
+      content: formatCustomEmojiText('🪐 **Your Destiny Profile** — update anytime with `/application`.'),
       files: [attachment],
       components: [createProfileActionRow()],
     });

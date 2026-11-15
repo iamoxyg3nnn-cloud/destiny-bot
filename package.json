@@ -11,7 +11,9 @@
     "worker": "tsx src/workers/index.ts",
     "start": "tsx src/index.ts",
     "test": "vitest run",
-    "test:load": "tsx tests/load/load-benchmark.ts"
+    "test:load": "tsx tests/load/load-benchmark.ts",
+    "deploy:commands": "tsx scripts/deploy-commands.ts",
+    "verify:db": "tsx scripts/verify-supabase.ts"
   },
   "keywords": [
     "discord-bot",

@@ -131,7 +131,7 @@ export class MatchmakingManager {
       if (latestProfile.activeRoomId) {
         const latestRoom = await db.getRoomById(latestProfile.activeRoomId);
         if (latestRoom?.status === 'active') {
-          return { message: 'You are already in an active room. Use `leave` to exit first.' };
+          return { message: 'You are already in an active room. Use `/cancel match` to exit first.' };
         }
         const cleared = await db.clearActiveRoom(user.id, latestProfile.activeRoomId);
         if (!cleared) {
@@ -847,6 +847,21 @@ export class MatchmakingManager {
 
     // A new conversation is live — reflect it in the rotating presence.
     refreshBotPresence();
+
+    const effectiveGuildId = ticketA.guildId || ticketB.guildId;
+    if (effectiveGuildId) {
+      await stateStore.set(`room:${room.id}:guild_id`, effectiveGuildId, 86400 * 7).catch(() => {});
+    }
+
+    if (sentA && sentB && effectiveGuildId) {
+      const { dispatchPairedLogEvent } = await import('../../bot/paired-logs.js');
+      dispatchPairedLogEvent(client, effectiveGuildId, 'Pair', {
+        discordUserId1: ticketA.discordUserId,
+        discordUserId2: ticketB.discordUserId,
+        pseudonym1: room.user1Pseudonym,
+        pseudonym2: room.user2Pseudonym,
+      }).catch(() => {});
+    }
 
     return room;
   }
