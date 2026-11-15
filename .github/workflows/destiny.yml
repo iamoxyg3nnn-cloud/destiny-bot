@@ -125,11 +125,12 @@ jobs:
           rm .env
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Bot runtime — long-running session. Never cancelled by newer triggers.
+  # Bot runtime — long-running session on schedule and manual dispatch only.
+  # Pushes run CI exclusively; they never start or queue a bot session.
   # ──────────────────────────────────────────────────────────────────────────
   run-bot:
     name: Run Destiny Ecosystem
-    if: ${{ github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     concurrency:
@@ -262,7 +263,7 @@ jobs:
   continuation:
     name: Start the next Destiny session
     needs: run-bot
-    if: ${{ !cancelled() && needs.run-bot.result != 'cancelled' && github.event_name != 'pull_request' }}
+    if: ${{ !cancelled() && needs.run-bot.result != 'cancelled' && needs.run-bot.result != 'skipped' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
