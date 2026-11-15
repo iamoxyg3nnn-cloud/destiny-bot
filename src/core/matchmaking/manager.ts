@@ -870,10 +870,15 @@ export class MatchmakingManager {
                   new TextDisplayBuilder().setContent(
                     formatCustomEmojiText(
                       `# 🎙️ Your Blind Voice Match is Ready!\n\n` +
-                      `You matched with **${partnerDestinyId}** for a speed voice call!\n\n` +
-                      `• **Location:** ${vcResult.isEclairsFallback ? '🌟 Official Eclairs Hub (`discord.gg/eclairs`)' : `🏰 **${vcResult.guild.name}**`}\n` +
-                      `• **Channel:** <#${vcResult.channel.id}>\n\n` +
-                      `Click **Join Voice Channel** below to connect!`
+                      `You matched with **${partnerDestinyId}** for a blind speed voice call!\n\n` +
+                      `• ⏱️ **Duration:** \`${vcResult.durationMins} Minutes\` (timer starts when both join)\n` +
+                      `• 🏰 **Host Server:** ${vcResult.isEclairsFallback ? '🌟 Official Eclairs Hub (`discord.gg/eclairs`)' : `🏰 **${vcResult.guild.name}**`}\n` +
+                      `• 🔊 **Voice Channel:** <#${vcResult.channel.id}>\n\n` +
+                      (vcResult.isEclairsFallback
+                        ? `> ⚠️ **First Time in Eclairs?** Click **[🏰 Join Eclairs Hub]** first so Discord lets you connect to the voice channel!\n\n`
+                        : '') +
+                      `Click **🎙️ Join Voice Channel** below to enter your private room!\n\n` +
+                      `-# 🔒 2-person ephemeral room • Interactive dashboard with Icebreakers, +5m Extend & Reveal inside.`
                     )
                   )
                 )
@@ -887,7 +892,7 @@ export class MatchmakingManager {
                     ...(vcResult.isEclairsFallback
                       ? [
                           new ButtonBuilder()
-                            .setLabel('Join Eclairs Hub')
+                            .setLabel('🏰 Join Eclairs Hub')
                             .setStyle(ButtonStyle.Link)
                             .setURL(ECLAIRS_INVITE_URL),
                         ]

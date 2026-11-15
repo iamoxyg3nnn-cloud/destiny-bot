@@ -16,8 +16,8 @@ import {
 import { UserProfile } from '../types.js';
 import { stateStore } from '../../storage/state-store.js';
 import { db } from '../../database/supabase.js';
-import { ECLAIRS_GUILD_IDS, ECLAIRS_GUILD_ID, ECLAIRS_INVITE_URL } from '../moderation/reputation.js';
-import { formatCustomEmojiText } from '../../bot/custom-emojis.js';
+import { ECLAIRS_GUILD_IDS, ECLAIRS_INVITE_URL } from '../moderation/reputation.js';
+import { formatCustomEmojiText, resolveBotEmoji } from '../../bot/custom-emojis.js';
 import { COLORS } from '../../bot/embeds/index.js';
 import { blockerService } from '../moderation/blocker.js';
 
@@ -54,36 +54,42 @@ export function createVoiceDashboardContainer(
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId('destiny_vc_icebreaker')
-      .setLabel('🎲 Icebreaker')
+      .setLabel('Icebreaker')
+      .setEmoji(resolveBotEmoji('🎲'))
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId('destiny_vc_extend')
-      .setLabel('⏳ Extend +5m')
+      .setLabel('Extend +5m')
+      .setEmoji(resolveBotEmoji('⏳'))
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId('destiny_vc_reveal')
-      .setLabel('🎭 Reveal Profile')
+      .setLabel('Reveal Profile')
+      .setEmoji(resolveBotEmoji('🎭'))
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('destiny_vc_leave')
-      .setLabel('🚨 Leave & Block')
+      .setLabel('Leave & Block')
+      .setEmoji(resolveBotEmoji('🚨'))
       .setStyle(ButtonStyle.Danger)
   );
+
+  const durationStr = `${String(durationMins).padStart(2, '0')}:00`;
 
   return new ContainerBuilder()
     .setAccentColor(COLORS.DESTINY_PURPLE)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         formatCustomEmojiText(`# 🎙️ Blind Speed Voice Session\n\n`) +
-        `Welcome **${user1Handle}** and **${user2Handle}**!\n` +
-        `• **Session Timer:** ⏱️ **${durationMins}:00 Minutes** (starts once both connect)\n` +
-        `• **Host Server:** ${isEclairsFallback ? '🌟 Official Eclairs Hub (`discord.gg/eclairs`)' : `🏰 **${guildName}**`}\n\n` +
+        `**Matched Pair:** \`${user1Handle}\` ⟷ \`${user2Handle}\`\n\n` +
+        `⏱️ **Session Duration:** \`${durationMins}m\` ┃ 🏰 **Host:** ${isEclairsFallback ? '🌟 Eclairs Hub' : `🏰 **${guildName}**`} ┃ 👥 **Limit:** 2\n\n` +
+        `\`00:00 ━━━━🔘──────── ${durationStr}\`\n\n` +
         `### 📋 Session Rules & Controls\n` +
-        `1. **Be Respectful:** Zero tolerance for toxicity, ear-rape, or harassment.\n` +
-        `2. **Stay Anonymous or Reveal:** Use **[🎭 Reveal Profile]** if both agree to share real Discord tags.\n` +
-        `3. **Need More Time?** Click **[⏳ Extend +5m]** at any point before time expires.\n` +
-        `4. **Safety Panic Button:** Click **[🚨 Leave & Block]** to instantly end the call and delete the room.\n\n` +
-        `-# Ephemeral Voice Channel • Automatically deleted when both leave.`
+        `• **🎲 Icebreaker**: Get an instant question to start the conversation\n` +
+        `• **⏳ Extend**: Mutual vote to add +5 minutes to this call\n` +
+        `• **🎭 Reveal**: Mutual agreement to exchange real Discord tags\n` +
+        `• **🚨 Leave & Block**: Instant panic exit — kicks partner & blocks them permanently\n\n` +
+        `-# 🔒 Ephemeral Voice Channel • Automatically deleted when both leave or time expires.`
       )
     )
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -247,6 +253,40 @@ export class VoiceManager {
     await stateStore.set(`voice:room:${roomId}:duration_minutes`, String(durationMins), 86400);
     await stateStore.set(`voice:channel:${channel.id}:room_id`, roomId, 86400);
 
+    // Track active voice sessions for both users
+    await stateStore.set(`user:active_voice_room:${user1.id}`, roomId, 86400);
+    await stateStore.set(`user:active_voice_room:${user2.id}`, roomId, 86400);
+    await stateStore.set(`user:active_room:${user1.id}`, roomId, 86400);
+    await stateStore.set(`user:active_room:${user2.id}`, roomId, 86400);
+
+    // 3-Minute Abandonment Sweeper: auto-deletes if both users never connect
+    setTimeout(async () => {
+      try {
+        const startedAt = await stateStore.get(`voice:room:${roomId}:started_at`);
+        if (!startedAt) {
+          const freshChannel = client.channels.cache.get(channel.id) as VoiceChannel | undefined;
+          if (freshChannel) {
+            const abandonCard = new ContainerBuilder()
+              .setAccentColor(COLORS.DANGER)
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  formatCustomEmojiText(
+                    `# ⏱️ Session Canceled Due to Inactivity\n\n` +
+                    `Both participants did not connect within **3 minutes**.\n` +
+                    `This temporary voice room has been automatically closed.\n\n` +
+                    `-# Run /find match to search again whenever you are ready!`
+                  )
+                )
+              );
+            await freshChannel.send({ components: [abandonCard], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+            await this.deleteVoiceRoom(client, roomId, channel.id);
+          }
+        }
+      } catch (err: any) {
+        console.warn('[VoiceManager] Abandonment check error:', err?.message || err);
+      }
+    }, 3 * 60 * 1000);
+
     return { channel, guild, isEclairsFallback, durationMins, roomId };
   }
 
@@ -275,11 +315,28 @@ export class VoiceManager {
         await stateStore.set(`voice:room:${roomId}:started_at`, String(now), 86400);
         await stateStore.set(`voice:room:${roomId}:expires_at`, String(now + durationMins * 60 * 1000), 86400);
 
+        const startCard = new ContainerBuilder()
+          .setAccentColor(COLORS.SUCCESS)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              formatCustomEmojiText(
+                `# 🎉 Both Partners Connected!\n\n` +
+                `Your **${durationMins}-minute** speed voice call has officially started. Enjoy your conversation!\n\n` +
+                `• **Status:** Active Call\n` +
+                `• **Duration:** \`${durationMins}:00 Minutes\`\n` +
+                `• **Controls:** Use the dashboard above for Icebreakers, +5m Extension, or Reveal\n\n` +
+                `\`00:00 ━━━━🔘──────── ${String(durationMins).padStart(2, '0')}:00\``
+              )
+            )
+          );
+
         await channel.send({
-          content: formatCustomEmojiText(
-            `🎉 **Both partners connected!** Your **${durationMins}-minute** speed voice call has officially started. Enjoy your conversation!`
-          ),
+          components: [startCard],
+          flags: [MessageFlags.IsComponentsV2],
         }).catch(() => {});
+
+        // Arm the call expiry watcher
+        this.scheduleExpiryCheck(channel.client, roomId, channel.id);
       }
     }
 
@@ -294,6 +351,45 @@ export class VoiceManager {
         } catch {}
       }, 30_000);
     }
+  }
+
+  /**
+   * Watches expiration timer and gracefully terminates call when timer runs out.
+   */
+  scheduleExpiryCheck(client: Client, roomId: string, channelId: string): void {
+    const checkExpiry = async () => {
+      try {
+        const expiresAtStr = await stateStore.get(`voice:room:${roomId}:expires_at`);
+        if (!expiresAtStr) return; // Room concluded or deleted
+        const expiresAt = parseInt(expiresAtStr, 10);
+        const remaining = expiresAt - Date.now();
+        if (remaining <= 0) {
+          const ch = client.channels.cache.get(channelId) as VoiceChannel | undefined;
+          if (ch) {
+            const expireContainer = new ContainerBuilder()
+              .setAccentColor(COLORS.GOLD)
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  formatCustomEmojiText(
+                    `# ⏱️ Speed Call Concluded!\n\n` +
+                    `Your scheduled voice time has ended. Thank you for connecting with Destiny!\n\n` +
+                    `-# Ephemeral room is closing now. Run /find match to meet someone new.`
+                  )
+                )
+              );
+            await ch.send({ components: [expireContainer], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+          }
+          await this.deleteVoiceRoom(client, roomId, channelId);
+        } else {
+          // Re-arm check for when time actually expires (or check in max 15 seconds)
+          setTimeout(checkExpiry, Math.min(remaining, 15_000));
+        }
+      } catch (err: any) {
+        console.warn('[VoiceManager] scheduleExpiryCheck error:', err?.message || err);
+      }
+    };
+
+    setTimeout(checkExpiry, 10_000);
   }
 
   /**
@@ -330,18 +426,28 @@ export class VoiceManager {
 
       const channel = client.channels.cache.get(channelId) as VoiceChannel | undefined;
       if (channel && channel.isTextBased()) {
-        await channel.send({
-          content: formatCustomEmojiText(`⏳ **Both partners agreed! +5 Minutes added to your voice session.**`),
-        }).catch(() => {});
+        const extendCard = new ContainerBuilder()
+          .setAccentColor(COLORS.SUCCESS)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              formatCustomEmojiText(`⏳ **Both partners agreed! +5 Minutes added to your voice session.**\n\n-# Continue talking and have fun!`)
+            )
+          );
+        await channel.send({ components: [extendCard], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
       }
       return { success: true, message: 'Both partners agreed! 5 minutes added.' };
     }
 
     const channel = client.channels.cache.get(channelId) as VoiceChannel | undefined;
     if (channel && channel.isTextBased()) {
-      await channel.send({
-        content: formatCustomEmojiText(`⏳ A partner voted to extend. Waiting for the other partner to click **[Extend +5m]**...`),
-      }).catch(() => {});
+      const waitCard = new ContainerBuilder()
+        .setAccentColor(COLORS.GOLD)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            formatCustomEmojiText(`⏳ A partner voted to extend. Waiting for the other partner to click **[Extend +5m]**...`)
+          )
+        );
+      await channel.send({ components: [waitCard], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
     }
 
     return { success: true, message: 'Extension vote registered. Waiting for partner.' };
@@ -375,24 +481,34 @@ export class VoiceManager {
     if (u1Rev && u2Rev) {
       const channel = client.channels.cache.get(channelId) as VoiceChannel | undefined;
       if (channel && channel.isTextBased()) {
-        await channel.send({
-          content: formatCustomEmojiText(
-            `# 🎭 Mutual Profile Reveal Confirmed!\n\n` +
-            `Both partners have consented to reveal their identities:\n` +
-            `• **${destiny1}** is <@${u1}>\n` +
-            `• **${destiny2}** is <@${u2}>\n\n` +
-            `*You may now add each other as Discord friends!*`
-          ),
-        }).catch(() => {});
+        const revealCard = new ContainerBuilder()
+          .setAccentColor(COLORS.SUCCESS)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              formatCustomEmojiText(
+                `# 🎭 Mutual Profile Reveal Confirmed!\n\n` +
+                `Both partners have consented to reveal their identities:\n\n` +
+                `• **${destiny1}** is <@${u1}>\n` +
+                `• **${destiny2}** is <@${u2}>\n\n` +
+                `*You may now add each other as Discord friends!*`
+              )
+            )
+          );
+        await channel.send({ components: [revealCard], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
       }
       return { success: true, message: 'Profiles revealed to both users.' };
     }
 
     const channel = client.channels.cache.get(channelId) as VoiceChannel | undefined;
     if (channel && channel.isTextBased()) {
-      await channel.send({
-        content: formatCustomEmojiText(`🎭 A partner requested a mutual identity reveal. Waiting for the other partner to click **[Reveal Profile]**...`),
-      }).catch(() => {});
+      const requestCard = new ContainerBuilder()
+        .setAccentColor(COLORS.PRIMARY)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            formatCustomEmojiText(`🎭 A partner requested a mutual identity reveal. Waiting for the other partner to click **[Reveal Profile]**...`)
+          )
+        );
+      await channel.send({ components: [requestCard], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
     }
 
     return { success: true, message: 'Reveal request submitted. Waiting for partner.' };
@@ -444,6 +560,23 @@ export class VoiceManager {
     } catch (e: any) {
       console.warn('[VoiceManager] deleteVoiceRoom error:', e?.message || e);
     } finally {
+      const u1 = await stateStore.get(`voice:room:${roomId}:user1`);
+      const u2 = await stateStore.get(`voice:room:${roomId}:user2`);
+      if (u1) {
+        const p1 = await db.getUserByDiscordId(u1).catch(() => null);
+        if (p1) {
+          await stateStore.del(`user:active_voice_room:${p1.id}`);
+          await stateStore.del(`user:active_room:${p1.id}`);
+        }
+      }
+      if (u2) {
+        const p2 = await db.getUserByDiscordId(u2).catch(() => null);
+        if (p2) {
+          await stateStore.del(`user:active_voice_room:${p2.id}`);
+          await stateStore.del(`user:active_room:${p2.id}`);
+        }
+      }
+
       await stateStore.del(`voice:room:${roomId}:channel_id`);
       await stateStore.del(`voice:room:${roomId}:guild_id`);
       await stateStore.del(`voice:room:${roomId}:user1`);

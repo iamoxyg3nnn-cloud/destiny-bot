@@ -669,6 +669,15 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         }
       }
 
+      const activeVoiceRoomId = await stateStore.get(`user:active_voice_room:${user.id}`);
+      if (activeVoiceRoomId) {
+        const vcChannelId = await stateStore.get(`voice:room:${activeVoiceRoomId}:channel_id`);
+        await respond({
+          content: formatCustomEmojiText(`⚠️ You already have an active speed voice call in <#${vcChannelId || 'voice-channel'}>! Click the channel to join, or run \`/cancel match\` to leave.`),
+        });
+        return;
+      }
+
       if (!isProfileComplete(user)) {
         await respond({
           content: formatCustomEmojiText('⚠️ Please complete your profile application first with `/application` before joining matchmaking.'),
@@ -710,6 +719,19 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
   // 3. /cancel match OR /leave
   // =========================================================================
   if (commandName === 'cancel' || commandName === 'leave') {
+    const activeVoiceRoomId = await stateStore.get(`user:active_voice_room:${user.id}`);
+    if (activeVoiceRoomId) {
+      const channelId = await stateStore.get(`voice:room:${activeVoiceRoomId}:channel_id`);
+      const { voiceManager } = await import('../../core/voice/manager.js');
+      if (channelId) {
+        await voiceManager.deleteVoiceRoom(interaction.client, activeVoiceRoomId, channelId);
+      }
+      await respond({
+        content: formatCustomEmojiText('🛑 Your active voice matchmaking session has been closed and the voice room removed.'),
+      });
+      return;
+    }
+
     let activeRoomId = user.activeRoomId;
     if (!activeRoomId) {
       activeRoomId = (await stateStore.get(`user:active_room:${user.id}`)) || undefined;
