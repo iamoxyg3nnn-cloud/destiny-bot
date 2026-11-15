@@ -30,22 +30,40 @@ export class SocialManager {
    * Creates the post-match wrap-up container for session feedback.
    */
   createSessionWrapUpContainer(partnerDestinyId: string, partnerUserId: string, roomId: string): ContainerBuilder {
-    const reconnectRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`destiny_reconnect_${partnerUserId}_${roomId}`)
-        .setLabel('Would Talk Again')
-        .setEmoji(resolveBotEmoji('⭐'))
-        .setStyle(ButtonStyle.Success),
+    const hasValidPartner = partnerUserId && partnerUserId !== 'undefined' && partnerUserId.trim().length > 0;
+
+    const actionButtons: ButtonBuilder[] = [];
+
+    if (hasValidPartner) {
+      // Use compact custom_ids (<100 chars) to strictly adhere to Discord API limits
+      actionButtons.push(
+        new ButtonBuilder()
+          .setCustomId(`rec_vote_${partnerUserId}_${roomId}`)
+          .setLabel('Would Talk Again')
+          .setEmoji(resolveBotEmoji('⭐'))
+          .setStyle(ButtonStyle.Success)
+      );
+    }
+
+    actionButtons.push(
       new ButtonBuilder()
         .setCustomId('destiny_btn_start')
         .setLabel('Find Match')
         .setEmoji(resolveBotEmoji('✨'))
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(`btn_report_room_${roomId}`)
-        .setLabel('Report')
-        .setEmoji(resolveBotEmoji('🚨'))
-        .setStyle(ButtonStyle.Danger),
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    if (hasValidPartner) {
+      actionButtons.push(
+        new ButtonBuilder()
+          .setCustomId(`btn_report_room_${roomId}`)
+          .setLabel('Report')
+          .setEmoji(resolveBotEmoji('🚨'))
+          .setStyle(ButtonStyle.Danger)
+      );
+    }
+
+    actionButtons.push(
       new ButtonBuilder()
         .setCustomId('destiny_dismiss_wrapup')
         .setLabel('Dismiss')
@@ -53,34 +71,44 @@ export class SocialManager {
         .setStyle(ButtonStyle.Secondary)
     );
 
-    const praiseRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`destiny_praise_great_listener_${partnerUserId}_${roomId}`)
-        .setLabel('Great Listener')
-        .setEmoji(resolveBotEmoji('🎧'))
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`destiny_praise_hilarious_${partnerUserId}_${roomId}`)
-        .setLabel('Hilarious')
-        .setEmoji(resolveBotEmoji('😂'))
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`destiny_praise_respectful_${partnerUserId}_${roomId}`)
-        .setLabel('Respectful')
-        .setEmoji(resolveBotEmoji('🤝'))
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`destiny_praise_insightful_${partnerUserId}_${roomId}`)
-        .setLabel('Insightful')
-        .setEmoji(resolveBotEmoji('💡'))
-        .setStyle(ButtonStyle.Secondary)
-    );
+    const reconnectRow = new ActionRowBuilder<ButtonBuilder>().addComponents(actionButtons);
+
+    const rows: ActionRowBuilder<ButtonBuilder>[] = [reconnectRow];
+
+    if (hasValidPartner) {
+      // Shortened IDs (<100 chars): prs_<tag>_<partnerUserId>_<roomId>
+      const praiseRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`prs_gl_${partnerUserId}_${roomId}`)
+          .setLabel('Great Listener')
+          .setEmoji(resolveBotEmoji('🎧'))
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`prs_hl_${partnerUserId}_${roomId}`)
+          .setLabel('Hilarious')
+          .setEmoji(resolveBotEmoji('😂'))
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`prs_rs_${partnerUserId}_${roomId}`)
+          .setLabel('Respectful')
+          .setEmoji(resolveBotEmoji('🤝'))
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`prs_in_${partnerUserId}_${roomId}`)
+          .setLabel('Insightful')
+          .setEmoji(resolveBotEmoji('💡'))
+          .setStyle(ButtonStyle.Secondary)
+      );
+      rows.push(praiseRow);
+    }
+
+    const partnerName = partnerDestinyId && partnerDestinyId !== 'undefined' ? partnerDestinyId : 'Partner';
 
     return new ContainerBuilder()
       .setAccentColor(COLORS.DESTINY_PURPLE)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          formatCustomEmojiText(`# 🌟 Session Wrap-Up with **${partnerDestinyId}**\n\n`) +
+          formatCustomEmojiText(`# 🌟 Session Wrap-Up with **${partnerName}**\n\n`) +
           `Your session has concluded! Leave peer accolades or cast an anonymous second-chance vote:\n\n` +
           `• **⭐ Second Chance Matching:** If you both click **[Would Talk Again]** within 24h, you'll be mutually reconnected!\n` +
           `• **🏆 Anonymous Accolades:** Award your partner a verified reputation badge below.\n\n` +
@@ -88,7 +116,7 @@ export class SocialManager {
         )
       )
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-      .addActionRowComponents(reconnectRow, praiseRow);
+      .addActionRowComponents(...rows);
   }
 
   /**
@@ -105,12 +133,12 @@ export class SocialManager {
     }
 
     if (roomId) {
-      const alreadyPraisedKey = `praise:${roomId}:${fromUserId}:${tag}`;
+      const alreadyPraisedKey = `praise:${roomId}:${fromUserId}`;
       const hasPraised = await stateStore.get(alreadyPraisedKey);
       if (hasPraised) {
-        return { success: false, message: 'You have already awarded this accolade for this session!' };
+        return { success: false, message: 'You have already awarded peer praise for this session!' };
       }
-      await stateStore.set(alreadyPraisedKey, 'true', 86400 * 2);
+      await stateStore.set(alreadyPraisedKey, tag, 86400 * 2);
     }
 
     const key = `user:accolades:${targetUserId}:${tag}`;
@@ -158,7 +186,9 @@ export class SocialManager {
     votingUserId: string,
     targetUserId: string,
     roomId: string
-  ): Promise<{ isMutual: boolean; votingUser: UserProfile; targetUser: UserProfile } | null> {
+  ): Promise<{ isMutual: boolean; alreadyAnnounced?: boolean; votingUser: UserProfile; targetUser: UserProfile } | null> {
+    if (votingUserId === targetUserId) return null;
+
     const votingUser = await db.getUserById(votingUserId).catch(() => null);
     const targetUser = await db.getUserById(targetUserId).catch(() => null);
     if (!votingUser || !targetUser) return null;
@@ -167,8 +197,13 @@ export class SocialManager {
 
     const partnerVote = (await stateStore.get(`reconnect:vote:${roomId}:${targetUserId}`)) === 'true';
     if (partnerVote) {
+      const alreadyAnnounced = await stateStore.get(`reconnect:announced:${roomId}`);
+      if (alreadyAnnounced) {
+        return { isMutual: true, alreadyAnnounced: true, votingUser, targetUser };
+      }
+      await stateStore.set(`reconnect:announced:${roomId}`, 'true', 86400);
       await stateStore.set(`reconnect:mutual:${roomId}`, 'true', 86400);
-      return { isMutual: true, votingUser, targetUser };
+      return { isMutual: true, alreadyAnnounced: false, votingUser, targetUser };
     }
 
     return { isMutual: false, votingUser, targetUser };
@@ -278,6 +313,11 @@ export class SocialManager {
       return { success: false, message: 'User profile no longer exists.' };
     }
 
+    const isBlocked = await blockerService.isBlocked(acceptingUser.id, sender.id);
+    if (isBlocked) {
+      return { success: false, message: 'Cannot accept a friend request from a blocked user.' };
+    }
+
     await stateStore.sAdd(`user:friends:${acceptingUser.id}`, sender.id);
     await stateStore.sAdd(`user:friends:${sender.id}`, acceptingUser.id);
 
@@ -315,6 +355,12 @@ export class SocialManager {
 
     await stateStore.sRem(`user:friends:${userId}`, target.id);
     await stateStore.sRem(`user:friends:${target.id}`, userId);
+    await stateStore.sRem(`user:friend_requests_sent:${userId}`, target.id);
+    await stateStore.sRem(`user:friend_requests_sent:${target.id}`, userId);
+    await stateStore.sRem(`user:friend_requests_received:${userId}`, target.id);
+    await stateStore.sRem(`user:friend_requests_received:${target.id}`, userId);
+    await stateStore.del(`friendship:since:${userId}:${target.id}`);
+    await stateStore.del(`friendship:since:${target.id}:${userId}`);
 
     return {
       success: true,
@@ -479,18 +525,28 @@ export class SocialManager {
     const discordUser1 = await client.users.fetch(user1.discordUserId).catch(() => null);
     const discordUser2 = await client.users.fetch(user2.discordUserId).catch(() => null);
 
-    if (discordUser1) {
-      await sendCleanDmPanel(discordUser1, {
-        components: [createDirectCard(user2.destinyId)],
-        flags: [MessageFlags.IsComponentsV2],
-      }).catch(() => {});
+    if (!discordUser1 || !discordUser2) {
+      await db.endRoom(room.id, 'timeout').catch(() => {});
+      await stateStore.del(`user:active_room:${user1.id}`);
+      await stateStore.del(`user:active_room:${user2.id}`);
+      return { success: false, message: 'Unable to reach one of the participants on Discord.' };
     }
 
-    if (discordUser2) {
-      await sendCleanDmPanel(discordUser2, {
-        components: [createDirectCard(user1.destinyId)],
-        flags: [MessageFlags.IsComponentsV2],
-      }).catch(() => {});
+    const dm1Sent = await sendCleanDmPanel(discordUser1, {
+      components: [createDirectCard(user2.destinyId)],
+      flags: [MessageFlags.IsComponentsV2],
+    }).catch(() => null);
+
+    const dm2Sent = await sendCleanDmPanel(discordUser2, {
+      components: [createDirectCard(user1.destinyId)],
+      flags: [MessageFlags.IsComponentsV2],
+    }).catch(() => null);
+
+    if (!dm2Sent) {
+      await db.endRoom(room.id, 'timeout').catch(() => {});
+      await stateStore.del(`user:active_room:${user1.id}`);
+      await stateStore.del(`user:active_room:${user2.id}`);
+      return { success: false, message: `⚠️ Could not start chat: **${user2.destinyId}** does not allow Direct Messages from bots/server members.` };
     }
 
     return { success: true, message: `💬 Direct chat opened with **${user2.destinyId}**! Check your DMs.` };

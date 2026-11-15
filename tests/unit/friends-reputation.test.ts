@@ -86,14 +86,14 @@ describe('SocialManager - Friends, Reputation Accolades & Second Chance Matching
       expect(res.message).toContain('cannot award accolades to yourself');
     });
 
-    it('enforces session deduplication for the same praise tag', async () => {
+    it('enforces session deduplication for peer praise', async () => {
       const roomId = 'room_dedup_test';
       const first = await socialManager.addAccolade(mockUser1.id, mockUser2.id, 'respectful', roomId);
       expect(first.success).toBe(true);
 
-      const second = await socialManager.addAccolade(mockUser1.id, mockUser2.id, 'respectful', roomId);
+      const second = await socialManager.addAccolade(mockUser1.id, mockUser2.id, 'hilarious', roomId);
       expect(second.success).toBe(false);
-      expect(second.message).toContain('already awarded this accolade');
+      expect(second.message).toContain('already awarded peer praise for this session');
     });
 
     it('retrieves verified accolades accurately', async () => {
@@ -123,15 +123,41 @@ describe('SocialManager - Friends, Reputation Accolades & Second Chance Matching
       const vote2 = await socialManager.castReconnectVote(mockUser2.id, mockUser1.id, roomId);
       expect(vote2).not.toBeNull();
       expect(vote2?.isMutual).toBe(true);
+      expect(vote2?.alreadyAnnounced).toBe(false);
+
+      // Subsequent vote flags alreadyAnnounced to prevent duplicate celebration DMs
+      const voteAgain = await socialManager.castReconnectVote(mockUser2.id, mockUser1.id, roomId);
+      expect(voteAgain?.alreadyAnnounced).toBe(true);
     });
 
-    it('creates post-session wrap-up container with second chance and praise buttons', () => {
-      const container = socialManager.createSessionWrapUpContainer('destiny#2222', mockUser2.id, 'room_123');
+    it('creates post-session wrap-up container with custom_id <= 100 characters even with full UUIDs', () => {
+      const fullUuidPartner = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
+      const fullUuidRoom = 'a12bc34d-56ef-7890-abcd-ef1234567890';
+      const container = socialManager.createSessionWrapUpContainer('destiny#2222', fullUuidPartner, fullUuidRoom);
       expect(container).toBeDefined();
-      const json = container.toJSON();
+      const json = container.toJSON() as any;
       expect(json.type).toBe(17); // Components V2 Container
-      // Check rows
-      expect(json.components?.length).toBeGreaterThanOrEqual(2);
+
+      // Every button custom_id MUST be <= 100 chars (Discord strict limit)
+      for (const comp of json.components || []) {
+        if (comp.type === 1 && comp.components) { // ActionRow
+          for (const btn of comp.components) {
+            if (btn.custom_id) {
+              expect(btn.custom_id.length).toBeLessThanOrEqual(100);
+            }
+          }
+        }
+      }
+    });
+
+    it('gracefully handles missing or undefined partnerUserId in wrap-up container', () => {
+      const container = socialManager.createSessionWrapUpContainer('destiny#????', '', 'room_123');
+      expect(container).toBeDefined();
+      const json = container.toJSON() as any;
+      expect(json.type).toBe(17);
+      // Only 1 row (Find Match, Dismiss) when no valid partner
+      const rows = (json.components || []).filter((c: any) => c.type === 1);
+      expect(rows.length).toBe(1);
     });
 
     it('creates celebration mutual reconnect container with friend and direct session buttons', () => {
@@ -154,6 +180,13 @@ describe('SocialManager - Friends, Reputation Accolades & Second Chance Matching
       const res = await socialManager.sendFriendRequest(mockUser1, mockUser2.destinyId);
       expect(res.success).toBe(false);
       expect(res.message).toContain('Unable to send friend request');
+    });
+
+    it('prevents accepting a friend request from a blocked user', async () => {
+      vi.spyOn(blockerService, 'isBlocked').mockResolvedValue(true);
+      const res = await socialManager.acceptFriendRequest(mockUser1, mockUser2.id);
+      expect(res.success).toBe(false);
+      expect(res.message).toContain('Cannot accept a friend request from a blocked user');
     });
 
     it('sends friend request and supports acceptance, listing, and removal', async () => {

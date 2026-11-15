@@ -1120,7 +1120,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
     }
 
     // --- Award Peer Praise Accolade ---
-    if (customId.startsWith('destiny_praise_')) {
+    if (customId.startsWith('prs_') || customId.startsWith('destiny_praise_')) {
       const ok = await safeDeferReply(btn);
       if (!ok) return;
 
@@ -1130,32 +1130,59 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         return;
       }
 
-      // Format: destiny_praise_${tag}_${targetUserId}_${roomId}
-      const raw = customId.replace('destiny_praise_', '');
       let tag: PraiseTag = 'respectful';
       let targetUserId = '';
       let roomId = '';
 
-      if (raw.startsWith('great_listener_')) {
+      if (customId.startsWith('prs_gl_')) {
         tag = 'great_listener';
-        const rest = raw.replace('great_listener_', '').split('_');
+        const rest = customId.replace('prs_gl_', '').split('_');
         targetUserId = rest[0];
         roomId = rest.slice(1).join('_');
-      } else if (raw.startsWith('hilarious_')) {
+      } else if (customId.startsWith('prs_hl_')) {
         tag = 'hilarious';
-        const rest = raw.replace('hilarious_', '').split('_');
+        const rest = customId.replace('prs_hl_', '').split('_');
         targetUserId = rest[0];
         roomId = rest.slice(1).join('_');
-      } else if (raw.startsWith('respectful_')) {
+      } else if (customId.startsWith('prs_rs_')) {
         tag = 'respectful';
-        const rest = raw.replace('respectful_', '').split('_');
+        const rest = customId.replace('prs_rs_', '').split('_');
         targetUserId = rest[0];
         roomId = rest.slice(1).join('_');
-      } else if (raw.startsWith('insightful_')) {
+      } else if (customId.startsWith('prs_in_')) {
         tag = 'insightful';
-        const rest = raw.replace('insightful_', '').split('_');
+        const rest = customId.replace('prs_in_', '').split('_');
         targetUserId = rest[0];
         roomId = rest.slice(1).join('_');
+      } else {
+        // Legacy fallback
+        const raw = customId.replace('destiny_praise_', '');
+        if (raw.startsWith('great_listener_')) {
+          tag = 'great_listener';
+          const rest = raw.replace('great_listener_', '').split('_');
+          targetUserId = rest[0];
+          roomId = rest.slice(1).join('_');
+        } else if (raw.startsWith('hilarious_')) {
+          tag = 'hilarious';
+          const rest = raw.replace('hilarious_', '').split('_');
+          targetUserId = rest[0];
+          roomId = rest.slice(1).join('_');
+        } else if (raw.startsWith('respectful_')) {
+          tag = 'respectful';
+          const rest = raw.replace('respectful_', '').split('_');
+          targetUserId = rest[0];
+          roomId = rest.slice(1).join('_');
+        } else if (raw.startsWith('insightful_')) {
+          tag = 'insightful';
+          const rest = raw.replace('insightful_', '').split('_');
+          targetUserId = rest[0];
+          roomId = rest.slice(1).join('_');
+        }
+      }
+
+      if (!targetUserId) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('⚠️ Invalid praise target.') });
+        return;
       }
 
       const praiseRes = await socialManager.addAccolade(user.id, targetUserId, tag, roomId);
@@ -1209,7 +1236,7 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
     }
 
     // --- Second Chance Reconnect Vote ("Would Talk Again") ---
-    if (customId.startsWith('destiny_reconnect_')) {
+    if (customId.startsWith('rec_vote_') || (customId.startsWith('destiny_reconnect_') && !customId.startsWith('destiny_reconnect_chat_') && !customId.startsWith('destiny_reconnect_voice_'))) {
       const ok = await safeDeferReply(btn);
       if (!ok) return;
 
@@ -1219,10 +1246,17 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
         return;
       }
 
-      // Format: destiny_reconnect_${targetUserId}_${roomId}
-      const parts = customId.replace('destiny_reconnect_', '').split('_');
+      const stripped = customId.startsWith('rec_vote_')
+        ? customId.replace('rec_vote_', '')
+        : customId.replace('destiny_reconnect_', '');
+      const parts = stripped.split('_');
       const targetUserId = parts[0];
       const roomId = parts.slice(1).join('_');
+
+      if (!targetUserId) {
+        await safeEditReply(btn, { content: formatCustomEmojiText('⚠️ Invalid reconnect target.') });
+        return;
+      }
 
       const voteRes = await socialManager.castReconnectVote(user.id, targetUserId, roomId);
       if (!voteRes) {
@@ -1231,16 +1265,17 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       }
 
       if (voteRes.isMutual) {
-        // Both participants voted yes!
-        const mutualCardForTarget = socialManager.createMutualReconnectContainer(user.destinyId, user.id);
         const mutualCardForVoter = socialManager.createMutualReconnectContainer(voteRes.targetUser.destinyId, voteRes.targetUser.id);
 
-        const targetDiscordUser = await btn.client.users.fetch(voteRes.targetUser.discordUserId).catch(() => null);
-        if (targetDiscordUser) {
-          await sendCleanDmPanel(targetDiscordUser, {
-            components: [mutualCardForTarget],
-            flags: [MessageFlags.IsComponentsV2]
-          }).catch(() => {});
+        if (!voteRes.alreadyAnnounced) {
+          const mutualCardForTarget = socialManager.createMutualReconnectContainer(user.destinyId, user.id);
+          const targetDiscordUser = await btn.client.users.fetch(voteRes.targetUser.discordUserId).catch(() => null);
+          if (targetDiscordUser) {
+            await sendCleanDmPanel(targetDiscordUser, {
+              components: [mutualCardForTarget],
+              flags: [MessageFlags.IsComponentsV2]
+            }).catch(() => {});
+          }
         }
 
         await safeEditReply(btn, {

@@ -1606,10 +1606,15 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         return;
       }
 
-      const friendLines = friends.map((f, i) => {
+      const MAX_DISPLAY = 25;
+      const displayed = friends.slice(0, MAX_DISPLAY);
+      const friendLines = displayed.map((f, i) => {
         const sinceDate = new Date(f.since).toLocaleDateString();
         return `${i + 1}. **${f.destinyId}** — Friends since ${sinceDate}`;
       }).join('\n');
+      const footerLimit = friends.length > MAX_DISPLAY
+        ? `\n\n-# 📋 Showing 25 of ${friends.length} total friends.`
+        : '';
 
       const listContainer = new ContainerBuilder()
         .setAccentColor(COLORS.DESTINY_PURPLE)
@@ -1617,7 +1622,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
           new TextDisplayBuilder().setContent(
             formatCustomEmojiText(
               `# 👥 Your Destiny Friends (${friends.length})\n\n` +
-              friendLines + '\n\n' +
+              friendLines + footerLimit + '\n\n' +
               `• Use \`/friends chat destiny_id:destiny#XXXX\` to start a 1-on-1 private chat.\n` +
               `• Use \`/friends call destiny_id:destiny#XXXX\` to spin up a private voice call.\n` +
               `• Use \`/friends remove destiny_id:destiny#XXXX\` to remove a friend.\n\n` +

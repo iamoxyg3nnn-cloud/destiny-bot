@@ -195,17 +195,20 @@ export class DatabaseService {
   async getUserByDestinyId(destinyId: string): Promise<UserProfile | null> {
     const raw = (destinyId || '').trim();
     if (!raw) return null;
-    const cleanId = raw.replace(/^destiny#/i, '');
-    const withPrefix = raw.startsWith('destiny#') ? raw : `destiny#${cleanId}`;
+    const cleanId = raw.replace(/^destiny#/i, '').replace(/[^a-zA-Z0-9]/g, '');
+    if (!cleanId) return null;
+    const withPrefix = `destiny#${cleanId}`;
 
     if (this.isMockMode || !this.client) {
+      const lowerRaw = raw.toLowerCase();
+      const lowerClean = cleanId.toLowerCase();
+      const lowerWithPrefix = withPrefix.toLowerCase();
       for (const user of this.mockUsers.values()) {
+        const uid = (user.destinyId || '').toLowerCase();
         if (
-          user.destinyId === raw ||
-          user.destinyId === cleanId ||
-          user.destinyId === withPrefix ||
-          user.destinyId.toLowerCase() === raw.toLowerCase() ||
-          user.destinyId.toLowerCase() === cleanId.toLowerCase()
+          uid === lowerRaw ||
+          uid === lowerClean ||
+          uid === lowerWithPrefix
         ) {
           return await this.enrichProfileExtensions(this.normalizeUserBan(user));
         }
@@ -216,7 +219,7 @@ export class DatabaseService {
     const { data, error } = await this.client
       .from('users')
       .select('*')
-      .or(`destiny_id.eq.${raw},destiny_id.eq.${cleanId},destiny_id.eq.${withPrefix}`)
+      .or(`destiny_id.ilike.${cleanId},destiny_id.ilike.${withPrefix}`)
       .maybeSingle();
 
     if (error) throw new Error(`Failed to load user by Destiny ID: ${error.message}`);
