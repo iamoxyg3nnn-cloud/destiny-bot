@@ -27,7 +27,7 @@ jobs:
     if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     concurrency:
-      group: destiny-ci-${{ github.ref }}
+      group: destiny-ci-checks-${{ github.ref }}
       cancel-in-progress: true
     env:
       NODE_ENV: test
@@ -58,7 +58,7 @@ jobs:
     if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     concurrency:
-      group: destiny-ci-${{ github.ref }}
+      group: destiny-ci-migrations-${{ github.ref }}
       cancel-in-progress: true
     services:
       postgres:
@@ -112,7 +112,7 @@ jobs:
     if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     concurrency:
-      group: destiny-ci-${{ github.ref }}
+      group: destiny-ci-docker-${{ github.ref }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
