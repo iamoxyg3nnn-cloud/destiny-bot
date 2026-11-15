@@ -1060,6 +1060,8 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     const embed = new EmbedBuilder()
       .setColor(COLORS.SUCCESS)
       .setTitle('🏓 Destiny Latency & Health Check')
+      .setThumbnail('https://destiny.adore.rest/brand/destiny-mark-256.png')
+      .setDescription('-# Real-time latency diagnostics across active shards and database cluster')
       .addFields(
         { name: 'Gateway Latency', value: `\`${wsPing >= 0 ? wsPing : 12} ms\``, inline: true },
         { name: 'Database Latency', value: `\`${dbPing} ms\``, inline: true },
@@ -1078,6 +1080,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     const embed = new EmbedBuilder()
       .setColor(COLORS.DESTINY_PURPLE)
       .setTitle('🌌 Destiny — Anonymous Matchmaking Guide')
+      .setThumbnail('https://destiny.adore.rest/brand/destiny-mark-256.png')
       .setDescription(
         `Destiny connects you with compatible people anonymously across Discord.\n\n` +
         `### 🚀 Getting Started (Three Commands)\n` +
@@ -1093,7 +1096,8 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
         `• **/partner time** — Check your match partner's current local time.\n` +
         `• **/report** — Safely report inappropriate behavior.\n` +
         `• **/latency** — Check bot ping and response speed.\n` +
-        `• **/invite** — Get the invite link to add Destiny to your server.`
+        `• **/invite** — Get the invite link to add Destiny to your server.\n\n` +
+        `-# Tip: Run /find match anywhere or directly in Destiny's DMs to match.`
       )
       .setFooter({ text: 'Powered by destiny.adore.rest • Free to invite' });
 
@@ -1111,11 +1115,13 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     const embed = new EmbedBuilder()
       .setColor(COLORS.DESTINY_PURPLE)
       .setTitle('🌌 Add Destiny to Your Server')
+      .setThumbnail('https://destiny.adore.rest/brand/destiny-mark-256.png')
       .setDescription(
         'Bring anonymous social matchmaking, celestial profile cards, and private ephemeral pairing to your community.\n\n' +
         '• **Free to Invite:** Click the button below to authorize Destiny for your server.\n' +
         '• **Support & Community:** Join [discord.gg/eclairs](https://discord.gg/eclairs) for help, updates, and feedback.\n' +
-        '• **Official Site:** Learn more at [destiny.adore.rest](https://destiny.adore.rest).'
+        '• **Official Site:** Learn more at [destiny.adore.rest](https://destiny.adore.rest).\n\n' +
+        '-# Part of the adore.rest network • Free for all communities'
       )
       .setFooter({ text: 'Powered by destiny.adore.rest • Free to invite' });
 
