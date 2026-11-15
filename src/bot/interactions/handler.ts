@@ -612,6 +612,59 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       return;
     }
 
+    // --- Voice Session: Icebreaker ---
+    if (customId === 'destiny_vc_icebreaker') {
+      const { getRandomIcebreakerTopic } = await import('../../core/voice/manager.js');
+      const topic = getRandomIcebreakerTopic();
+      const promptContainer = new ContainerBuilder()
+        .setAccentColor(COLORS.GOLD)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            formatCustomEmojiText(`🎲 **Icebreaker Prompt** (Asked by **${btn.user.username}**)\n\n`) +
+            `> *"**${topic}**"*\n\n` +
+            `-# Share your honest take or debate your partner!`
+          )
+        );
+
+      if (btn.channel && 'send' in btn.channel) {
+        await (btn.channel as any).send({ components: [promptContainer], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+      }
+      if (!btn.replied && !btn.deferred) {
+        await btn.deferUpdate().catch(() => {});
+      }
+      return;
+    }
+
+    // --- Voice Session: Extend +5m ---
+    if (customId === 'destiny_vc_extend') {
+      const { voiceManager } = await import('../../core/voice/manager.js');
+      const result = await voiceManager.handleExtendVoiceCall(btn.client, btn.channelId, btn.user.id);
+      if (!btn.replied && !btn.deferred) {
+        await btn.reply({ content: formatCustomEmojiText(result.message), flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      return;
+    }
+
+    // --- Voice Session: Reveal Profile ---
+    if (customId === 'destiny_vc_reveal') {
+      const { voiceManager } = await import('../../core/voice/manager.js');
+      const result = await voiceManager.handleRevealVoiceCall(btn.client, btn.channelId, btn.user.id);
+      if (!btn.replied && !btn.deferred) {
+        await btn.reply({ content: formatCustomEmojiText(result.message), flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      return;
+    }
+
+    // --- Voice Session: Emergency Leave & Block ---
+    if (customId === 'destiny_vc_leave') {
+      const { voiceManager } = await import('../../core/voice/manager.js');
+      const result = await voiceManager.handleEmergencyLeave(btn.client, btn.channelId, btn.user.id);
+      if (!btn.replied && !btn.deferred) {
+        await btn.reply({ content: formatCustomEmojiText(result.message), flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      return;
+    }
+
     // --- Start Matchmaking Button ---
     if (customId === 'destiny_btn_start') {
       const ok = await safeDeferReply(btn);

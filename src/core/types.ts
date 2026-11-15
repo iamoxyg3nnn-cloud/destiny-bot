@@ -44,6 +44,7 @@ export interface MatchTicket {
   interests: string[];
   guildId?: string;
   queuedAt: number;
+  mode?: 'text' | 'voice';
 }
 
 export interface RoomSession {
@@ -151,6 +152,9 @@ export interface GuildSettings {
   announcementsChannelId?: string | null;
   modLogChannelId?: string | null;
   crossServerEnabled?: boolean;
+  voiceEnabled?: boolean;
+  voiceCategoryId?: string | null;
+  voiceDurationMinutes?: number;
   minAgeLimit?: number;
   allowedRoles?: string[];
   createdAt?: string;

@@ -6,7 +6,7 @@ import { config } from '../../config/index.js';
 import { formatCustomEmojiText } from '../../bot/custom-emojis.js';
 import { lockManager } from '../../storage/locks.js';
 import { anonymizer } from '../anonymizer.js';
-import { MessageFlags, ContainerBuilder, TextDisplayBuilder } from 'discord.js';
+import { MessageFlags, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { embedService, COLORS } from '../../bot/embeds/index.js';
 import { sendCleanDmPanel } from '../../bot/dm-cleanup.js';
 import { getDiscordClient } from '../../bot/client-registry.js';
@@ -86,7 +86,7 @@ export class MatchmakingManager {
   /**
    * Enqueue a user into the matchmaking queue
    */
-  async joinQueue(user: UserProfile, guildId?: string): Promise<{ success: boolean; message: string; ticket?: MatchTicket }> {
+  async joinQueue(user: UserProfile, guildId?: string, mode: 'text' | 'voice' = 'text'): Promise<{ success: boolean; message: string; ticket?: MatchTicket }> {
     // Fast preflight validation avoids unnecessary database work. The full checks
     // are repeated against a force-refreshed profile inside the ticket lock.
     if (user.isBanned) {
@@ -203,6 +203,7 @@ export class MatchmakingManager {
         interests,
         guildId: effectiveGuildId,
         queuedAt,
+        mode,
       };
 
       const serialized = JSON.stringify(ticket);
@@ -851,6 +852,56 @@ export class MatchmakingManager {
     const effectiveGuildId = ticketA.guildId || ticketB.guildId;
     if (effectiveGuildId) {
       await stateStore.set(`room:${room.id}:guild_id`, effectiveGuildId, 86400 * 7).catch(() => {});
+    }
+
+    if (sentA && sentB && ticketA.mode === 'voice') {
+      try {
+        const { voiceManager } = await import('../voice/manager.js');
+        const userProfileA = await db.getUserById(ticketA.userId);
+        const userProfileB = await db.getUserById(ticketB.userId);
+        if (userProfileA && userProfileB) {
+          const vcResult = await voiceManager.createVoiceMatchRoom(client, userProfileA, userProfileB, effectiveGuildId);
+          if (vcResult) {
+            const { ECLAIRS_INVITE_URL } = await import('../moderation/reputation.js');
+            const vcNotice = (partnerDestinyId: string) =>
+              new ContainerBuilder()
+                .setAccentColor(COLORS.DESTINY_PURPLE)
+                .addTextDisplayComponents(
+                  new TextDisplayBuilder().setContent(
+                    formatCustomEmojiText(
+                      `# 🎙️ Your Blind Voice Match is Ready!\n\n` +
+                      `You matched with **${partnerDestinyId}** for a speed voice call!\n\n` +
+                      `• **Location:** ${vcResult.isEclairsFallback ? '🌟 Official Eclairs Hub (`discord.gg/eclairs`)' : `🏰 **${vcResult.guild.name}**`}\n` +
+                      `• **Channel:** <#${vcResult.channel.id}>\n\n` +
+                      `Click **Join Voice Channel** below to connect!`
+                    )
+                  )
+                )
+                .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+                .addActionRowComponents(
+                  new ActionRowBuilder<ButtonBuilder>().addComponents(
+                    new ButtonBuilder()
+                      .setLabel('🎙️ Join Voice Channel')
+                      .setStyle(ButtonStyle.Link)
+                      .setURL(`https://discord.com/channels/${vcResult.guild.id}/${vcResult.channel.id}`),
+                    ...(vcResult.isEclairsFallback
+                      ? [
+                          new ButtonBuilder()
+                            .setLabel('Join Eclairs Hub')
+                            .setStyle(ButtonStyle.Link)
+                            .setURL(ECLAIRS_INVITE_URL),
+                        ]
+                      : [])
+                  )
+                );
+
+            if (userA) await sendCleanDmPanel(userA, { components: [vcNotice(ticketB.destinyId)], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+            if (userB) await sendCleanDmPanel(userB, { components: [vcNotice(ticketA.destinyId)], flags: [MessageFlags.IsComponentsV2] }).catch(() => {});
+          }
+        }
+      } catch (err: any) {
+        console.error('[Matchmaking] Failed to create voice match room:', err?.message || err);
+      }
     }
 
     if (sentA && sentB && effectiveGuildId) {

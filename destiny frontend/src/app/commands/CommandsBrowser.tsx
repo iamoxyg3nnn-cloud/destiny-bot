@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const commands = [
   ["/application", "Everyone", "Open your destiny application panel."],
-  ["/find match", "Everyone", "Ask destiny to match you with someone."],
+  ["/find match", "Everyone", "Ask destiny to match you with someone (Text DMs or Blind Voice VC)."],
   ["/cancel match", "Everyone", "End your match or stop looking for one."],
   ["/user info", "Everyone", "View your own destiny profile."],
   ["/user overview", "Everyone", "Where your account stands: sections, pool, lookups left."],
@@ -25,13 +25,17 @@ const commands = [
   ["/setup paired-logs enable", "Manage Server", "Enable posting match logs in this server."],
   ["/setup paired-logs disable", "Manage Server", "Stop posting match logs in this server."],
   ["/setup search scope", "Manage Server", "Set this server's default match pool (Global or Guild Only)."],
-  ["/setup overview", "Manage Server", "This server's scope, panel status and applicant count."],
+  ["/setup voice enable", "Manage Server", "Enable blind voice matchmaking rooms in this server."],
+  ["/setup voice disable", "Manage Server", "Disable voice matchmaking (falls back to Eclairs Central Hub)."],
+  ["/setup voice category", "Manage Server", "Set the category where temporary voice rooms are created."],
+  ["/setup voice duration", "Manage Server", "Set default speed voice call timer (3-30 minutes)."],
+  ["/setup overview", "Manage Server", "This server's scope, panel status, voice status and applicant count."],
 ] as const;
 
 const filters = [
-  ["all", "All", "23"],
+  ["all", "All", "27"],
   ["everyone", "Everyone", "15"],
-  ["manage", "Manage Server", "8"],
+  ["manage", "Manage Server", "12"],
 ] as const;
 
 const directives = [

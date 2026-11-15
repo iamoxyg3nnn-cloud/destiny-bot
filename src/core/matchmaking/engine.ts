@@ -82,6 +82,12 @@ export class MatchmakingEngine {
       return invalid('SELF_MATCH');
     }
 
+    const modeA = ticketA.mode || 'text';
+    const modeB = ticketB.mode || 'text';
+    if (modeA !== modeB) {
+      return invalid('MODE_MISMATCH');
+    }
+
     const a = normalizeTicket(ticketA);
     const b = normalizeTicket(ticketB);
     const validRange = (min: number, max: number) =>
@@ -159,6 +165,12 @@ export class MatchmakingEngine {
     // Cheap validation before making a database request.
     if (ticketA.userId === ticketB.userId || ticketA.discordUserId === ticketB.discordUserId) {
       return invalid('SELF_MATCH');
+    }
+
+    const modeA = ticketA.mode || 'text';
+    const modeB = ticketB.mode || 'text';
+    if (modeA !== modeB) {
+      return invalid('MODE_MISMATCH');
     }
     const blockLists = await this.preloadBlockLists([ticketA, ticketB]);
     return this.evaluateWithBlockLists(ticketA, ticketB, blockLists);

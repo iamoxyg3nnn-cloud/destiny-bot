@@ -105,6 +105,7 @@ export class DestinyBot {
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates,
       ],
       partials: [
         Partials.Channel,
@@ -265,6 +266,15 @@ export class DestinyBot {
         }
       } catch (err: any) {
         console.error('[Bot] GuildMemberRemove event error:', err?.message || err);
+      }
+    });
+
+    this.client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+      try {
+        const { voiceManager } = await import('../core/voice/manager.js');
+        await voiceManager.handleVoiceStateUpdate(oldState, newState);
+      } catch (err: any) {
+        console.error('[Bot] VoiceStateUpdate event error:', err?.message || err);
       }
     });
 

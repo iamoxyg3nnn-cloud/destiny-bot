@@ -136,6 +136,10 @@ describe('Website Commands & Embed Script Tests', () => {
       '/setup paired-logs enable',
       '/setup paired-logs disable',
       '/setup search scope',
+      '/setup voice enable',
+      '/setup voice disable',
+      '/setup voice category',
+      '/setup voice duration',
       '/setup overview',
     ];
 
@@ -158,5 +162,20 @@ describe('Website Commands & Embed Script Tests', () => {
     const logsEmbedSub = logsGroup.options.find((o: any) => o.name === 'embed');
     const logsScriptOpt = logsEmbedSub.options.find((o: any) => o.name === 'script');
     expect(logsScriptOpt.required).toBe(false);
+  });
+
+  it('supports text and voice choices on /find match', () => {
+    const findCmd = slashCommands.find((c) => c.name === 'find');
+    expect(findCmd).toBeDefined();
+    const json = findCmd!.toJSON();
+
+    const matchSub = (json.options as any[]).find((o: any) => o.name === 'match');
+    expect(matchSub).toBeDefined();
+
+    const modeOpt = matchSub.options.find((o: any) => o.name === 'mode');
+    expect(modeOpt).toBeDefined();
+    expect(modeOpt.required).toBe(false);
+    expect(modeOpt.choices.map((c: any) => c.value)).toContain('text');
+    expect(modeOpt.choices.map((c: any) => c.value)).toContain('voice');
   });
 });

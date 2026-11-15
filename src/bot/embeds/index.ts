@@ -212,7 +212,7 @@ export class EmbedService {
       .addActionRowComponents(row);
   }
 
-    createSearchingContainer(user: UserProfile): ContainerBuilder {
+    createSearchingContainer(user: UserProfile, mode: 'text' | 'voice' = 'text'): ContainerBuilder {
     const cancelRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId('destiny_btn_cancel_queue')
@@ -221,16 +221,27 @@ export class EmbedService {
         .setStyle(ButtonStyle.Secondary)
     );
 
+    const isVoice = mode === 'voice';
+    const title = isVoice
+      ? '# 🎙️ Searching for a Blind Voice Match...\n\n'
+      : '# 🔍 Searching for an Anonymous Match...\n\n';
+    const desc = isVoice
+      ? `You have entered the **blind speed voice matchmaking** queue!\n\n` +
+        `• ${formatCustomEmojiText("🆔")} **Destiny ID:** \`${user.destinyId}\`\n` +
+        `• 🎙️ **Mode:** Blind Speed Voice Call (VC)\n` +
+        `• ${formatCustomEmojiText("🎯")} **Interests:** ${user.interests.length > 0 ? user.interests.join(', ') : 'Open'}\n\n` +
+        `*Once paired, an ephemeral private voice room will be prepared with interactive voice controls and an icebreaker dashboard.*`
+      : `You have entered the anonymous matchmaking queue!\n\n` +
+        `• ${formatCustomEmojiText("🆔")} **Destiny ID:** \`${user.destinyId}\`\n` +
+        `• 💬 **Mode:** Anonymous Text (Direct DMs)\n` +
+        `• ${formatCustomEmojiText("🎯")} **Interests:** ${user.interests.length > 0 ? user.interests.join(', ') : 'Open'}\n\n` +
+        `*Please keep your DMs open. The moment an anonymous partner is paired, you will receive your connection card here!*`;
+
     return new ContainerBuilder()
-      .setAccentColor(COLORS.SUCCESS)
+      .setAccentColor(isVoice ? COLORS.PRIMARY : COLORS.SUCCESS)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          formatCustomEmojiText(`# 🔍 Searching for an Anonymous Match...\n\n`) +
-          `You have entered the anonymous matchmaking queue!\n\n` +
-          `• ${formatCustomEmojiText("🆔")} **Destiny ID:** \`${user.destinyId}\`\n` +
-          `• **Match Pool:** Everyone\n` +
-          `• ${formatCustomEmojiText("🎯")} **Interests:** ${user.interests.length > 0 ? user.interests.join(', ') : 'Open'}\n\n` +
-          `*Please keep your DMs open. The moment an anonymous partner is paired, you will receive your connection card here!*`
+          formatCustomEmojiText(title) + desc
         )
       )
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))

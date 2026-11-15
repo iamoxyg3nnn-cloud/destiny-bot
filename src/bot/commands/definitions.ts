@@ -68,6 +68,16 @@ export const slashCommands = [
         .setDescription('Ask destiny to match you with someone')
         .addStringOption((opt) =>
           opt
+            .setName('mode')
+            .setDescription('Matchmaking mode: Text or Voice')
+            .setRequired(false)
+            .addChoices(
+              { name: '💬 Text (Anonymous Chat in DMs)', value: 'text' },
+              { name: '🎙️ Voice (Blind Speed Call in VC)', value: 'voice' }
+            )
+        )
+        .addStringOption((opt) =>
+          opt
             .setName('interests')
             .setDescription('Comma-separated interests (e.g. gaming, anime, music, coding)')
             .setRequired(false)
@@ -272,6 +282,46 @@ export const slashCommands = [
                   { name: 'Global (All servers)', value: 'global' },
                   { name: 'Guild Only (This server only)', value: 'guild' }
                 )
+            )
+        )
+    )
+    .addSubcommandGroup((group) =>
+      group
+        .setName('voice')
+        .setDescription('Blind voice matchmaking settings')
+        .addSubcommand((sub) =>
+          sub
+            .setName('enable')
+            .setDescription('Enable voice matchmaking in this server')
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName('disable')
+            .setDescription('Disable voice matchmaking in this server (fallback to Eclairs Hub)')
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName('category')
+            .setDescription('Set category where temporary voice rooms are created')
+            .addChannelOption((opt) =>
+              opt
+                .setName('category')
+                .setDescription('Category channel for voice rooms')
+                .addChannelTypes(ChannelType.GuildCategory)
+                .setRequired(true)
+            )
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName('duration')
+            .setDescription('Set default speed call duration (minutes)')
+            .addIntegerOption((opt) =>
+              opt
+                .setName('minutes')
+                .setDescription('Duration in minutes (e.g. 5, 10, 15)')
+                .setMinValue(3)
+                .setMaxValue(30)
+                .setRequired(true)
             )
         )
     )
@@ -640,13 +690,14 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       const usedLookups = parseInt(usedLookupsStr || '0', 10);
       await stateStore.set(usedKey, String(usedLookups + 1), 86400 * 2);
 
-      const result = await matchmakingManager.joinQueue(user, interaction.guildId || undefined);
+      const mode = (interaction.options.getString('mode') || 'text') as 'text' | 'voice';
+      const result = await matchmakingManager.joinQueue(user, interaction.guildId || undefined, mode);
       if (!result.success) {
         await respond({ content: `${formatCustomEmojiText("❌")} ${result.message}` });
         return;
       }
 
-      const searchingContainer = embedService.createSearchingContainer(user);
+      const searchingContainer = embedService.createSearchingContainer(user, mode);
       await respond({ components: [searchingContainer] });
 
       // Trigger immediate match cycle check
@@ -1261,11 +1312,56 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
       return;
     }
 
+    // /setup voice enable
+    if (group === 'voice' && sub === 'enable') {
+      await stateStore.set(`guild:${interaction.guild.id}:voice_enabled`, 'true', 86400 * 365);
+      await logGuildSetupAudit(interaction.user.id, 'SET_VOICE_ENABLED', interaction.guild.id, { enabled: true });
+      await respond({
+        content: formatCustomEmojiText('✅ Blind Speed Voice Matchmaking is now **ENABLED** for this server!'),
+      });
+      return;
+    }
+
+    // /setup voice disable
+    if (group === 'voice' && sub === 'disable') {
+      await stateStore.set(`guild:${interaction.guild.id}:voice_enabled`, 'false', 86400 * 365);
+      await logGuildSetupAudit(interaction.user.id, 'SET_VOICE_DISABLED', interaction.guild.id, { enabled: false });
+      await respond({
+        content: formatCustomEmojiText('🛑 Blind Speed Voice Matchmaking has been **DISABLED** for this server. (Members matched in voice will be routed to the Eclairs Central Hub instead).'),
+      });
+      return;
+    }
+
+    // /setup voice category <category>
+    if (group === 'voice' && sub === 'category') {
+      const category = interaction.options.getChannel('category', true) as any;
+      await stateStore.set(`guild:${interaction.guild.id}:voice_category_id`, category.id, 86400 * 365);
+      await logGuildSetupAudit(interaction.user.id, 'SET_VOICE_CATEGORY', interaction.guild.id, { categoryId: category.id });
+      await respond({
+        content: formatCustomEmojiText(`✅ Ephemeral voice match rooms will now be created under category **${category.name}** (\`${category.id}\`).`),
+      });
+      return;
+    }
+
+    // /setup voice duration <minutes>
+    if (group === 'voice' && sub === 'duration') {
+      const minutes = interaction.options.getInteger('minutes', true);
+      await stateStore.set(`guild:${interaction.guild.id}:voice_duration_minutes`, String(minutes), 86400 * 365);
+      await logGuildSetupAudit(interaction.user.id, 'SET_VOICE_DURATION', interaction.guild.id, { minutes });
+      await respond({
+        content: formatCustomEmojiText(`✅ Speed voice call timer set to **${minutes} minutes** (participants can still mutually vote to extend +5m during call).`),
+      });
+      return;
+    }
+
     // /setup overview
     if (sub === 'overview' || sub === 'view') {
       const settings = await db.getGuildSettings(interaction.guild.id);
       const pairedLogsChannel = await stateStore.get(`guild:${interaction.guild.id}:paired_logs_channel`);
       const pairedLogsEnabled = (await stateStore.get(`guild:${interaction.guild.id}:paired_logs_enabled`)) === 'true';
+      const voiceEnabled = (await stateStore.get(`guild:${interaction.guild.id}:voice_enabled`)) === 'true';
+      const voiceCategoryId = await stateStore.get(`guild:${interaction.guild.id}:voice_category_id`);
+      const voiceDuration = (await stateStore.get(`guild:${interaction.guild.id}:voice_duration_minutes`)) || '5';
 
       const embed = new EmbedBuilder()
         .setColor(COLORS.DARK)
@@ -1275,6 +1371,9 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
           { name: 'Paired Logs Channel', value: pairedLogsChannel ? `<#${pairedLogsChannel}>` : '`None`', inline: true },
           { name: 'Paired Logs Status', value: pairedLogsEnabled ? '🟢 Enabled' : '🔴 Disabled', inline: true },
           { name: 'Match Pool Scope', value: settings?.crossServerEnabled !== false ? '🌐 Global' : '🔒 Guild Only', inline: true },
+          { name: 'Voice Matchmaking', value: voiceEnabled ? '🟢 Enabled (Local VC)' : '🔴 Disabled (Eclairs Hub Fallback)', inline: true },
+          { name: 'Voice Category', value: voiceCategoryId ? `<#${voiceCategoryId}>` : '`Automatic / Root`', inline: true },
+          { name: 'Voice Call Duration', value: `⏱️ ${voiceDuration} minutes`, inline: true },
           { name: 'Server Members', value: `${interaction.guild.memberCount || 0}`, inline: true },
         )
         .setFooter({ text: 'Destiny Server Administration' });
