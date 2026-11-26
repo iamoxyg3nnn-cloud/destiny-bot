@@ -7,7 +7,6 @@ import {
   ChatMessage, 
   ReportItem, 
   UserBlock, 
-  NotificationSettings, 
   AdminAuditLog,
   GuildSettings,
   GenderVerificationStatus
@@ -35,7 +34,6 @@ export class DatabaseService {
   public mockReports: Map<string, ReportItem> = new Map();
   public mockBlocks: UserBlock[] = [];
   public mockAuditLogs: AdminAuditLog[] = [];
-  public mockNotifications: Map<string, NotificationSettings> = new Map();
 
   constructor() {
     if (
@@ -440,37 +438,6 @@ export class DatabaseService {
       .range(safeOffset, safeOffset + safeLimit - 1);
     if (error) throw new Error(`Failed to load users: ${error.message}`);
     return (data || []).map(this.mapUser);
-  }
-  async getNotificationSettingsForUsers(userIds: string[]): Promise<Map<string, NotificationSettings>> {
-    const result = new Map<string, NotificationSettings>();
-    if (userIds.length === 0) return result;
-
-    if (this.isMockMode || !this.client) {
-      for (const userId of userIds) {
-        const settings = this.mockNotifications.get(userId);
-        if (settings) result.set(userId, { ...settings });
-      }
-      return result;
-    }
-
-    const { data, error } = await this.client
-      .from('notification_settings')
-      .select('*')
-      .in('user_id', userIds);
-    if (error) throw new Error(`Failed to load notification settings: ${error.message}`);
-
-    for (const row of data || []) {
-      result.set(row.user_id, {
-        userId: row.user_id,
-        dailyReminderEnabled: row.daily_reminder_enabled,
-        dailyReminderTime: row.daily_reminder_time,
-        timeZone: row.time_zone,
-        quietHoursStart: row.quiet_hours_start || undefined,
-        quietHoursEnd: row.quiet_hours_end || undefined,
-        optOut: row.opt_out,
-      });
-    }
-    return result;
   }
 
 

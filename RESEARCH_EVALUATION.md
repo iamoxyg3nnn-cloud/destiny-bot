@@ -45,7 +45,6 @@ In compliance with open-source licensing rules, **zero proprietary code was blin
 - **Adopted Concept (Clean-Room Implementation)**:
   - Interest overlap scoring formula:
     $$\text{Score} = \frac{|\text{Interests}_A \cap \text{Interests}_B|}{\max(|\text{Interests}_A|, |\text{Interests}_B|)} \times 100$$
-  - Daily scheduled reminder cadence (configured for 7:30 PM IST with quiet hours and opt-out).
 
 ### C. `stealth-bot` (Finite-Loop-Club-NMAMIT)
 - **Vulnerabilities**:
@@ -68,4 +67,4 @@ In compliance with open-source licensing rules, **zero proprietary code was blin
    - Mutual-consent profile reveals with fine-grained field selection (Age, Gender, Interests, Bio, Discord Tag) where fields are only shared if both parties agree.
    - Global cross-server block lists preventing matched encounters.
 4. **BullMQ Background Workers**:
-   - Separate worker processes for matchmaking, notifications (7:30 PM IST cron), moderation triage, and session cleanup.
+   - Separate worker processes for matchmaking, moderation triage, and session cleanup.

@@ -1,5 +1,4 @@
 import { matchmakingWorker } from './matchmaking.worker.js';
-import { notificationWorker } from './notification.worker.js';
 import { cleanupWorker } from './cleanup.worker.js';
 import { stateStore } from '../storage/state-store.js';
 import { config } from '../config/index.js';
@@ -22,7 +21,6 @@ export async function startAllWorkers(options: { includeMatchmaking?: boolean } 
       // primary shard starts it again from its ClientReady handler.
       await matchmakingWorker.start();
     }
-    notificationWorker.start();
     cleanupWorker.start();
     startWorkerHeartbeat('workers');
     workersStarted = true;
@@ -35,7 +33,6 @@ export async function startAllWorkers(options: { includeMatchmaking?: boolean } 
 export async function stopAllWorkers(): Promise<void> {
   const results = await Promise.allSettled([
     matchmakingWorker.stop(),
-    notificationWorker.stop(),
     cleanupWorker.stop(),
     stopWorkerHeartbeat('workers'),
   ]);

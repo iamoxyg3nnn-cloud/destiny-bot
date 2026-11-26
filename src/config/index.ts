@@ -26,10 +26,6 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().default('mock-service-role-key'),
   DATABASE_URL: z.string().optional(),
 
-  // Notifications
-  REMINDER_CRON_SCHEDULE: z.string().default('30 19 * * *'), // 7:30 PM
-  REMINDER_DEFAULT_TIMEZONE: z.string().default('Asia/Kolkata'), // IST
-
   // Moderation & Anonymity
   ENCRYPTION_KEY: z.string().default(''),
   AUTO_MOD_ENABLED: z.string().transform((v) => v.toLowerCase() === 'true').default('true'),

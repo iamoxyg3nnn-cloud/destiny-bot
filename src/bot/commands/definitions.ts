@@ -427,10 +427,7 @@ export const slashCommands = [
 
   new SlashCommandBuilder()
     .setName('settings')
-    .setDescription('Configure daily 7:30 PM IST reminders and privacy controls')
-    .addBooleanOption((opt) =>
-      opt.setName('daily_reminder').setDescription('Enable/Disable 7:30 PM IST match reminder').setRequired(false)
-    )
+    .setDescription('Configure timezone and privacy controls')
     .addStringOption((opt) =>
       opt.setName('timezone').setDescription('Your timezone (default: Asia/Kolkata)').setRequired(false)
     )
@@ -1553,15 +1550,13 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
   }
 
   if (commandName === 'settings') {
-    const reminder = interaction.options.getBoolean('daily_reminder');
     const tz = interaction.options.getString('timezone');
     const optOut = interaction.options.getBoolean('opt_out');
 
     const embed = new EmbedBuilder()
       .setColor(COLORS.PRIMARY)
-      .setTitle(formatCustomEmojiText('⚙️ Destiny Notification & Privacy Settings'))
+      .setTitle(formatCustomEmojiText('⚙️ Destiny Privacy & Timezone Settings'))
       .setDescription(
-        `• **7:30 PM IST Daily Reminder**: ${reminder !== null ? (reminder ? formatCustomEmojiText('✅ Enabled') : formatCustomEmojiText('❌ Disabled')) : formatCustomEmojiText('✅ Enabled')}\n` +
         `• **Configured Timezone**: \`${tz || 'Asia/Kolkata'}\`\n` +
         `• **System Opt-Out**: ${optOut ? formatCustomEmojiText('🚫 Active') : formatCustomEmojiText('🟢 Inactive')}\n\n` +
         `Settings updated successfully.`

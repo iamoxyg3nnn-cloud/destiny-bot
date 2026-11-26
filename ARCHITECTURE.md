@@ -19,14 +19,14 @@ Destiny is a focused, distributed anonymous-chat system for matchmaking compatib
                        +-----------------+-----------------+
                                          |
       +----------------------------------+----------------------------------+
-      |                                  |                                  |
-+-----v---------------+        +---------v-----------+            +---------v-----------+
-| Matchmaking Worker  |        | Notification Worker |            | Moderation & Desk   |
-| (Multi-criteria,    |        | (7:30 PM IST Cron,  |            | (Triage, Verification, |
-|  Queue Pairing)     |        |  Quiet Hours)       |            |  Global Blocks)     |
-+---------+-----------+        +---------+-----------+            +---------+-----------+
-          |                              |                                  |
-          +------------------------------+----------------------------------+
+      |                                                                     |
++-----v---------------+                                           +---------v-----------+
+| Matchmaking Worker  |                                           | Moderation & Desk   |
+| (Multi-criteria,    |                                           | (Triage, Verification, |
+|  Queue Pairing)     |                                           |  Global Blocks)     |
++---------+-----------+                                           +---------+-----------+
+          |                                                                 |
+          +----------------------------------+------------------------------+
                                          |
 +----------------------------------+                   +-----------------------------------+
 |      Supabase PostgreSQL         |                   |   Runtime + Permanent State       |
@@ -66,7 +66,3 @@ Destiny is a focused, distributed anonymous-chat system for matchmaking compatib
 - Matchmaking reserves two compatible users and creates one active room.
 - Messages are sanitized, relayed between DMs and persisted with pseudonymous sender labels.
 - Either participant can end the session; inactivity cleanup and moderation can also terminate rooms.
-
-### E. Scheduled 7:30 PM IST Daily Reminders
-- Daily social matchmaking event scheduled at 7:30 PM IST (19:30 Asia/Kolkata).
-- Honors user timezone overrides, quiet hours, and opt-out preferences.

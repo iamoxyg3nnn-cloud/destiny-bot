@@ -140,16 +140,6 @@ export interface UserBlock {
   createdAt: string;
 }
 
-export interface NotificationSettings {
-  userId: string;
-  dailyReminderEnabled: boolean;
-  dailyReminderTime: string; // "19:30"
-  timeZone: string; // "Asia/Kolkata"
-  quietHoursStart?: string;
-  quietHoursEnd?: string;
-  optOut: boolean;
-}
-
 export interface AdminAuditLog {
   id: string;
   adminId: string;

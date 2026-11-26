@@ -92,10 +92,6 @@ export default function AdminOverviewPage() {
               <span>Cleanup & Inactivity Worker</span>
               <span style={{ color: "#3ecf8e" }}>Active (&gt;24h Auto-expire)</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "0.6rem 0", borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
-              <span>Daily Reminders Worker</span>
-              <span style={{ color: "#3ecf8e" }}>Scheduled (7:30 PM IST)</span>
-            </div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "0.6rem 0" }}>
               <span>Supabase PostgreSQL Schema</span>
               <span style={{ color: "#3ecf8e" }}>22 Migrations Applied (Healthy)</span>

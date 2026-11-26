@@ -118,7 +118,7 @@ For Docker, copy `.env.example` to `.env`, fill the bot and database credentials
 | `/profile [age] [gender] [bio] [interests] [languages] [looking_for]` | Auto-setup or edit your anonymous profile and render your card |
 | `/report <category> <description>` | Safely report user with automated chat excerpt |
 | `/block [destiny_id]` | Globally block user across all servers |
-| `/settings` | Configure 7:30 PM IST daily reminders, timezone, and quiet hours |
+| `/settings` | Configure timezone and privacy controls |
 | `/setup portal`, `/setup cross_server`, `/setup view` | Configure only the current Discord server (Manage Server or Administrator) |
 | `/setup modlog` | Configure the private moderation alert channel in a trusted staff guild |
 | `/owner status` | Global bot, database and worker diagnostics for IDs in `BOT_OWNER_IDS` only |
